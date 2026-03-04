@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EventContainer xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+	<Events>
+		<Event EventName="BusinessExpo" BuildingName="ExpoCenter" UserEventName="Business Expo" Capacity="150" LengthInHours="2">
+			<ChanceOfAttendingPercentage>
+				<Males>70</Males>
+				<Females>70</Females>
+				
+				<Children>0</Children>
+				<Teens>0</Teens>
+				<YoungAdults>50</YoungAdults>
+				<Adults>100</Adults>
+				<Seniors>10</Seniors>
+				
+				<LowWealth>0</LowWealth>
+				<MediumWealth>20</MediumWealth>
+				<HighWealth>100</HighWealth>
+				
+				<Uneducated>0</Uneducated>
+				<OneSchool>20</OneSchool>
+				<TwoSchools>60</TwoSchools>
+				<ThreeSchools>100</ThreeSchools>
+				
+				<BadHappiness>0</BadHappiness>
+				<PoorHappiness>30</PoorHappiness>
+				<GoodHappiness>80</GoodHappiness>				
+				<ExcellentHappiness>100</ExcellentHappiness>
+				<SuperbHappiness>100</SuperbHappiness>
+				
+				<VeryUnhappyWellbeing>0</VeryUnhappyWellbeing>
+				<UnhappyWellbeing>10</UnhappyWellbeing>
+				<SatisfiedWellbeing>50</SatisfiedWellbeing>
+				<HappyWellbeing>100</HappyWellbeing>
+				<VeryHappyWellbeing>100</VeryHappyWellbeing>
+			</ChanceOfAttendingPercentage>
+			
+			<Costs>
+				<EntryCost>100</EntryCost>
+			</Costs>
+			
+		</Event>
+		
+		<Event EventName="CaravanExpo" BuildingName="ExpoCenter" Capacity="200" LengthInHours="3">
+			<ChanceOfAttendingPercentage>
+				<Males>100</Males>
+				<Females>40</Females>
+				
+				<Children>0</Children>
+				<Teens>0</Teens>
+				<YoungAdults>0</YoungAdults>
+				<Adults>20</Adults>
+				<Seniors>100</Seniors>
+				
+				<LowWealth>0</LowWealth>
+				<MediumWealth>20</MediumWealth>
+				<HighWealth>100</HighWealth>
+				
+				<Uneducated>0</Uneducated>
+				<OneSchool>20</OneSchool>
+				<TwoSchools>60</TwoSchools>
+				<ThreeSchools>100</ThreeSchools>
+				
+				<BadHappiness>0</BadHappiness>
+				<PoorHappiness>30</PoorHappiness>
+				<GoodHappiness>80</GoodHappiness>				
+				<ExcellentHappiness>100</ExcellentHappiness>
+				<SuperbHappiness>100</SuperbHappiness>
+				
+				<VeryUnhappyWellbeing>0</VeryUnhappyWellbeing>
+				<UnhappyWellbeing>10</UnhappyWellbeing>
+				<SatisfiedWellbeing>50</SatisfiedWellbeing>
+				<HappyWellbeing>100</HappyWellbeing>
+				<VeryHappyWellbeing>100</VeryHappyWellbeing>
+			</ChanceOfAttendingPercentage>
+		</Event>
+		
+		<Event EventName="ComicExpo" BuildingName="ExpoCenter" UserEventName="Comic Book Expo" Capacity="300" LengthInHours="4">
+			<ChanceOfAttendingPercentage>
+				<Males>80</Males>
+				<Females>20</Females>
+				
+				<Children>5</Children>
+				<Teens>100</Teens>
+				<YoungAdults>100</YoungAdults>
+				<Adults>20</Adults>
+				<Seniors>0</Seniors>
+				
+				<LowWealth>0</LowWealth>
+				<MediumWealth>80</MediumWealth>
+				<HighWealth>100</HighWealth>
+				
+				<Uneducated>0</Uneducated>
+				<OneSchool>20</OneSchool>
+				<TwoSchools>100</TwoSchools>
+				<ThreeSchools>100</ThreeSchools>
+				
+				<BadHappiness>0</BadHappiness>
+				<PoorHappiness>30</PoorHappiness>
+				<GoodHappiness>80</GoodHappiness>				
+				<ExcellentHappiness>100</ExcellentHappiness>
+				<SuperbHappiness>100</SuperbHappiness>
+				
+				<VeryUnhappyWellbeing>0</VeryUnhappyWellbeing>
+				<UnhappyWellbeing>10</UnhappyWellbeing>
+				<SatisfiedWellbeing>50</SatisfiedWellbeing>
+				<HappyWellbeing>100</HappyWellbeing>
+				<VeryHappyWellbeing>100</VeryHappyWellbeing>
+			</ChanceOfAttendingPercentage>
+			
+			<Costs>
+				<EntryCost>100</EntryCost>
+			</Costs>
+			
+		</Event>
+		
+		<Event EventName="ElectronicExpo" UserEventName="Electronics Expo" BuildingName="ExpoCenter" Capacity="300" LengthInHours="3">
+			<ChanceOfAttendingPercentage>
+				<Males>80</Males>
+				<Females>60</Females>
+				
+				<Children>0</Children>
+				<Teens>100</Teens>
+				<YoungAdults>100</YoungAdults>
+				<Adults>100</Adults>
+				<Seniors>40</Seniors>
+				
+				<LowWealth>0</LowWealth>
+				<MediumWealth>80</MediumWealth>
+				<HighWealth>100</HighWealth>
+				
+				<Uneducated>0</Uneducated>
+				<OneSchool>20</OneSchool>
+				<TwoSchools>60</TwoSchools>
+				<ThreeSchools>100</ThreeSchools>
+				
+				<BadHappiness>0</BadHappiness>
+				<PoorHappiness>30</PoorHappiness>
+				<GoodHappiness>80</GoodHappiness>				
+				<ExcellentHappiness>100</ExcellentHappiness>
+				<SuperbHappiness>100</SuperbHappiness>
+				
+				<VeryUnhappyWellbeing>0</VeryUnhappyWellbeing>
+				<UnhappyWellbeing>10</UnhappyWellbeing>
+				<SatisfiedWellbeing>50</SatisfiedWellbeing>
+				<HappyWellbeing>100</HappyWellbeing>
+				<VeryHappyWellbeing>100</VeryHappyWellbeing>
+			</ChanceOfAttendingPercentage>
+			
+			<Costs>
+				<EntryCost>120</EntryCost>
+			</Costs>
+			
+		</Event>
+		
+		<Event EventName="GameExpo" UserEventName="Games Expo" BuildingName="ExpoCenter" Capacity="250" LengthInHours="4">
+			<ChanceOfAttendingPercentage>
+				<Males>80</Males>
+				<Females>30</Females>
+				
+				<Children>5</Children>
+				<Teens>100</Teens>
+				<YoungAdults>100</YoungAdults>
+				<Adults>20</Adults>
+				<Seniors>0</Seniors>
+				
+				<LowWealth>0</LowWealth>
+				<MediumWealth>80</MediumWealth>
+				<HighWealth>100</HighWealth>
+				
+				<Uneducated>0</Uneducated>
+				<OneSchool>20</OneSchool>
+				<TwoSchools>60</TwoSchools>
+				<ThreeSchools>100</ThreeSchools>
+				
+				<BadHappiness>0</BadHappiness>
+				<PoorHappiness>30</PoorHappiness>
+				<GoodHappiness>80</GoodHappiness>				
+				<ExcellentHappiness>100</ExcellentHappiness>
+				<SuperbHappiness>100</SuperbHappiness>
+				
+				<VeryUnhappyWellbeing>0</VeryUnhappyWellbeing>
+				<UnhappyWellbeing>10</UnhappyWellbeing>
+				<SatisfiedWellbeing>50</SatisfiedWellbeing>
+				<HappyWellbeing>100</HappyWellbeing>
+				<VeryHappyWellbeing>100</VeryHappyWellbeing>
+			</ChanceOfAttendingPercentage>
+			
+			<Costs>
+				<EntryCost>110</EntryCost>
+			</Costs>
+			
+		</Event>
+	</Events>
+</EventContainer>
