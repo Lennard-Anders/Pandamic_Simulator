@@ -1,0 +1,164 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\mail\\pandemic-skylines\\src\\RealTimeTests\\RealTimeTests.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\mail\\pandemic-skylines\\src\\RealTimeTests\\RealTimeTests.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\mail\\pandemic-skylines\\src\\RealTimeTests\\RealTimeTests.csproj",
+        "projectName": "RealTimeTests",
+        "projectPath": "C:\\Users\\mail\\pandemic-skylines\\src\\RealTimeTests\\RealTimeTests.csproj",
+        "packagesPath": "C:\\Users\\mail\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\mail\\pandemic-skylines\\src\\RealTimeTests\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\mail\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net471"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net471": {
+            "targetAlias": "net471",
+            "projectReferences": {
+              "C:\\Users\\mail\\pandemic-skylines\\src\\RealTime\\RealTime.csproj": {
+                "projectPath": "C:\\Users\\mail\\pandemic-skylines\\src\\RealTime\\RealTime.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net471": {
+          "targetAlias": "net471",
+          "dependencies": {
+            "GitVersionTask": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[5.2.4, )"
+            },
+            "Microsoft.CodeAnalysis.FxCopAnalyzers": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.9.8, )"
+            },
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )",
+              "autoReferenced": true
+            },
+            "StyleCop.Analyzers.Unstable": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.2.0.164, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103\\RuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\mail\\pandemic-skylines\\src\\RealTime\\RealTime.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\mail\\pandemic-skylines\\src\\RealTime\\RealTime.csproj",
+        "projectName": "RealTime",
+        "projectPath": "C:\\Users\\mail\\pandemic-skylines\\src\\RealTime\\RealTime.csproj",
+        "packagesPath": "C:\\Users\\mail\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\mail\\pandemic-skylines\\src\\RealTime\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\mail\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net35"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net35": {
+            "targetAlias": "net35",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net35": {
+          "targetAlias": "net35",
+          "dependencies": {
+            "GitVersionTask": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[5.2.4, )"
+            },
+            "Microsoft.CodeAnalysis.FxCopAnalyzers": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.9.8, )"
+            },
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )",
+              "autoReferenced": true
+            },
+            "Roslynator.Analyzers": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.3.0, )"
+            },
+            "Roslynator.CodeAnalysis.Analyzers": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.0-beta, )"
+            },
+            "SkyTools.Patching": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.1.0, )"
+            },
+            "StyleCop.Analyzers.Unstable": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.2.0.164, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

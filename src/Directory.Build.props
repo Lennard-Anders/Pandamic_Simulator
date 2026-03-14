@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <CitiesSkylinesBinaries Condition="'$(CitiesSkylinesBinaries)' == ''">$(CITIES_SKYLINES_BINARIES)</CitiesSkylinesBinaries>
+    <CitiesSkylinesBinaries Condition="'$(CitiesSkylinesBinaries)' != '' and !HasTrailingSlash('$(CitiesSkylinesBinaries)')">$(CitiesSkylinesBinaries)\</CitiesSkylinesBinaries>
+    <DisableGitVersionTask Condition="'$(DisableGitVersionTask)' == ''">true</DisableGitVersionTask>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <PackageReference>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <Reference>
+      <Private>False</Private>
+    </Reference>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$(SolutionDir)stylecop.json" Visible="False" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<language id="ko" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+  <translation id="Warning" value="경고" />
+  <translation id="RestrictedModeMessage" value="Real Time이 제한된 모드로 실행중에 있습니다. 몇몇 기능들이 꺼집니다. 서드 파티 라이브러리의 문제 이거나 혹은 모드가 호환되지 않아서 일수 있습니다. 도움이 필요하시다면 게임 로그파일을 모드 개발자에게 보내주세요." />
+  <translation id="ModNotWorkingMessage" value="어이쿠! 무엇인가 잘못되었습니다 - 모드가 정상 동작하지 않습니다! 모드 제작자에게 로그 파일을 보내주세요." />
+  <translation id="IncompatibleModsFoundMessage" value="Real Time 모드가 최소 한개 이상의 호환되지 않는(혹은 부분적으로 호환되지 않는) 모드를 발견했습니다. 해당 모드를 구독해제 하시는 것을 추천드립니다. 여러분이 원하신다면 놔두셔도 상관없지만, 게임이 정상적으로 흐르지 않거나 튕길 가능성이 있습니다." />
+  <translation id="Minutes" value="분" />
+
+  <translation id="Tools" value="도구" />
+  <translation id="ShowIncompatibilityNotifications" value="호환되지 않는 모드 알람 보이기" />
+  <translation id="UseEnglishUSFormats" value="영어 사용시 미국 시간 및 날짜 포맷 사용" />
+  <translation id="UseEnglishUSFormatsTooltip" value="날짜 포맷을 돌릴려면 게임을 다시 시작해야 합니다" />
+  <translation id="ResetToDefaults" value="모두 초기값으로 되돌리기" />
+  <translation id="UseForNewGames" value="새 게임에 현재 값을 사용" />
+
+  <translation id="1General" value="일반" />
+  <translation id="0Time" value="시간 옵션" />
+  <translation id="1Other" value="기타 옵션" />
+  <translation id="WakeUpHour" value="도시가 잠애서 깰 시간" />
+  <translation id="WakeUpHourTooltip" value="대부분의 시민들이 잠에서 깰 시간을 설정합니다. 예산과 속도가 주간 모드로 설정됩니다!" />
+  <translation id="GoToSleepHour" value="도시가 잠에 들 시간" />
+  <translation id="GoToSleepHourTooltip" value="대부분의 시민들이 잠에 들 시간을 설정합니다. 예산과 속도가 야간 모드로 설정됩니다!" />
+  <translation id="DayTimeSpeed" value="시간 속도 (주간)" />
+  <translation id="DayTimeSpeedTooltip" value="낮 동안의 시간 속도를 정합니다. '1'은 매우 느리며, 거의 현실 시간과 같습니다!" />
+  <translation id="NightTimeSpeed" value="시간 속도 (야간)" />
+  <translation id="NightTimeSpeedTooltip" value="밤 동안의 시간 속도를 정합니다. '1'은 매우 느리며, 거의 현실 시간과 같습니다!" />
+  <translation id="IsDynamicDayLengthEnabled" value="동적인 하루 길이" />
+  <translation id="IsDynamicDayLengthEnabledTooltip" value="하루의 길이가 맵의 테마와 더불어 게임상의 년도에 따라 변합니다. 예를 들어 겨울은 여름보다 더 해가 짧습니다" />
+  <translation id="VirtualCitizens" value="시민 시뮬레이션 모드 설정" />
+  <translation id="VirtualCitizensTooltip" value="'전체' 도시의(그러나 게임내 제한인 63,535 명을 넘을수 없습니다) 시민 시뮬레이션 정도를 정합니다. 사양이 낮으시다면 '바닐라' 혹은 '더 가상적인 시민들' 같은 설정으로 맞춰주세요" />
+  <translation id="VirtualCitizens.None" value="전부 사실같은 시뮬레이션" />
+  <translation id="VirtualCitizens.Vanilla" value="바닐라" />
+  <translation id="UseSlowAging" value="나이와 출생률 수정" />
+  <translation id="UseSlowAgingTooltip" value="이 옵션이 켜지게 되면, 게임의 하루는 1년으로 돌아갑니다. 이 옵션이 꺼지게 된다면, 게임의 하루는 10(게임 속도 6)에서 340(게임속도 1)년이 됩니다." />
+  <translation id="IsWeekendEnabled" value="주말 허용" />
+  <translation id="IsWeekendEnabledTooltip" value="시민들은 주말에 회사나 학교에 가지 않을겁니다." />
+  <translation id="IsLunchtimeEnabled" value="점심 시간 허용" />
+  <translation id="IsLunchtimeEnabledTooltip" value="시민들은 점심을 사먹으로 바깥에 나갈것입니다" />
+  <translation id="StopConstructionAtNight" value="밤 시간동안 건물 건설과 업데이트 일시정지" />
+  <translation id="StopConstructionAtNightTooltip" value="건설 인부들도 잠을 자야지요" />
+  <translation id="ConstructionSpeed" value="건설 속도" />
+  <translation id="ConstructionSpeedTooltip" value="건물 건설과 업그레이드 속도" />
+  <translation id="SwitchOffLightsAtNight" value="야간에 건물 소등" />
+  <translation id="SwitchOffLightsAtNightTooltip" value="시민들이 잘 시간에 주거건물들과 동작하지 않을 건물들, 그리고 공원의 불을 끕니다" />
+  <translation id="SwitchOffLightsMaxHeight" value="고층 건물 소등 금지" />
+  <translation id="SwitchOffLightsMaxHeightTooltip" value="주거, 상업, 사무지구등의 고층 건물들을 밤중에 소등하지 않습니다" />
+  <translation id="CanAbandonJourney" value="더 나은 교통 정체 및 대중교통 지연 시 행동" />
+  <translation id="CanAbandonJourneyTooltip" value="이게 켜지게 될 경우, 시민들이 교통정체나 혹은 대중교통이 너무 오래 지연되게 되면 여정을 포기합니다" />
+
+  <translation id="2Quotas" value="시민 비율 설정" />
+  <translation id="SecondShiftQuota" value="2교대 근무자들" />
+  <translation id="SecondShiftQuotaTooltip" value="도시내 2교대 근무자들의 비율을 정합니다" />
+  <translation id="NightShiftQuota" value="야간 교대 근무자들" />
+  <translation id="NightShiftQuotaTooltip" value="도시내 야간 교대 근무자들의 비율을 정합니다" />
+  <translation id="LunchQuota" value="점심 먹으러 갈 비율" />
+  <translation id="LunchQuotaTooltip" value="점심을 먹으러 갈 시민들의 비율을 정합니다" />
+  <translation id="LocalBuildingSearchQuota" value="지역 쇼핑 비율" />
+  <translation id="LocalBuildingSearchQuotaTooltip" value="자기집 근처의 상점에 찾아갈 시민들의 비율을 정합니다" />
+  <translation id="ShoppingForFunQuota" value="쇼핑 즐기기" />
+  <translation id="ShoppingForFunQuotaTooltip" value="물건이 다 갖추어져 있음에도 재미로 쇼핑을 가는 비율을 정합니다" />
+  <translation id="OnTimeQuota" value="정시 근무자 비율" />
+  <translation id="OnTimeQuotaTooltip" value="일반적인 근무시간에 일하는 시민들의 비율을 정합니다." />
+
+  <translation id="3Events" value="이벤트" />
+  <translation id="AreEventsEnabled" value="사용자 이벤트 허용" />
+  <translation id="AreEventsEnabledTooltip" value="꺼져있다면, 바닐라 게임 이벤트만 등장합니다" />
+  <translation id="EarliestHourEventStartWeekday" value="주중 이벤트 빠른 시작 시간" />
+  <translation id="EarliestHourEventStartWeekdayTooltip" value="이벤트가 주중에 최대한 일찍 시작할 시간을 설정합니다" />
+  <translation id="LatestHourEventStartWeekday" value="주중 이벤트 늦은 시작 시간" />
+  <translation id="LatestHourEventStartWeekdayTooltip" value="이벤트가 주중에 최대한 늦게 시작할 시간을 설정합니다" />
+  <translation id="EarliestHourEventStartWeekend" value="주말 이벤트 빠른 시작 시간" />
+  <translation id="EarliestHourEventStartWeekendTooltip" value="이벤트가 주말에 최대한 일찍 시작할 시간을 설정합니다" />
+  <translation id="LatestHourEventStartWeekend" value="주말 이벤트 늦은 시작 시간" />
+  <translation id="LatestHourEventStartWeekendTooltip" value="이벤트가 주말에 최대한 늦게 시작할 시간을 설정합니다" />
+
+  <translation id="4Time" value="시간" />
+  <translation id="MaxOvertime" value="최대 초과 근무시간" />
+  <translation id="MaxOvertimeTooltip" value="시민들의 초과 근무시간의 최대값을 설정합니다 - 이 시간을 기본하여 정해진 시간보다 일찍 일하거나 늦게 일하게 됩니다" />
+  <translation id="SchoolBegin" value="등교 시간" />
+  <translation id="SchoolBeginTooltip" value="낮중에 학교가 시작할 시간입니다 - 어린 시민들은 무조건 학교에 가게 됩니다" />
+  <translation id="SchoolEnd" value="하교 시간" />
+  <translation id="SchoolEndTooltip" value="낮중 이 시간이 되면 어린 시민들이 집으로 돌아갈 것입니다" />
+  <translation id="WorkBegin" value="근무 시작 시간" />
+  <translation id="WorkBeginTooltip" value="근무 시작 시간을 설정하여 이 시간이 되면 어른 시민들은 직장이나 대학교에 가야 합니다" />
+  <translation id="WorkEnd" value="근무 종료 시간" />
+  <translation id="WorkEndTooltip" value="근무 종료시간을 설정하여 이 시간이 되면 어른 시민들은 직장이나 대학교에서 집으로 돌아옵니다" />
+  <translation id="LunchBegin" value="점심시간 시작" />
+  <translation id="LunchBeginTooltip" value="시민들의 점심시간 시작 시간을 설정합니다" />
+  <translation id="LunchEnd" value="점심시간 종료" />
+  <translation id="LunchEndTooltip" value="시민들의 점심시간 종료 시간을 설정합니다" />
+  <translation id="MaxVacationLength" value="최대 휴가 일시" />
+  <translation id="MaxVacationLengthTooltip" value="시민들이 얼마나 휴가를 떠나는지를 나타냅니다. 0으로 설정할시 휴가를 가지 않게 됩니다." />
+
+  <translation id="ScheduledAction" value="현재 위치:" />
+  <translation id="NextScheduledAction" value="가는 중:" />
+  <translation id="ScheduledAction.AtHome" value="집으로 돌아감" />
+  <translation id="ScheduledAction.AtSchoolOrWork" value="직장 혹은 학교로 가는 중" />
+  <translation id="ScheduledAction.Shopping" value="쇼핑하러 가는 중" />
+  <translation id="ScheduledAction.Relaxing" value="쉬러 가는 중" />
+  <translation id="ScheduledAction.Visiting" value="방문하러 가는 중" />
+  <translation id="ScheduledAction.InShelter" value="대피소로 가는 중" />
+  <translation id="WorkShift.First" value="1교대 근무 교대" />
+  <translation id="WorkShift.Second" value="2교대 근무 교대" />
+  <translation id="WorkShift.Night" value="야간 근무 교대" />
+  <translation id="WorkStatus.OnVacation" value="(휴가: {0} 일)" />
+
+  <translation id="AcademicYear.DaysLeft" value="{0} 일 이내 종료" />
+  <translation id="AcademicYear.HoursLeft" value="{0} 시간내 종료" />
+  <translation id="AcademicYear.EndsSoon" value="1 시간내 종료" />
+
+  <overrides type="Units">
+    <translation id="AIINFO_COAL_STORED" value="석탄이 {0} × {unit} 저장됨"/>
+    <translation id="AIINFO_CUMULATIVEUPKEEP" value="유지비: {0} + {1} / {unit} / 셀"/>
+    <translation id="AIINFO_DECEASED_PROCESSED" value="저번 {unit} 보다 생산 감소: {0}"/>
+    <translation id="AIINFO_ELECTRICITY_PRODUCED" value="저번 {unit} 전력 생산량: {0} MW"/>
+    <translation id="AIINFO_FIRES_EXTINGUISHED" value="저번 {unit} 당 화재진화: {0}"/>
+    <translation id="AIINFO_OIL_STORED" value="석유가 {0} × {unit} 저장됨"/>
+    <translation id="AIINFO_PASSENGERS_SERVICED" value="저번 {unit} 당 승객 수송 : {0}"/>
+    <translation id="AIINFO_PATIENTS_TREATED" value="저번 {unit} 당 환자 진료: {0}"/>
+    <translation id="AIINFO_POLE_UPKEEP" value="유지비: {0} /  / {unit}"/>
+    <translation id="AIINFO_PROCESSING_RATE" value="생산 비율 : {0} / {unit}"/>
+    <translation id="AIINFO_TOURISTS" value="저번 {unit}당 관광객: {0}"/>
+    <translation id="AIINFO_UPKEEP" value="유지비: {0} / {unit}"/>
+    <translation id="AIINFO_UPKEEPPERCELL" value="유지비: {0} / {unit} / 셀"/>
+    <translation id="AIINFO_VISITORS" value="저번 {unit} 당 방문객 : {0} "/>
+    <translation id="AIINFO_WATER_CONSUMPTION" value="물 : {0} m³/{unit}"/>
+    <translation id="AIINFO_WATER_INTAKE" value="상수도 가용량 : {0} m³/{unit}"/>
+    <translation id="AIINFO_WATER_OUTLET" value="하수도 가용량 : {0} m³/{unit}"/>
+    <translation id="AIINFO_WATER_STORED" value="수돗물이 {0} × {unit} 저장됨"/>
+    <translation id="AINFO_WATER_IO_CAPACITY" value="운영비: {0:N0} m³/{unit}"/>
+    <translation id="DATETIME_WEEK" value="{unit}"/>
+    <translation id="DATETIME_WEEKLOWERCASE" value="{unit}"/>
+    <translation id="DATETIME_WEEKS" value="× {unit}"/>
+    <translation id="DISTRICT_TOURISTS" value="저번 {unit} 당 관광객 방문:"/>
+    <translation id="EXPENSES_TT_EDUCATION" value="저번 {unit} 당 교육 지출"/>
+    <translation id="EXPENSES_TT_ELECTRICITY" value="저번 {unit} 당 전기 서비스 지출"/>
+    <translation id="EXPENSES_TT_FIRE" value="저번 {unit} 당 소방 서비스 지출"/>
+    <translation id="EXPENSES_TT_FIRE_ND" value="저번 {unit} 당 재해 관리 서비스 지출"/>
+    <translation id="EXPENSES_TT_GARBAGE" value="저번 {unit} 당 쓰레기 서비스 지출"/>
+    <translation id="EXPENSES_TT_HEALTHCARE" value="저번 {unit} 당 건강 관리 서비스 지출"/>
+    <translation id="EXPENSES_TT_LOANS" value="저번 {unit} 당 이자 지출"/>
+    <translation id="EXPENSES_TT_MONUMENTS" value="저번 {unit} 당 고유 건물 지출"/>
+    <translation id="EXPENSES_TT_PARK" value="저번 {unit} 당 공원, 플라자 그리고 조경 지출"/>
+    <translation id="EXPENSES_TT_POLICE" value="저번 {unit} 당 경찰 서비스 지출"/>
+    <translation id="EXPENSES_TT_POLICIES" value="저번 {unit} 당 정책으로 인한 지출"/>
+    <translation id="EXPENSES_TT_PUBLICTRANSPORT" value="저번 {unit} 당 대중 교통으로 인한 지출"/>
+    <translation id="EXPENSES_TT_ROADS" value="저번 {unit} 당 대중교통 서비스 지출"/>
+    <translation id="EXPENSES_TT_TOTAL" value="저번 {unit} 덩 총 지출"/>
+    <translation id="EXPENSES_TT_WATER" value="저번 {unit} 당 상하수도 서비스 지출"/>
+    <translation id="EXPENSES_TT_WATER_WW" value="저번 {unit} 당 상하수도와 건강 관리 서비스 지출"/>
+    <translation id="INCOME_TT_COMMERCIALCITIZEN" value="저번 {unit} 당 상업지역에서 시민들에게 걷은 세금"/>
+    <translation id="INCOME_TT_COMMERCIALHIGH" value="저번 {unit} 당 상업지역의 최고 세금 납부"/>
+    <translation id="INCOME_TT_COMMERCIALLOW" value="저번 {unit} 당 상업지역에서 걷은 최저 세금 납부"/>
+    <translation id="INCOME_TT_COMMERCIALSPEC" value="저번 {unit} 당 상업 특화구역에서 걷은 세금"/>
+    <translation id="INCOME_TT_COMMERCIALTOTAL" value="저번 {unit} 당 상업구역에서 걷은 세금"/>
+    <translation id="INCOME_TT_COMMERCIALTOURIST" value="저번 {unit} 당 관광객으로부터 걷은 세금"/>
+    <translation id="INCOME_TT_INDUSTRIAL" value="저번 {unit} 당 산업구역에서 걷은 세금"/>
+    <translation id="INCOME_TT_OFFICE" value="저번 {unit} 당 사무구역에서 걷은 세금"/>
+    <translation id="INCOME_TT_PARKAREAS" value="저번 {unit} 당 공원 수익"/>
+    <translation id="INCOME_TT_RESIDENTIALHIGH" value="저번 {unit} 당 주거 지역의 최고 세금납부"/>
+    <translation id="INCOME_TT_RESIDENTIALLOW" value="저번 {unit} 당 주거 지역의 최저 세금납부"/>
+    <translation id="INCOME_TT_RESIDENTIALTOTAL" value="저번 {unit} 당 주거 지역에서 걷은 세금"/>
+    <translation id="INCOME_TT_TOTAL" value="저번 {unit} 당 총 수익"/>
+    <translation id="INCOME_TT_TOTAL_COMMERCIAL" value="저번 {unit} 당 관광객으로 걷은 총 세금"/>
+    <translation id="INCOME_TT_TOTAL_RESIDENTIAL" value="저번 {unit} 당 주거지역에서 걷은 총 세금"/>
+    <translation id="INCOME_TT_TOTAL_WORK" value="저번 {unit} 당 산업과 사무구역에서 걷은 총 세금"/>
+    <translation id="INCOME_TT_PUBLICTRANSPORT" value="저번 {unit} 당 걷은 대중교통 수익"/>
+    <translation id="INFO_CONNECTIONS_TOURISTSTOTAL" value="저번 {unit} 당 관광객 방문 : {0:N0}"/>
+    <translation id="INFO_CRIMERATE_CRIMES" value="저번 {unit} 당 검거된 범죄자 수 :"/>
+    <translation id="INFO_ENTERTAINMENT_PARKVISIT" value="저번 {unit} 중 공원과 광장에 방문한 사람들 : {0:N0}"/>
+    <translation id="INFO_ENTERTAINMENT_UBVISIT" value="저번 {unit} 중 고유 건물에 방문한 사람들 : {0:N0}"/>
+    <translation id="INFO_GARBAGE_INCINERATORCAPACITY" value="쓰레기 처리 용량 : {0:N0} 유닛 / {unit}"/>
+    <translation id="INFO_GARBAGE_GARBAGEPRODUCTION" value="쓰레기 배출: {0:N0} 유닛 / {unit}"/>
+    <translation id="INFO_POPULATION_BIRTHS" value="{0:N0} 출생 / {unit}"/>
+    <translation id="INFO_POPULATION_DEATHS" value="{0:N0} 사망 / {unit}"/>
+    <translation id="INFO_PUBLICTRANSPORT_COUNT" value="{0:N0} 당 {unit}"/>
+    <translation id="INFO_RES_FORESTAMOUNT" value="{0} 유닛/{unit}"/>
+    <translation id="INFO_RES_FORESTUSED" value="{0} 유닛/{unit}"/>
+    <translation id="INFO_RES_OILUSED" value="{0} 유닛/{unit}"/>
+    <translation id="INFO_RES_OREUSED" value="{0} 유닛/{unit}"/>
+    <translation id="INFO_WATER_CONSUMPTION" value="상수도 사용량 : {0:N0} m³/{unit}"/>
+    <translation id="INFO_WATER_PRODUCTION" value="상수도 가용량 : {0:N0} m³/{unit}"/>
+    <translation id="INFO_WATER_SEWAGEACCUMULATION" value="하수도 사용량 : {0:N0} m³/{unit}"/>
+    <translation id="INFO_WATER_SEWAGECAPACITY" value="하수도 가용량 : {0:N0} m³/{unit}"/>
+    <translation id="LOAN_WEEKLYCOST" value="저번 {unit} 중 이자"/>
+    <translation id="MAIN_MONEYDELTA" value="저번 {unit} 중 수익"/>
+    <translation id="MAIN_POPULATIONDELTA" value="저번 {unit} 과 차이"/>
+    <translation id="MILESTONE_COMBINED_PASSED_TIME_DESC" value="{1} × {unit} 에 대한 {0}을 통과"/>
+    <translation id="MILESTONE_COMBINED_TIME_DESC" value="{0} × {unit} 를 유지"/>
+    <translation id="PARKINFOPANEL_CURRENTVISITORS" value="저번 {unit} 당 방문객 : {0}"/>
+    <translation id="PARKINFOPANEL_INCOME" value="수익: {0} / {unit}"/>
+    <translation id="PROFIT_TT_TOTAL_PUBTRANS" value="저번 {unit} 당 총 대중교통으로 발생한 수익"/>
+    <translation id="STADIUMINFO7" value="저번 12 × {unit} 중 경기당 수익 :"/>
+    <translation id="STADIUMINFO9" value="저번 {unit} 중 수익:"/>
+    <translation id="TOOL_WATER_ESTIMATE" value="총 가용량 : {0:N0} m³/{unit}"/>
+    <translation id="TRANSPORT_LINE_PASSENGERS_WALKINGTOUR" value="저번 {unit} 중 방문객 : {0} 시민들, {1} 관광객들"/>
+    <translation id="TRANSPORT_LINE_PASSENGERS" value="저번 {unit} 중 승객 : {0} 시민들, {1} 관광객들"/>
+    <translation id="AIINFO_INDUSTRY_PRODUCTION_RATE" value="생산률: {unit} 당 {0:N0}"/>
+    <translation id="AIINFO_POST_SORTING_RATE" value="분류률: {unit} 당 {0:N0}개의 우편물"/>
+    <translation id="AIINFO_TOLL_BOOTH_VEHICLE_COUNT" value="저번 {unit} 당 통행료: {0:N0}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRIAL_PLAYERINDUSTRY" value="저번 {unit} 덩 산업 구역과 지역에 대한 수익"/>
+    <translation id="EXPENSES_TT_PLAYERINDUSTRY" value="{unit} 당 산업 지역의 지출"/>
+    <translation id="INCOME_TT_ROADTOLLS" value="{unit} 당 유료도로 수익"/>
+    <translation id="INCOME_TT_TOTAL_ROADTOLLS" value="저번 {unit} 중 유로도로의 총 수익"/>
+    <translation id="INDUSTRYPANEL_ACQUISITION_TOOLTIP" value="{unit} 당 획득"/>
+    <translation id="INDUSTRYPANEL_ACQUISITIONCOST_TOOLTIP" value="{unit} 당 자원 수집으로 인한 비용"/>
+    <translation id="INDUSTRYPANEL_OUTPUT_TOOLTIP" value="{unit} 당 생산"/>
+    <translation id="INDUSTRYPANEL_OUTPUTINCOME_TOOLTIP" value="{unit} 당 자원을 팔아서 얻은 이익"/>
+    <translation id="INDUSTRYPANEL_PROFIT_TOOLTIP" value="{unit} 당 이익"/>
+    <translation id="INDUSTRYPANEL_WEEKLYPRODUCTION" value="{0} / {unit}"/>
+    <translation id="PROFIT_TT_TOTAL_INDUSTRYAREAS" value="{unit} 당 총 산업 지구 수익"/>
+    <translation id="TOOL_EXTRACTION_ESTIMATE" value="{unit} 당 약 {0:N0}의 생산품"/>
+    <translation id="UFPANEL_MATERIALCOST_TOOLTIP" value="{unit} 당 최종 생산물에 들어간 자원 가치"/>
+    <translation id="UFPANEL_PRODUCTIONVALUE_TOOLTIP" value="{unit} 당 산업 지구의 가치"/>
+    <translation id="UNIQUEFACTORYPANEL_INCOME_TOOLTIP" value="저번 {unit} 당 수익"/>
+    <translation id="UNIQUEFACTORYPANEL_RESOURCEEXPENSES" value="{unit} 당 자원 수입으로 인한 비용"/>
+    <translation id="UPDATEAIINFO_INDUSTRY_PRODUCTION_RATE" value="생산률: {unit} 당 {0:N0}"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_CHEERLEADINGTOOLTIP" value="비용: {0} / 아레나 / {unit}"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_COACHCOSTTOOLTIP" value="비용: {0} / 코치 / {unit}"/>
+    <translation id="CAMPUSPANEL_GRADUATESTHISYEAR" value="현 학기년당 졸업자 수: {0}"/>
+    <translation id="CAMPUSPANEL_ACADEMICSTAFF_COST" value="비용: {0} / 학교 직원  / {unit}"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_EXPENSES" value="저번 {unit} 당 비용"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_COACHINGSTAFF_TOOLTIP" value="코칭 스텝#10;코칭 스텝을 더 고용하게 되면, 스포츠 경기엣 이길 확률이 증가합니다. 코칭 스텝 효과#10;는 죽걱적이지 않으나, 각 학기년당 +0 ~ +1% 사이의 이길 확률을 늘려줍니다."/>
+    <translation id="PROFIT_TT_TOTAL_CAMPUSAREAS" value="{unit} 당 총 캠퍼스 구획 이익"/>
+    <translation id="EXPENSES_TT_MONUMENTS_ARENAS" value="저번 {unit} 당 특수 건물과 더불어 스포츠 아레나에서의 지출"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_CAMPUSINCOME" value="저번 {unit} 당 캠퍼스 지역에서의 수익"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_CAMPUSINCOME" value="저번 {unit}당 캠퍼스 지역으로부터의 수익"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRIAL_ONLYPLAYERINDUSTRY_AND_FISHING" value="저번 {unit}당 산업 구역과 어업 수익"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRIAL_FISHING" value="저번 {unit}당 어업 수입"/>
+    <translation id="EXPENSES_TT_PLAYERINDUSTRY_AND_FISHING" value="Industry Area and Fishing Expenses last 저번 {unit}당 산업 구역과 어업 지출"/>
+    <translation id="EXPENSES_TT_FISHING" value="저번 {unit}당 어업 지출"/>
+    <translation id="AIINFO_FISH_SOLD" value="저번 {unit}당 판매한 생선: {0}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRYAREASANDFISHING_INCOME" value="저번 {unit}당 산업 구역과 어업 수익"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRYAREASANDFISHING_EXPENSES" value="저번 {unit}당 산업 구역과 어업 지출"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_FISHING_EXPENSES" value="저번 {unit}당 어업 지출"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_FISHING_INCOME" value="저번 {unit}당 어업 수익"/>
+    <translation id="PROFIT_TT_TOTAL_INDUSTRIES" value="저번 {unit}당 산업 구역과 어업 구역의 총이익"/>
+    <translation id="PROFIT_TT_TOTAL_FISHINGINDUSTRY" value="저번 {unit}당 총 어업 이익"/>
+    <translation id="INFO_HEALTH_CHILDCARE_BIRTHRATE" value="출산율: {0} / {unit}"/>
+  </overrides>
+
+</language>

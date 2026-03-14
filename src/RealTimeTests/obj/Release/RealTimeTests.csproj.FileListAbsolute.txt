@@ -1,0 +1,12 @@
+C:\Users\mail\pandemic-skylines\src\bin\Release\RealTimeTests.dll
+C:\Users\mail\pandemic-skylines\src\bin\Release\RealTimeTests.pdb
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.csproj.AssemblyReference.cache
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.AssemblyInfoInputs.cache
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.AssemblyInfo.cs
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.csproj.CoreCompileInputs.cache
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTime.3435642E.Up2Date
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.dll
+C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.pdb
+C:\Users\mail\pandemic-skylines\src\bin\Tests\Release\RealTimeTests.dll
+C:\Users\mail\pandemic-skylines\src\bin\Tests\Release\RealTimeTests.pdb

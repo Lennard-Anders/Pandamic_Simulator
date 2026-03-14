@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<language id="ru" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+  <translation id="Warning" value="Предупреждение" />
+  <translation id="RestrictedModeMessage" value="Real Time работает в ограниченном режиме. Некоторые функции недоступны. Причина этого может быть в технических проблемах сторонней библиотеки или несовместимости с другими модами. Если требуется помощь, покажите лог-файл игры разработчику мода." />
+  <translation id="ModNotWorkingMessage" value="Упс! Что-то пошло не так - мод 'Real Time' не может быть активирован. Пожалуйста, покажите лог-файл игры разработчику мода." />
+  <translation id="IncompatibleModsFoundMessage" value="Real Time обнаружил как минимум один несовместимый мод (или частично несовместимый). Рекомендуется отписаться от всех несовместимых модов. Можно продолжить играть на свой собственный риск, но что-то может не работать или игра может вылетать." />
+  <translation id="Minutes" value="мин." />
+
+  <translation id="Tools" value="Утилиты" />
+  <translation id="ShowIncompatibilityNotifications" value="Показывать сообщения о несовместимости с другими модами" />
+  <translation id="UseEnglishUSFormats" value="Использовать формат даты/времени как в США для английского языка" />
+  <translation id="UseEnglishUSFormatsTooltip" value="Необходимо перезапустить игру, чтобы изменения этой опции вступили в силу" />
+  <translation id="ResetToDefaults" value="Вернуть опции по умолчанию" />
+  <translation id="UseForNewGames" value="Использовать текущие настройки для новых игр" />
+
+  <translation id="1General" value="Основные" />
+  <translation id="0Time" value="Настройки времени" />
+  <translation id="1Other" value="Другие настройки" />
+  <translation id="WakeUpHour" value="Город просыпается" />
+  <translation id="WakeUpHourTooltip" value="Время, когда большинство жителей начинают просыпаться. Бюджеты и скорость времени переходят в режим 'день'!" />
+  <translation id="GoToSleepHour" value="Город ложится спать" />
+  <translation id="GoToSleepHourTooltip" value="Время, когда большинство жителей ложатся спать. Бюджеты и скорость времени переходят в режим 'ночь'!" />
+  <translation id="DayTimeSpeed" value="Скорость времени (день)" />
+  <translation id="DayTimeSpeedTooltip" value="Скорость течения времени днём. '1' очень медленно - почти реальное время!" />
+  <translation id="NightTimeSpeed" value="Скорость времени (ночь)" />
+  <translation id="NightTimeSpeedTooltip" value="Скорость течения времени ночью. '1' очень медленно - почти реальное время!" />
+  <translation id="IsDynamicDayLengthEnabled" value="Динамическая долгота дня" />
+  <translation id="IsDynamicDayLengthEnabledTooltip" value="Долгота дня завист от темы карты и от времени года. Зимой дни короче, чем летом." />
+  <translation id="VirtualCitizens" value="Метод симуляции жителей (реальных и виртуальных)" />
+  <translation id="VirtualCitizensTooltip" value="Выберите 'Все' для реального города (но макс. 65.535 жителей) или 'Оригинально', если компьютер малопроизводительный" />
+  <translation id="VirtualCitizens.None" value="Все жители города реальные" />
+  <translation id="VirtualCitizens.Vanilla" value="Как в оригинальной игре" />
+  <translation id="UseSlowAging" value="Улучшенные взросление и рождаемость" />
+  <translation id="UseSlowAgingTooltip" value="Если активировано, 1 день в игре означает 1 год в жизни жителей. Если выключено, 1 день в игре означает от 10 (при скорости времени 6) до 340 (при скорости 1) лет жизни." />
+  <translation id="IsWeekendEnabled" value="Включить выходные" />
+  <translation id="IsWeekendEnabledTooltip" value="Жители не ходят в школу и на работу по выходным" />
+  <translation id="IsLunchtimeEnabled" value="Включить обед" />
+  <translation id="IsLunchtimeEnabledTooltip" value="Работники выходят на обед в близлежащие заведения" />
+  <translation id="StopConstructionAtNight" value="Приостановить стройку и улучшение зданий ночью" />
+  <translation id="StopConstructionAtNightTooltip" value="Строители тоже хотят поспать" />
+  <translation id="ConstructionSpeed" value="Скорость постройки" />
+  <translation id="ConstructionSpeedTooltip" value="Скорость постройки и улучшения зданий" />
+  <translation id="SwitchOffLightsAtNight" value="Здания выключают свет ночью" />
+  <translation id="SwitchOffLightsAtNightTooltip" value="Жилые здания выключают свет, когла большинство жителей спят, другие здания и парки - когда там никто не работает" />
+  <translation id="SwitchOffLightsMaxHeight" value="Не выключать свет в высоких зданиях" />
+  <translation id="SwitchOffLightsMaxHeightTooltip" value="Жилые, коммерческие и офисные здания не выключают свет ночью, если их высота больше этого значения" />
+  <translation id="CanAbandonJourney" value="Улучшенное поведение в пробках и при ожидании транспорта" />
+  <translation id="CanAbandonJourneyTooltip" value="Если активировано, жители могут отменять свои поездки, если долго находятся в пробке или ждут общественного транспорта" />
+
+  <translation id="2Quotas" value="Вероятности" />
+  <translation id="SecondShiftQuota" value="Вторая смена" />
+  <translation id="SecondShiftQuotaTooltip" value="Процент жителей, работающих во вторую смену" />
+  <translation id="NightShiftQuota" value="Ночная смена" />
+  <translation id="NightShiftQuotaTooltip" value="Процент жителей, работающих в ночную смену" />
+  <translation id="LunchQuota" value="Пойти обедать" />
+  <translation id="LunchQuotaTooltip" value="Процент жителей, которые будут выходить на обед" />
+  <translation id="LocalBuildingSearchQuota" value="Покупки поблизости" />
+  <translation id="LocalBuildingSearchQuotaTooltip" value="Процент жителей, которые будут искать магазины поблизости" />
+  <translation id="ShoppingForFunQuota" value="Покупки как развлечение" />
+  <translation id="ShoppingForFunQuotaTooltip" value="Процент жителей, которые будут ходить за покупками, даже если им не нужны никакие товары" />
+  <translation id="OnTimeQuota" value="Без сверхурочных" />
+  <translation id="OnTimeQuotaTooltip" value="Процент жителей, которые будут ходить на работу без сверхурочных" />
+
+  <translation id="3Events" value="Мероприятия" />
+  <translation id="AreEventsEnabled" value="Активировать дополнительные события" />
+  <translation id="AreEventsEnabledTooltip" value="Если выключено, то только события из оригинальной игры могут проходить в городе" />
+  <translation id="EarliestHourEventStartWeekday" value="Самое раннее по будням" />
+  <translation id="EarliestHourEventStartWeekdayTooltip" value="Самое раннее время, когда мероприятие может начаться в будний день" />
+  <translation id="LatestHourEventStartWeekday" value="Самое позднее по будням" />
+  <translation id="LatestHourEventStartWeekdayTooltip" value="Самое позднее время, когда мероприятие может начаться в будний день" />
+  <translation id="EarliestHourEventStartWeekend" value="Самое раннее по вых." />
+  <translation id="EarliestHourEventStartWeekendTooltip" value="Самое раннее время, когда мероприятие может начаться в выходной день" />
+  <translation id="LatestHourEventStartWeekend" value="Самое позднее по вых." />
+  <translation id="LatestHourEventStartWeekendTooltip" value="Самое позднее время, когда мероприятие может начаться в выходной день" />
+
+  <translation id="4Time" value="Время" />
+  <translation id="MaxOvertime" value="Макс. сверхурочные" />
+  <translation id="MaxOvertimeTooltip" value="Максимальные сверхурочные для жителей - они придут на работу раньше и уйдут позже" />
+  <translation id="SchoolBegin" value="Начало учеб. дня" />
+  <translation id="SchoolBeginTooltip" value="Время начала занятий в школе - дети будут учиться" />
+  <translation id="SchoolEnd" value="Конец учеб. дня" />
+  <translation id="SchoolEndTooltip" value="Время окончания занятий в школе - дети покинут школу" />
+  <translation id="WorkBegin" value="Начало рабочей смены" />
+  <translation id="WorkBeginTooltip" value="Время начала рабочей смены - жители будут на работе или в университете" />
+  <translation id="WorkEnd" value="Оконч. рабочей смены" />
+  <translation id="WorkEndTooltip" value="Время окончания рабочей смены - жители покинут рабочие места или университет" />
+  <translation id="LunchBegin" value="Начало обеда" />
+  <translation id="LunchBeginTooltip" value="Начало обеденного времени - жители пойдут пообедать" />
+  <translation id="LunchEnd" value="Конец обеда" />
+  <translation id="LunchEndTooltip" value="Конец обеденного времени - жители вернутся с обеда на работу" />
+  <translation id="MaxVacationLength" value="Максимум дней отпуска" />
+  <translation id="MaxVacationLengthTooltip" value="Сколько дней отпуска горожане могут максимально взять. Установите 0, чтобы отключить отпуска." />
+
+  <translation id="ScheduledAction" value="Сейчас" />
+  <translation id="NextScheduledAction" value="До" />
+  <translation id="ScheduledAction.AtHome" value="Домой" />
+  <translation id="ScheduledAction.AtSchoolOrWork" value="На работу/в школу" />
+  <translation id="ScheduledAction.Shopping" value="Покупки" />
+  <translation id="ScheduledAction.Relaxing" value="Развлечения" />
+  <translation id="ScheduledAction.Visiting" value="В гости" />
+  <translation id="ScheduledAction.InShelter" value="В убежище" />
+  <translation id="WorkShift.First" value="Первая смена" />
+  <translation id="WorkShift.Second" value="Вторая смена" />
+  <translation id="WorkShift.Night" value="Ночная смена" />
+  <translation id="WorkStatus.OnVacation" value="(отпуск: {0} дн.)" />
+
+  <translation id="AcademicYear.DaysLeft" value="Заканчивается через {0} дн." />
+  <translation id="AcademicYear.HoursLeft" value="Заканчивается через {0} ч." />
+  <translation id="AcademicYear.EndsSoon" value="Заканчивается менее чем через 1 час" />
+
+  <overrides type="Units">
+    <translation id="AIINFO_COAL_STORED" value="Запасов угля на {0} × {unit}"/>
+    <translation id="AIINFO_CUMULATIVEUPKEEP" value="Содержание: {0} + {1} / {unit} / клетка"/>
+    <translation id="AIINFO_DECEASED_PROCESSED" value="Покойников захоронено за {unit}: {0}"/>
+    <translation id="AIINFO_ELECTRICITY_PRODUCED" value="Выработка электричества ({unit}): {0} МВт"/>
+    <translation id="AIINFO_FIRES_EXTINGUISHED" value="Потушено пожаров за {unit}: {0}"/>
+    <translation id="AIINFO_OIL_STORED" value="Запасов нефти на {0} × {unit}"/>
+    <translation id="AIINFO_PASSENGERS_SERVICED" value="Обслужено пассажиров за {unit}: {0}"/>
+    <translation id="AIINFO_PATIENTS_TREATED" value="Пациентов вылечено зв {unit}: {0}"/>
+    <translation id="AIINFO_POLE_UPKEEP" value="Содержание: {0} / столб / {unit}"/>
+    <translation id="AIINFO_PROCESSING_RATE" value="Скорость обработки: {0} / {unit}"/>
+    <translation id="AIINFO_TOURISTS" value="Туристов за {unit}: {0}"/>
+    <translation id="AIINFO_UPKEEP" value="Уход: {0} / {unit}"/>
+    <translation id="AIINFO_UPKEEPPERCELL" value="Содержание: {0} / {unit} / клетка"/>
+    <translation id="AIINFO_VISITORS" value="Посетителей за {unit}: {0}"/>
+    <translation id="AIINFO_WATER_CONSUMPTION" value="Вода: {0} м³/{unit}"/>
+    <translation id="AIINFO_WATER_INTAKE" value="Скорость забора: {0} м³/{unit}"/>
+    <translation id="AIINFO_WATER_OUTLET" value="Скорость стока: {0} м³/{unit}"/>
+    <translation id="AIINFO_WATER_STORED" value="Запасов воды на {0} × {unit}"/>
+    <translation id="AINFO_WATER_IO_CAPACITY" value="Производительность: {0:N0} м³/{unit}"/>
+    <translation id="DATETIME_WEEK" value="{unit}"/>
+    <translation id="DATETIME_WEEKLOWERCASE" value="{unit}"/>
+    <translation id="DATETIME_WEEKS" value="× {unit}"/>
+    <translation id="DISTRICT_TOURISTS" value="Туристов за&#10;{unit}:"/>
+    <translation id="EXPENSES_TT_EDUCATION" value="Расходы за {unit} на образование"/>
+    <translation id="EXPENSES_TT_ELECTRICITY" value="Расходы за {unit} на энергетику"/>
+    <translation id="EXPENSES_TT_FIRE" value="Расходы за {unit} на пожарную службу"/>
+    <translation id="EXPENSES_TT_FIRE_ND" value="Расходы за {unit} на аварийные службы"/>
+    <translation id="EXPENSES_TT_GARBAGE" value="Расходы за {unit} на утилизацию отходов"/>
+    <translation id="EXPENSES_TT_HEALTHCARE" value="Расходы за {unit} на здравоохранение"/>
+    <translation id="EXPENSES_TT_LOANS" value="Расходы за {unit} на выплату кредитов"/>
+    <translation id="EXPENSES_TT_MONUMENTS" value="Расходы за {unit} на уникальные сооружения"/>
+    <translation id="EXPENSES_TT_PARK" value="Расходы за {unit} на парки, площади и рельеф"/>
+    <translation id="EXPENSES_TT_POLICE" value="Расходы за {unit} на полицию"/>
+    <translation id="EXPENSES_TT_POLICIES" value="Расходы за {unit} на политики"/>
+    <translation id="EXPENSES_TT_PUBLICTRANSPORT" value="Расходы за {unit} на общественный транспорт"/>
+    <translation id="EXPENSES_TT_ROADS" value="Расходы за {unit} на дороги"/>
+    <translation id="EXPENSES_TT_TOTAL" value="Суммарные расходы за {unit}"/>
+    <translation id="EXPENSES_TT_WATER" value="Расходы за {unit} на водопровод и канализацию"/>
+    <translation id="EXPENSES_TT_WATER_WW" value="Расходы за {unit} на водопровод, отопление и канализацию"/>
+    <translation id="INCOME_TT_COMMERCIALCITIZEN" value="Доходы за {unit} от горожан в коммерческих зонах"/>
+    <translation id="INCOME_TT_COMMERCIALHIGH" value="Доходы за {unit} от коммерческих зон высокой плотности"/>
+    <translation id="INCOME_TT_COMMERCIALLOW" value="Доходы за {unit} от коммерческих зон низкой плотности"/>
+    <translation id="INCOME_TT_COMMERCIALSPEC" value="Доходы за {unit} от специализаций коммерческих зон"/>
+    <translation id="INCOME_TT_COMMERCIALTOTAL" value="Доходы за {unit} от коммерческих зон"/>
+    <translation id="INCOME_TT_COMMERCIALTOURIST" value="Доходы за {unit} от туристов в коммерческих зонах"/>
+    <translation id="INCOME_TT_INDUSTRIAL" value="Доходы за {unit} от промышленных зон"/>
+    <translation id="INCOME_TT_OFFICE" value="Доходы за {unit} от деловых зон"/>
+    <translation id="INCOME_TT_PARKAREAS" value="Доход за {unit} парка"/>
+    <translation id="INCOME_TT_RESIDENTIALHIGH" value="Доходы за {unit} от жилых зон высокой плотности"/>
+    <translation id="INCOME_TT_RESIDENTIALLOW" value="Доходы за {unit} от жилых зон низкой плотности"/>
+    <translation id="INCOME_TT_RESIDENTIALTOTAL" value="Доходы за {unit} от жилых зон"/>
+    <translation id="INCOME_TT_TOTAL" value="Суммарные доходы за {unit}"/>
+    <translation id="INCOME_TT_TOTAL_COMMERCIAL" value="Суммарный доход за {unit} от туризма"/>
+    <translation id="INCOME_TT_TOTAL_RESIDENTIAL" value="Суммарные доходы за {unit} от жилых зон"/>
+    <translation id="INCOME_TT_TOTAL_WORK" value="Суммарные доходы за {unit} от промышленных и деловых зон"/>
+    <translation id="INCOME_TT_PUBLICTRANSPORT" value="Доходы за {unit} от общественного транспорта"/>
+    <translation id="INFO_CONNECTIONS_TOURISTSTOTAL" value="Туристов за {unit}: {0:N0}"/>
+    <translation id="INFO_CRIMERATE_CRIMES" value="Преступников арестовано за {unit}:"/>
+    <translation id="INFO_ENTERTAINMENT_PARKVISIT" value="Посетителей парков и площадей, за {unit}: {0:N0}"/>
+    <translation id="INFO_ENTERTAINMENT_UBVISIT" value="Посетителей уникальных сооружений, за {unit}: {0:N0}"/>
+    <translation id="INFO_GARBAGE_INCINERATORCAPACITY" value="Макс. объемы переработки мусора: {0:N0} ед. / {unit}"/>
+    <translation id="INFO_GARBAGE_GARBAGEPRODUCTION" value="Производство отходов: {0:N0} ед. за {unit}"/>
+    <translation id="INFO_POPULATION_BIRTHS" value="Рождений за {unit}: {0:N0}"/>
+    <translation id="INFO_POPULATION_DEATHS" value="Смертей за {unit}: {0:N0}"/>
+    <translation id="INFO_PUBLICTRANSPORT_COUNT" value="{0:N0} за {unit}"/>
+    <translation id="INFO_RES_FORESTAMOUNT" value="{0} ед. за {unit}"/>
+    <translation id="INFO_RES_FORESTUSED" value="{0} ед. за {unit}"/>
+    <translation id="INFO_RES_OILUSED" value="{0} ед. за {unit}"/>
+    <translation id="INFO_RES_OREUSED" value="{0} ед. за {unit}"/>
+    <translation id="INFO_WATER_CONSUMPTION" value="Водопотребление: {0:N0} м³/{unit}"/>
+    <translation id="INFO_WATER_PRODUCTION" value="Производительность водопровода: {0:N0} м³/{unit}"/>
+    <translation id="INFO_WATER_SEWAGEACCUMULATION" value="Производительность канализации: {0:N0} м³/{unit}"/>
+    <translation id="INFO_WATER_SEWAGECAPACITY" value="Дренажная емкость канализации: {0:N0} м³/{unit}"/>
+    <translation id="LOAN_WEEKLYCOST" value="Выплата за {unit}"/>
+    <translation id="MAIN_MONEYDELTA" value="Доход за {unit}"/>
+    <translation id="MAIN_POPULATIONDELTA" value="Изменение за {unit}"/>
+    <translation id="MILESTONE_COMBINED_PASSED_TIME_DESC" value="Выполнить требования ({0}) за {1} × {unit}"/>
+    <translation id="MILESTONE_COMBINED_TIME_DESC" value="Поддерживать в течение {0} × {unit}"/>
+    <translation id="PARKINFOPANEL_CURRENTVISITORS" value="Посетителей за {unit}: {0}"/>
+    <translation id="PARKINFOPANEL_INCOME" value="Доход: {0} за {unit}"/>
+    <translation id="PROFIT_TT_TOTAL_PUBTRANS" value="Суммарные доходы за {unit} от общественного транспорта"/>
+    <translation id="STADIUMINFO7" value="Побед/матчей за последние 12 {unit}:"/>
+    <translation id="STADIUMINFO9" value="Доход за {unit}:"/>
+    <translation id="TOOL_WATER_ESTIMATE" value="Ожидаемая производительность: {0:N0} м³/{unit}"/>
+    <translation id="TRANSPORT_LINE_PASSENGERS_WALKINGTOUR" value="Посетителей за {unit}: {0} местных жителей, {1} туристов"/>
+    <translation id="TRANSPORT_LINE_PASSENGERS" value="Пассажиры за {unit}: горожан – {0}, туристов – {1}"/>
+    <translation id="AIINFO_INDUSTRY_PRODUCTION_RATE" value="Производство: {0:N0} ед. за {unit}"/>
+    <translation id="AIINFO_POST_SORTING_RATE" value="Сортировка: {0:N0} почтовых отправлений за {unit}"/>
+    <translation id="AIINFO_TOLL_BOOTH_VEHICLE_COUNT" value="Заплативших машин за {unit}: {0:N0}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRIAL_PLAYERINDUSTRY" value="Доход от индустриальных зон и областей за последние {unit}"/>
+    <translation id="EXPENSES_TT_PLAYERINDUSTRY" value="Расходы на индустриальные области за {unit}"/>
+    <translation id="INCOME_TT_ROADTOLLS" value="Доход от платных дорог за {unit}"/>
+    <translation id="INCOME_TT_TOTAL_ROADTOLLS" value="Всего доход от платных дорог за последние {unit}"/>
+    <translation id="INDUSTRYPANEL_ACQUISITION_TOOLTIP" value="Поступление за {unit}"/>
+    <translation id="INDUSTRYPANEL_ACQUISITIONCOST_TOOLTIP" value="Стоимость импорта ресурсов за {unit}"/>
+    <translation id="INDUSTRYPANEL_OUTPUT_TOOLTIP" value="Выработка за {unit}"/>
+    <translation id="INDUSTRYPANEL_OUTPUTINCOME_TOOLTIP" value="Доход от продажи ресурсов за {unit}"/>
+    <translation id="INDUSTRYPANEL_PROFIT_TOOLTIP" value="Прибыль за {unit}"/>
+    <translation id="INDUSTRYPANEL_WEEKLYPRODUCTION" value="{0} / {unit}"/>
+    <translation id="PROFIT_TT_TOTAL_INDUSTRYAREAS" value="Всего прибыль от индустриальных зон за {unit}"/>
+    <translation id="TOOL_EXTRACTION_ESTIMATE" value="Расчётное производство: {0:N0} ед. за {unit}"/>
+    <translation id="UFPANEL_MATERIALCOST_TOOLTIP" value="Ценность ресурсов, использованных для производства конечного продукта за {unit}"/>
+    <translation id="UFPANEL_PRODUCTIONVALUE_TOOLTIP" value="Ценность производимого продукта за {unit}"/>
+    <translation id="UNIQUEFACTORYPANEL_INCOME_TOOLTIP" value="Доход за посл. {unit}"/>
+    <translation id="UNIQUEFACTORYPANEL_RESOURCEEXPENSES" value="Затраты на добычу ресурсов за {unit}"/>
+    <translation id="UPDATEAIINFO_INDUSTRY_PRODUCTION_RATE" value="Производство: {0:N0} за {unit}"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_CHEERLEADINGTOOLTIP" value="Стоимость: {0} / арена / {unit}"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_COACHCOSTTOOLTIP" value="Стоимость: {0} / тренер / {unit}"/>
+    <translation id="CAMPUSPANEL_GRADUATESTHISYEAR" value="Выпускников в этом учебном году: {0}"/>
+    <translation id="CAMPUSPANEL_ACADEMICSTAFF_COST" value="Стоимость: {0} / работник / {unit}"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_EXPENSES" value="Расходы за {unit}"/>
+    <translation id="CAMPUSPANEL_VARSITYSPORTS_COACHINGSTAFF_TOOLTIP" value="Тренерский штаб#10;Найм большего количество тренеров повышает вероятность побед в университетских спортивных состязаниях. Этот эффект#10;не проявляется мгновенно, а постепенно увеличивается от +0% до +1% за каждого тренера в течение всего учебного года."/>
+    <translation id="PROFIT_TT_TOTAL_CAMPUSAREAS" value="Всего доход от кампусов за {unit}"/>
+    <translation id="EXPENSES_TT_MONUMENTS_ARENAS" value="Расход на уникальные сооружения и спортивные арены за {unit}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_CAMPUSINCOME" value="Доход от кампусов за {unit}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRIAL_ONLYPLAYERINDUSTRY_AND_FISHING" value="Доход от промышленных районов и рыболовства за {unit}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRIAL_FISHING" value="Доход от рыболовства за {unit}"/>
+    <translation id="EXPENSES_TT_PLAYERINDUSTRY_AND_FISHING" value="Расходы на промышленные районы и рыболовство за {unit}"/>
+    <translation id="EXPENSES_TT_FISHING" value="Расходы на рыболовство за {unit}"/>
+    <translation id="AIINFO_FISH_SOLD" value="Продано рыбы за {unit}: {0}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRYAREASANDFISHING_INCOME" value="Доход от промышленных районов и рыболовства за {unit}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_INDUSTRYAREASANDFISHING_EXPENSES" value="Расходы на содержание промышленных районов и рыболовства за {unit}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_FISHING_EXPENSES" value="Расходы на содержание рыбной промышленности за {unit}"/>
+    <translation id="ECONOMYPANEL_TOOLTIP_FISHING_INCOME" value="Доход от рыбной промышленности за {unit}"/>
+    <translation id="PROFIT_TT_TOTAL_INDUSTRIES" value="Общая прибыль от промышленных районов и рыбной промышленности за {unit}"/>
+    <translation id="PROFIT_TT_TOTAL_FISHINGINDUSTRY" value="Общая прибыль от рыбной промышленности за {unit}"/>
+    <translation id="INFO_HEALTH_CHILDCARE_BIRTHRATE" value="Уровень рождаемости: {0} / {unit}"/>
+  </overrides>
+
+</language>

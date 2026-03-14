@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net471</TargetFramework>
+    <TestProjectType>UnitTest</TestProjectType>
+    <AssemblyTitle>RealTimeTests</AssemblyTitle>
+    <Company>dymanoid</Company>
+    <Product>RealTime</Product>
+    <Description>Unit tests for the Real Time mods</Description>
+    <Copyright>Copyright © 2018, dymanoid</Copyright>
+    <OutputPath>..\bin\Tests\$(Configuration)\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="GitVersionTask" Version="5.2.4">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.9.8">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.164">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RealTime\RealTime.csproj" />
+  </ItemGroup>
+</Project>
