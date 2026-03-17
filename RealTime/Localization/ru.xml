@@ -239,4 +239,17 @@
     <translation id="INFO_HEALTH_CHILDCARE_BIRTHRATE" value="Уровень рождаемости: {0} / {unit}"/>
   </overrides>
 
+  <translation id="Testing" value="Testing" />
+  <translation id="Visualization" value="Visualization" />
+  <translation id="ShowInfectionMarkersAboveInfectedBuildings" value="Show infection markers above infected buildings" />
+  <translation id="ShowInfectionMarkersAboveInfectedBuildingsTooltip" value="Draw a world marker above residential buildings that currently house infected citizens" />
+  <translation id="ShowInfectionHeatmapOverlay" value="Show infection heatmap overlay" />
+  <translation id="ShowInfectionHeatmapOverlayTooltip" value="Draw a colored map overlay that highlights areas with more infected residents" />
+  <translation id="InfectionMarkerScale" value="Infection marker scale" />
+  <translation id="InfectionMarkerScaleTooltip" value="Changes the size of the building infection markers" />
+  <translation id="InfectionHeatmapIntensityMultiplier" value="Heatmap intensity multiplier" />
+  <translation id="InfectionHeatmapIntensityMultiplierTooltip" value="Scales how strong the infection heatmap colors appear" />
+  <translation id="InfectionVisualizationMinimumThreshold" value="Minimum infections to show" />
+  <translation id="InfectionVisualizationMinimumThresholdTooltip" value="Hide markers and heat cells below this infected resident count" />
+
 </language>

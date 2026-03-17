@@ -76,6 +76,7 @@
   <translation id="MaskBehavior.Vehicle" value="Masks in buildings and vehicles" />
   <translation id="MaskBehavior.Full" value="Masks everywhere" />
   <translation id="ContactTracing" value="Contact Tracing" />
+  <translation id="Testing" value="Testing" />
   <translation id="BuildingContactTracingProbability" value="Compliance building tracing" />
   <translation id="BuildingContactTracingProbabilityTooltip" value="Compliance rate of citizens for contact tracing in buildings" />
   <translation id="AppBasedContactTracingProbability" value="Compliance app-tracing" />
@@ -170,6 +171,11 @@
   <translation id="WorkShift.Second" value="2nd work shift" />
   <translation id="WorkShift.Night" value="Night work shift" />
   <translation id="WorkStatus.OnVacation" value="(vacation: {0} days)" />
+  <translation id="InfectionStatus" value="Infection" />
+  <translation id="InfectionState.Healthy" value="Healthy" />
+  <translation id="InfectionState.Infected" value="Infected" />
+  <translation id="InfectionState.Symptomatic" value="Symptoms" />
+  <translation id="InfectionState.Quarantine" value="Quarantine" />
 
   <translation id="AcademicYear.DaysLeft" value="Ends in {0} days" />
   <translation id="AcademicYear.HoursLeft" value="Ends in {0} hour(s)" />
@@ -304,5 +310,17 @@
     <translation id="PROFIT_TT_TOTAL_FISHINGINDUSTRY" value="Total Fishing Industry profit last {unit}"/>
     <translation id="INFO_HEALTH_CHILDCARE_BIRTHRATE" value="Birth rate: {0} / {unit}"/>
   </overrides>
+
+  <translation id="Visualization" value="Visualization" />
+  <translation id="ShowInfectionMarkersAboveInfectedBuildings" value="Show infection markers above infected buildings" />
+  <translation id="ShowInfectionMarkersAboveInfectedBuildingsTooltip" value="Draw a world marker above residential buildings that currently house infected citizens" />
+  <translation id="ShowInfectionHeatmapOverlay" value="Show infection heatmap overlay" />
+  <translation id="ShowInfectionHeatmapOverlayTooltip" value="Draw a colored map overlay that highlights areas with more infected residents" />
+  <translation id="InfectionMarkerScale" value="Infection marker scale" />
+  <translation id="InfectionMarkerScaleTooltip" value="Changes the size of the building infection markers" />
+  <translation id="InfectionHeatmapIntensityMultiplier" value="Heatmap intensity multiplier" />
+  <translation id="InfectionHeatmapIntensityMultiplierTooltip" value="Scales how strong the infection heatmap colors appear" />
+  <translation id="InfectionVisualizationMinimumThreshold" value="Minimum infections to show" />
+  <translation id="InfectionVisualizationMinimumThresholdTooltip" value="Hide markers and heat cells below this infected resident count" />
 
 </language>
