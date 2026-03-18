@@ -8,6 +8,7 @@ namespace RealTime.GameConnection.Patches
     using System.Reflection;
     using ColossalFramework.Math;
     using RealTime.CustomAI;
+    using RealTime.Pandemic;
     using RealTime.Simulation;
     using SkyTools.Patching;
     using UnityEngine;
@@ -376,6 +377,22 @@ namespace RealTime.GameConnection.Patches
                         if (RealTimeAI.ShouldSwitchBuildingLightsOff(buildingID))
                         {
                             __result.a = 0f;
+                            return;
+                        }
+
+                        {
+                            var pm = PandemicManager.Instance;
+                            if (pm != null)
+                            {
+                                if (pm.InfectedBuildingIds.Contains(buildingID))
+                                {
+                                    __result = Color.Lerp(__result, new Color(1f, 0.1f, 0.1f, __result.a), 0.45f);
+                                }
+                                else if (pm.QuarantineBuildingIds.Contains(buildingID))
+                                {
+                                    __result = Color.Lerp(__result, new Color(1f, 0.55f, 0f, __result.a), 0.35f);
+                                }
+                            }
                         }
 
                         return;

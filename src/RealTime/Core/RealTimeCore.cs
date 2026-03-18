@@ -320,6 +320,7 @@ namespace RealTime.Core
             AddPatchIfAvailable(patches, BuildingAIPatch.CommercialSimulation, nameof(BuildingAIPatch.CommercialSimulation));
             AddPatchIfAvailable(patches, BuildingAIPatch.FishingMarketSimulation, nameof(BuildingAIPatch.FishingMarketSimulation));
             AddPatchIfAvailable(patches, BuildingAIPatch.GetColor, nameof(BuildingAIPatch.GetColor));
+            AddPatchIfAvailable(patches, CitizenAIPatch.GetColor, nameof(CitizenAIPatch.GetColor));
             AddPatchIfAvailable(patches, BuildingAIPatch.CalculateUnspawnPosition, nameof(BuildingAIPatch.CalculateUnspawnPosition));
             AddPatchIfAvailable(patches, BuildingAIPatch.ProduceGoods, nameof(BuildingAIPatch.ProduceGoods));
             AddPatchIfAvailable(patches, BuildingAIPatch.TrySpawnBoot, nameof(BuildingAIPatch.TrySpawnBoot));
@@ -465,6 +466,8 @@ namespace RealTime.Core
             var pandemicManagerObject = new GameObject("PandemicManager");
             var pandemicManager = pandemicManagerObject.AddComponent<PandemicManager>();
             pandemicManager.Init(config, gameConnections);
+            pandemicManagerObject.AddComponent<InfectedCitizenTrailBehavior>();
+            pandemicManagerObject.AddComponent<InfectedCitizenIconBehavior>();
 
             return true;
         }

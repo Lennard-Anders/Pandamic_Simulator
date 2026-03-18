@@ -8,3 +8,14 @@ C:\Users\mail\pandemic-skylines\src\RealTime\obj\Release\RealTime.csproj.CoreCom
 C:\Users\mail\pandemic-skylines\src\RealTime\obj\Release\RealTime.csproj.Up2Date
 C:\Users\mail\pandemic-skylines\src\RealTime\obj\Release\RealTime.dll
 C:\Users\mail\pandemic-skylines\src\RealTime\obj\Release\RealTime.pdb
+c:\Users\tanmo\Pandamic_Simulator\src\bin\Release\RealTime.dll
+c:\Users\tanmo\Pandamic_Simulator\src\bin\Release\RealTime.pdb
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.csproj.AssemblyReference.cache
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.GeneratedMSBuildEditorConfig.editorconfig
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.AssemblyInfoInputs.cache
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.AssemblyInfo.cs
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.csproj.CoreCompileInputs.cache
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.sourcelink.json
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.csproj.Up2Date
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.dll
+c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.pdb

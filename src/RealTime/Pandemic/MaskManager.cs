@@ -86,6 +86,11 @@ namespace RealTime.Pandemic
             return indoorInfectionProbabilityNoContact;
         }
 
+        public bool IsWearingMask(uint citizenId)
+        {
+            return _masksOthersProtection.Contains(citizenId) || _masksOwnProtection.Contains(citizenId);
+        }
+
         public void SetStepLengthInHours(double stepLengthInHours)
         {
             this.stepLengthInHours = stepLengthInHours;

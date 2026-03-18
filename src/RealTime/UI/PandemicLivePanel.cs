@@ -17,7 +17,7 @@ namespace RealTime.UI
     {
         private const string PanelName = "RealTimePandemicLivePanel";
         private const float PanelWidth = 420f;
-        private const float PanelHeight = 230f;
+        private const float PanelHeight = 290f;
         private const float PanelMargin = 15f;
         private const float TopOffset = 105f;
 
@@ -25,6 +25,9 @@ namespace RealTime.UI
         private UIPanel panel;
         private UILabel titleLabel;
         private UILabel bodyLabel;
+        private UIButton maskButton;
+        private UIButton quarantineButton;
+        private UIButton lockdownButton;
 
         /// <summary>Enables the live panel.</summary>
         public void Enable()
@@ -54,7 +57,7 @@ namespace RealTime.UI
             panel.backgroundSprite = "MenuPanel2";
             panel.opacity = 0.9f;
             panel.canFocus = false;
-            panel.isInteractive = false;
+            panel.isInteractive = true;
             panel.clipChildren = true;
             PositionPanel(view);
 
@@ -72,9 +75,20 @@ namespace RealTime.UI
             bodyLabel.autoSize = false;
             bodyLabel.wordWrap = true;
             bodyLabel.width = PanelWidth - 24f;
-            bodyLabel.height = PanelHeight - 46f;
+            bodyLabel.height = PanelHeight - 46f - 58f;
             bodyLabel.textScale = 0.8f;
             bodyLabel.textAlignment = UIHorizontalAlignment.Left;
+
+            float btnY = PanelHeight - 40f;
+            float btnW = 118f;
+            maskButton = CreateToggleButton(panel, "Masks", 12f, btnY, btnW);
+            maskButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleMasks(); RefreshButtons(); };
+
+            quarantineButton = CreateToggleButton(panel, "Quarantine", 148f, btnY, btnW);
+            quarantineButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleQuarantine(); RefreshButtons(); };
+
+            lockdownButton = CreateToggleButton(panel, "Social Dist.", 284f, btnY, btnW);
+            lockdownButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleLockdown(); RefreshButtons(); };
 
             var updater = panel.gameObject.AddComponent<PandemicLivePanelUpdateBehavior>();
             updater.Owner = this;
@@ -90,6 +104,9 @@ namespace RealTime.UI
                 panel = null;
                 titleLabel = null;
                 bodyLabel = null;
+                maskButton = null;
+                quarantineButton = null;
+                lockdownButton = null;
             }
         }
 
@@ -143,6 +160,41 @@ namespace RealTime.UI
                 + $"Contacts: citizens {snapshot.ContactsTrackedCitizens:N0} | pairs {snapshot.ContactsTrackedPairs:N0} | total {snapshot.ContactsRecordedTotal:N0}\n"
                 + $"Transmissions: total {snapshot.TransmissionsTotal:N0} | indoor {snapshot.TransmissionsIndoor:N0} | outdoor {snapshot.TransmissionsOutdoor:N0} | vehicle {snapshot.TransmissionsVehicle:N0}\n"
                 + $"Trajectory points: {snapshot.ObservationCount:N0}";
+
+            RefreshButtons();
+        }
+
+        private void RefreshButtons()
+        {
+            if (maskButton == null) return;
+            var mgr = PandemicManager.Instance;
+            bool masksOn = mgr != null && mgr.IsMasksEnabled();
+            bool quarantineOn = mgr != null && mgr.IsQuarantineEnabled();
+            bool lockdownOn = mgr != null && mgr.IsLockdownEnabled();
+
+            maskButton.text = "Masks: " + (masksOn ? "ON" : "OFF");
+            maskButton.color = masksOn ? new Color32(30, 160, 30, 255) : new Color32(160, 30, 30, 255);
+            quarantineButton.text = "Quarant: " + (quarantineOn ? "ON" : "OFF");
+            quarantineButton.color = quarantineOn ? new Color32(30, 160, 30, 255) : new Color32(160, 30, 30, 255);
+            lockdownButton.text = "Lock: " + (lockdownOn ? "ON" : "OFF");
+            lockdownButton.color = lockdownOn ? new Color32(30, 160, 30, 255) : new Color32(160, 30, 30, 255);
+        }
+
+        private static UIButton CreateToggleButton(UIPanel parent, string label, float x, float y, float width)
+        {
+            var btn = parent.AddUIComponent<UIButton>();
+            btn.autoSize = false;
+            btn.width = width;
+            btn.height = 28f;
+            btn.relativePosition = new Vector3(x, y);
+            btn.text = label;
+            btn.textScale = 0.75f;
+            btn.textColor = new Color32(255, 255, 255, 255);
+            btn.normalBgSprite = "ButtonMenu";
+            btn.hoveredBgSprite = "ButtonMenuHovered";
+            btn.pressedBgSprite = "ButtonMenuPressed";
+            btn.textHorizontalAlignment = UIHorizontalAlignment.Center;
+            return btn;
         }
 
         private static string FormatSigned(int value)

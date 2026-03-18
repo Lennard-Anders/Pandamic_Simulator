@@ -55,6 +55,11 @@ namespace RealTime.Pandemic
             return citizensInQuarantineAlreadyChecked.Contains(citizenId);
         }
 
+        public IEnumerable<uint> GetQuarantinedCitizens()
+        {
+            return new List<uint>(citizensInQuarantine.Keys);
+        }
+
         public bool IsInProphylacticQuarantine(uint citizenId, DateTime currentTime)
         {
             if (prophylacticQuarantine.ContainsKey(citizenId))

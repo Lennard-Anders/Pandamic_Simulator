@@ -33,6 +33,9 @@ namespace RealTime.Pandemic
         private HashSet<uint> usedCitizens = new HashSet<uint>();
         private Dictionary<uint, uint> citizenMatching = new Dictionary<uint, uint>();
 
+        private HashSet<ushort> infectedBuildingIds = new HashSet<ushort>();
+        private HashSet<ushort> quarantineBuildingIds = new HashSet<ushort>();
+
         private PandemicObserver Observer;
 
         private Dictionary<uint, long> activeInfections = new Dictionary<uint, long>();
@@ -348,6 +351,15 @@ namespace RealTime.Pandemic
 
                 try
                 {
+                    BuildPandemicBuildingSets();
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning("The 'Real Time' pandemic manager failed to build visualization data: " + ex);
+                }
+
+                try
+                {
                     Observer.AddSickCitizens(currentDateTime, initialPopulationSick.Count);
                     Observer.AddHealthyCitizens(currentDateTime, initialPopulationHealthy.Count);
                     Observer.AddRecoveredCitizens(currentDateTime, initialPopulationRecovered.Count);
@@ -423,6 +435,66 @@ namespace RealTime.Pandemic
                 && Observer != null;
         }
 
+        private void BuildPandemicBuildingSets()
+        {
+            infectedBuildingIds.Clear();
+            quarantineBuildingIds.Clear();
+
+            if (!IsVisualizationDataAvailable())
+            {
+                return;
+            }
+
+            Citizen[] citizens = CitizenMgr.GetCitizensArray();
+            if (citizens == null)
+            {
+                return;
+            }
+
+            foreach (uint citizenId in activeInfections.Keys)
+            {
+                uint realId = retrieveID(citizenId);
+                if (realId >= citizens.Length)
+                {
+                    continue;
+                }
+
+                ref Citizen c = ref citizens[realId];
+                if (CitizenProxy.IsEmpty(ref c) || CitizenProxy.IsDead(ref c))
+                {
+                    continue;
+                }
+
+                ushort home = CitizenProxy.GetHomeBuilding(ref c);
+                if (home != 0)
+                {
+                    infectedBuildingIds.Add(home);
+                }
+            }
+
+            DateTime now = simulation?.m_currentGameTime ?? currentDateTime;
+            foreach (uint citizenId in QuarantineManager.Instance.GetQuarantinedCitizens())
+            {
+                uint realId = retrieveID(citizenId);
+                if (realId >= citizens.Length)
+                {
+                    continue;
+                }
+
+                ref Citizen c = ref citizens[realId];
+                if (CitizenProxy.IsEmpty(ref c) || CitizenProxy.IsDead(ref c))
+                {
+                    continue;
+                }
+
+                ushort home = CitizenProxy.GetHomeBuilding(ref c);
+                if (home != 0)
+                {
+                    quarantineBuildingIds.Add(home);
+                }
+            }
+        }
+
         internal bool IsVisualizationDataAvailable()
         {
             return active
@@ -487,9 +559,77 @@ namespace RealTime.Pandemic
             return infectedResidents;
         }
 
-        internal bool IsCitizenInfected(uint citizenId)
+        public bool IsCitizenInfected(uint citizenId)
         {
             return citizenId != 0 && activeInfections.ContainsKey(citizenId);
+        }
+
+        public bool IsActive => active && startCompleted;
+
+        public HashSet<ushort> InfectedBuildingIds => infectedBuildingIds;
+
+        public HashSet<ushort> QuarantineBuildingIds => quarantineBuildingIds;
+
+        public bool IsCitizenWearingMask(uint citizenId)
+        {
+            return Masks?.IsWearingMask(citizenId) ?? false;
+        }
+
+        public bool IsMasksEnabled() => Config != null && Config.MaskBehavior != RealTime.Config.MaskBehavior.None;
+
+        public bool IsQuarantineEnabled() => Config != null && Config.QuarantineBehavior != RealTime.Config.QuarantineBehavior.None;
+
+        public bool IsLockdownEnabled() => QuarantineManager.Instance.InLockDown;
+
+        public bool ToggleMasks()
+        {
+            if (Config == null) return false;
+            Config.MaskBehavior = Config.MaskBehavior == RealTime.Config.MaskBehavior.None
+                ? RealTime.Config.MaskBehavior.Full
+                : RealTime.Config.MaskBehavior.None;
+            return IsMasksEnabled();
+        }
+
+        public bool ToggleQuarantine()
+        {
+            if (Config == null) return false;
+            Config.QuarantineBehavior = Config.QuarantineBehavior == RealTime.Config.QuarantineBehavior.None
+                ? RealTime.Config.QuarantineBehavior.Contacts
+                : RealTime.Config.QuarantineBehavior.None;
+            return IsQuarantineEnabled();
+        }
+
+        public bool ToggleLockdown()
+        {
+            QuarantineManager.Instance.InLockDown = !QuarantineManager.Instance.InLockDown;
+            return QuarantineManager.Instance.InLockDown;
+        }
+
+        public IEnumerable<ushort> GetInfectedCitizenInstanceIds()
+        {
+            if (!IsVisualizationDataAvailable())
+            {
+                yield break;
+            }
+
+            Citizen[] citizens = CitizenMgr.GetCitizensArray();
+            if (citizens == null)
+            {
+                yield break;
+            }
+
+            foreach (uint citizenId in activeInfections.Keys)
+            {
+                uint realId = retrieveID(citizenId);
+                if (realId < citizens.Length)
+                {
+                    ushort instanceId = CitizenProxy.GetInstance(ref citizens[realId]);
+                    if (instanceId != 0)
+                    {
+                        yield return instanceId;
+                    }
+                }
+            }
         }
 
         internal PandemicLiveSnapshot GetLiveSnapshot()
@@ -550,6 +690,8 @@ namespace RealTime.Pandemic
             activeInfections.Clear();
             infectedCitizens.Clear();
             infectedCitizensWithSymptoms.Clear();
+            infectedBuildingIds.Clear();
+            quarantineBuildingIds.Clear();
             hadAnySickCitizens = false;
         }
 

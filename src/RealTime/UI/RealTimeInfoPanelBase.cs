@@ -2,9 +2,11 @@
 
 namespace RealTime.UI
 {
+    using System;
     using System.Text;
     using ColossalFramework.UI;
     using RealTime.CustomAI;
+    using RealTime.Pandemic;
     using SkyTools.Localization;
     using SkyTools.UI;
     using static Localization.TranslationKeys;
@@ -15,12 +17,14 @@ namespace RealTime.UI
         where T : WorldInfoPanel
     {
         private const string ComponentId = "RealTimeInfoSchedule";
+        private const string PandemicComponentId = "RealTimePandemicStatus";
         private const string AgeEducationLabelName = "AgeEducation";
         private const float LineHeight = 14f;
 
         private readonly RealTimeResidentAI<ResidentAI, Citizen> residentAI;
         private readonly ILocalizationProvider localizationProvider;
         private UILabel scheduleLabel;
+        private UILabel pandemicLabel;
         private CitizenSchedule scheduleCopy;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeInfoPanelBase{T}"/> class.</summary>
@@ -43,14 +47,19 @@ namespace RealTime.UI
         /// <summary>Disables the custom citizen info panel, if it is enabled.</summary>
         protected sealed override void DisableCore()
         {
-            if (scheduleLabel == null)
+            if (scheduleLabel != null)
             {
-                return;
+                ItemsPanel.RemoveUIComponent(scheduleLabel);
+                UnityEngine.Object.Destroy(scheduleLabel.gameObject);
+                scheduleLabel = null;
             }
 
-            ItemsPanel.RemoveUIComponent(scheduleLabel);
-            UnityEngine.Object.Destroy(scheduleLabel.gameObject);
-            scheduleLabel = null;
+            if (pandemicLabel != null)
+            {
+                ItemsPanel.RemoveUIComponent(pandemicLabel);
+                UnityEngine.Object.Destroy(pandemicLabel.gameObject);
+                pandemicLabel = null;
+            }
         }
 
         /// <summary>Updates the citizen information for the citizen with specified ID.</summary>
@@ -60,8 +69,11 @@ namespace RealTime.UI
             if (citizenId == 0)
             {
                 SetCustomPanelVisibility(scheduleLabel, visible: false);
+                SetCustomPanelVisibility(pandemicLabel, visible: false);
                 return;
             }
+
+            UpdatePandemicInfo(citizenId);
 
             ref CitizenSchedule schedule = ref residentAI.GetCitizenSchedule(citizenId);
 
@@ -98,6 +110,12 @@ namespace RealTime.UI
             scheduleLabel.width = 270;
             scheduleLabel.zOrder = statusLabel.zOrder + 1;
             scheduleLabel.isVisible = false;
+
+            pandemicLabel = UIComponentTools.CreateCopy(statusLabel, ItemsPanel, PandemicComponentId);
+            pandemicLabel.width = 270;
+            pandemicLabel.zOrder = statusLabel.zOrder + 2;
+            pandemicLabel.isVisible = false;
+
             return true;
         }
 
@@ -158,6 +176,46 @@ namespace RealTime.UI
             scheduleLabel.height = labelHeight;
             scheduleLabel.text = info.ToString();
             SetCustomPanelVisibility(scheduleLabel, info.Length > 0);
+        }
+
+        private void UpdatePandemicInfo(uint citizenId)
+        {
+            if (pandemicLabel == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var manager = PandemicManager.Instance;
+                if (manager == null)
+                {
+                    SetCustomPanelVisibility(pandemicLabel, false);
+                    return;
+                }
+
+                bool infected = manager.IsCitizenInfected(citizenId);
+                bool inQuarantine = QuarantineManager.Instance.IsInQuarantine(
+                    citizenId,
+                    ColossalFramework.Singleton<SimulationManager>.instance.m_currentGameTime);
+                bool wearsMask = manager.IsCitizenWearingMask(citizenId);
+                bool socialDistance = QuarantineManager.Instance.InLockDown;
+
+                var sb = new StringBuilder(120);
+                sb.AppendLine("--- Pandemic Status ---");
+                sb.AppendLine("Infected:     " + (infected ? "YES" : "No"));
+                sb.AppendLine("Quarantine:   " + (inQuarantine ? "YES" : "No"));
+                sb.AppendLine("Mask:         " + (wearsMask ? "YES" : "No"));
+                sb.Append("Social Dist.: " + (socialDistance ? "YES" : "No"));
+
+                pandemicLabel.text = sb.ToString();
+                pandemicLabel.height = 5 * LineHeight + 12f;
+                SetCustomPanelVisibility(pandemicLabel, true);
+            }
+            catch (Exception)
+            {
+                SetCustomPanelVisibility(pandemicLabel, false);
+            }
         }
     }
 }
