@@ -19,3 +19,14 @@ c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.sourcelink.j
 c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.csproj.Up2Date
 c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.dll
 c:\Users\tanmo\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.pdb
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.csproj.AssemblyReference.cache
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.AssemblyInfoInputs.cache
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.AssemblyInfo.cs
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.csproj.CoreCompileInputs.cache
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.sourcelink.json
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.dll
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.pdb
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\bin\Release\RealTime.dll
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\bin\Release\RealTime.pdb
+C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTime\obj\Release\RealTime.csproj.Up2Date

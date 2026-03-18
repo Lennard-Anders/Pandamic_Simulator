@@ -1,6 +1,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using RealTime.CustomAI;
 using RealTime.GameConnection;
 using SkyTools.Tools;
@@ -47,6 +48,14 @@ namespace RealTime.Pandemic
         private Dictionary<uint, long> quarantineFateTimestampMs = new Dictionary<uint, long>();
         private HashSet<uint> quarantineFatedToDie = new HashSet<uint>();
         private const int QuarantineFateDays = 14;
+        private static readonly Citizen.AgeGroup[] LiveSnapshotAgeGroups =
+        {
+            Citizen.AgeGroup.Child,
+            Citizen.AgeGroup.Teen,
+            Citizen.AgeGroup.Young,
+            Citizen.AgeGroup.Adult,
+            Citizen.AgeGroup.Senior,
+        };
 
         private SimulationManager simulation;
         private bool startCompleted;
@@ -734,7 +743,159 @@ namespace RealTime.Pandemic
                 }
             }
 
+            PopulateLiveSnapshotBreakdown(snapshot);
             return snapshot;
+        }
+
+        private void PopulateLiveSnapshotBreakdown(PandemicLiveSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                throw new ArgumentNullException(nameof(snapshot));
+            }
+
+            var districtSnapshots = CreateDistrictSnapshots();
+            int[] ageGroupCounts = new int[Enum.GetValues(typeof(Citizen.AgeGroup)).Length];
+            int totalInfected = 0;
+
+            if (IsVisualizationDataAvailable())
+            {
+                Citizen[] citizens = CitizenMgr.GetCitizensArray();
+                if (citizens != null && citizens.Length > 0)
+                {
+                    foreach (uint citizenId in initialPopulation)
+                    {
+                        uint resolvedCitizenId = retrieveID(citizenId);
+                        if (resolvedCitizenId >= citizens.Length)
+                        {
+                            continue;
+                        }
+
+                        ref Citizen citizen = ref citizens[resolvedCitizenId];
+                        if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen))
+                        {
+                            continue;
+                        }
+
+                        bool infected = activeInfections.ContainsKey(citizenId);
+                        if (infected)
+                        {
+                            int ageGroupIndex = (int)CitizenProxy.GetAge(ref citizen);
+                            if (ageGroupIndex >= 0 && ageGroupIndex < ageGroupCounts.Length)
+                            {
+                                ageGroupCounts[ageGroupIndex]++;
+                            }
+
+                            totalInfected++;
+                        }
+
+                        ushort homeBuilding = CitizenProxy.GetHomeBuilding(ref citizen);
+                        if (homeBuilding == 0 || BuildingMgr.GetBuildingService(homeBuilding) != ItemClass.Service.Residential)
+                        {
+                            continue;
+                        }
+
+                        byte districtId = GetDistrictId(homeBuilding);
+                        if (districtId == 0 || !districtSnapshots.TryGetValue(districtId, out PandemicDistrictSnapshot districtSnapshot))
+                        {
+                            continue;
+                        }
+
+                        districtSnapshot.ResidentCount++;
+                        if (infected)
+                        {
+                            districtSnapshot.InfectedResidents++;
+                        }
+                    }
+                }
+            }
+
+            foreach (Citizen.AgeGroup ageGroup in LiveSnapshotAgeGroups)
+            {
+                int count = ageGroupCounts[(int)ageGroup];
+                snapshot.AgeGroups.Add(new PandemicAgeGroupSnapshot
+                {
+                    Label = GetAgeGroupLabel(ageGroup),
+                    InfectedCount = count,
+                    InfectedPercent = totalInfected > 0 ? (count * 100f) / totalInfected : 0f,
+                });
+            }
+
+            foreach (PandemicDistrictSnapshot districtSnapshot in districtSnapshots.Values)
+            {
+                districtSnapshot.InfectedPercent = districtSnapshot.ResidentCount > 0
+                    ? (districtSnapshot.InfectedResidents * 100f) / districtSnapshot.ResidentCount
+                    : 0f;
+            }
+
+            foreach (PandemicDistrictSnapshot districtSnapshot in districtSnapshots.Values
+                .OrderByDescending(d => d.InfectedPercent)
+                .ThenByDescending(d => d.InfectedResidents)
+                .ThenBy(d => d.DistrictName, StringComparer.OrdinalIgnoreCase))
+            {
+                snapshot.Districts.Add(districtSnapshot);
+            }
+        }
+
+        private Dictionary<byte, PandemicDistrictSnapshot> CreateDistrictSnapshots()
+        {
+            var result = new Dictionary<byte, PandemicDistrictSnapshot>();
+            DistrictManager districtManager = DistrictManager.instance;
+            if (districtManager == null)
+            {
+                return result;
+            }
+
+            District[] districts = districtManager.m_districts.m_buffer;
+            if (districts == null || districts.Length == 0)
+            {
+                return result;
+            }
+
+            for (int districtId = 1; districtId < districts.Length; districtId++)
+            {
+                if ((districts[districtId].m_flags & District.Flags.Created) == 0)
+                {
+                    continue;
+                }
+
+                result[(byte)districtId] = new PandemicDistrictSnapshot
+                {
+                    DistrictId = districtId,
+                    DistrictName = districtManager.GetDistrictName(districtId),
+                };
+            }
+
+            return result;
+        }
+
+        private byte GetDistrictId(ushort homeBuilding)
+        {
+            if (homeBuilding == 0 || DistrictManager.instance == null)
+            {
+                return 0;
+            }
+
+            return DistrictManager.instance.GetDistrict(BuildingMgr.GetBuildingPosition(homeBuilding));
+        }
+
+        private static string GetAgeGroupLabel(Citizen.AgeGroup ageGroup)
+        {
+            switch (ageGroup)
+            {
+                case Citizen.AgeGroup.Child:
+                    return "Child";
+                case Citizen.AgeGroup.Teen:
+                    return "Teen";
+                case Citizen.AgeGroup.Young:
+                    return "Young";
+                case Citizen.AgeGroup.Adult:
+                    return "Adult";
+                case Citizen.AgeGroup.Senior:
+                    return "Senior";
+                default:
+                    return ageGroup.ToString();
+            }
         }
 
         private void ResetRuntimeStateForBootstrap()
