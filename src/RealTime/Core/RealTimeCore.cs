@@ -468,6 +468,7 @@ namespace RealTime.Core
             pandemicManager.Init(config, gameConnections);
             pandemicManagerObject.AddComponent<InfectedCitizenTrailBehavior>();
             pandemicManagerObject.AddComponent<InfectedCitizenIconBehavior>();
+            pandemicManagerObject.AddComponent<QuarantineBuildingIconBehavior>();
 
             return true;
         }

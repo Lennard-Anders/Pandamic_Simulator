@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCopyrightAttribute("Copyright © 2018-2020, dymanoid")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("A mod for the Cities:Skylines game")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1e50f4e9afc4f0dce1cd1c183e5c2f6926791ec6")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7053e069edbb0cf35010469c38339e93ecbae6b0")]
 [assembly: System.Reflection.AssemblyProductAttribute("RealTime")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RealTime")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

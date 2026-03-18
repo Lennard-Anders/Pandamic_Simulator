@@ -9,6 +9,7 @@ namespace RealTime.UI
     using RealTime.Pandemic;
     using SkyTools.Localization;
     using SkyTools.UI;
+    using UnityEngine;
     using static Localization.TranslationKeys;
 
     /// <summary>A base class for the customized world info panels.</summary>
@@ -25,7 +26,11 @@ namespace RealTime.UI
         private readonly ILocalizationProvider localizationProvider;
         private UILabel scheduleLabel;
         private UILabel pandemicLabel;
+        private UIPanel pandemicButtonPanel;
+        private UIButton maskToggleButton;
+        private UIButton quarantineToggleButton;
         private CitizenSchedule scheduleCopy;
+        private uint currentViewedCitizenId;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeInfoPanelBase{T}"/> class.</summary>
         /// <param name="panelName">Name of the game's panel object.</param>
@@ -60,6 +65,15 @@ namespace RealTime.UI
                 UnityEngine.Object.Destroy(pandemicLabel.gameObject);
                 pandemicLabel = null;
             }
+
+            if (pandemicButtonPanel != null)
+            {
+                ItemsPanel.RemoveUIComponent(pandemicButtonPanel);
+                UnityEngine.Object.Destroy(pandemicButtonPanel.gameObject);
+                pandemicButtonPanel = null;
+                maskToggleButton = null;
+                quarantineToggleButton = null;
+            }
         }
 
         /// <summary>Updates the citizen information for the citizen with specified ID.</summary>
@@ -70,6 +84,7 @@ namespace RealTime.UI
             {
                 SetCustomPanelVisibility(scheduleLabel, visible: false);
                 SetCustomPanelVisibility(pandemicLabel, visible: false);
+                if (pandemicButtonPanel != null) pandemicButtonPanel.isVisible = false;
                 return;
             }
 
@@ -115,6 +130,23 @@ namespace RealTime.UI
             pandemicLabel.width = 270;
             pandemicLabel.zOrder = statusLabel.zOrder + 2;
             pandemicLabel.isVisible = false;
+
+            var itemsAsPanel = ItemsPanel as UIPanel;
+            if (itemsAsPanel != null)
+            {
+                pandemicButtonPanel = itemsAsPanel.AddUIComponent<UIPanel>();
+                pandemicButtonPanel.name = "RealTimePandemicActionButtons";
+                pandemicButtonPanel.autoSize = false;
+                pandemicButtonPanel.width = 270f;
+                pandemicButtonPanel.height = 32f;
+                pandemicButtonPanel.isVisible = false;
+
+                maskToggleButton = CreateCitizenToggleButton(pandemicButtonPanel, "Mask: OFF", 0f, 128f);
+                maskToggleButton.eventClicked += (c, e) => OnMaskToggleClicked();
+
+                quarantineToggleButton = CreateCitizenToggleButton(pandemicButtonPanel, "Quarantine", 136f, 128f);
+                quarantineToggleButton.eventClicked += (c, e) => OnQuarantineToggleClicked();
+            }
 
             return true;
         }
@@ -187,10 +219,13 @@ namespace RealTime.UI
 
             try
             {
+                currentViewedCitizenId = citizenId;
+
                 var manager = PandemicManager.Instance;
                 if (manager == null)
                 {
                     SetCustomPanelVisibility(pandemicLabel, false);
+                    if (pandemicButtonPanel != null) pandemicButtonPanel.isVisible = false;
                     return;
                 }
 
@@ -201,21 +236,101 @@ namespace RealTime.UI
                 bool wearsMask = manager.IsCitizenWearingMask(citizenId);
                 bool socialDistance = QuarantineManager.Instance.InLockDown;
 
-                var sb = new StringBuilder(120);
+                var sb = new StringBuilder(180);
                 sb.AppendLine("--- Pandemic Status ---");
                 sb.AppendLine("Infected:     " + (infected ? "YES" : "No"));
                 sb.AppendLine("Quarantine:   " + (inQuarantine ? "YES" : "No"));
                 sb.AppendLine("Mask:         " + (wearsMask ? "YES" : "No"));
-                sb.Append("Social Dist.: " + (socialDistance ? "YES" : "No"));
+                sb.AppendLine("Social Dist.: " + (socialDistance ? "YES" : "No"));
+
+                if (infected)
+                {
+                    int days = manager.GetDaysInfected(citizenId);
+                    float deathPct = manager.GetCitizenDeathProbabilityPercent(citizenId);
+                    if (days >= 0)
+                    {
+                        sb.AppendLine("Days Infected: " + days);
+                    }
+
+                    sb.Append(string.Format("Death Risk:   {0:F1}%", deathPct));
+                }
+                else
+                {
+                    sb.Append(string.Empty);
+                }
 
                 pandemicLabel.text = sb.ToString();
-                pandemicLabel.height = 5 * LineHeight + 12f;
+                pandemicLabel.height = (infected ? 7 : 5) * LineHeight + 14f;
                 SetCustomPanelVisibility(pandemicLabel, true);
+
+                // Update per-citizen action buttons
+                if (pandemicButtonPanel != null)
+                {
+                    pandemicButtonPanel.isVisible = true;
+                    RefreshCitizenPandemicButtons(citizenId, inQuarantine, wearsMask);
+                }
             }
             catch (Exception)
             {
                 SetCustomPanelVisibility(pandemicLabel, false);
+                if (pandemicButtonPanel != null) pandemicButtonPanel.isVisible = false;
             }
+        }
+
+        private void OnMaskToggleClicked()
+        {
+            if (currentViewedCitizenId == 0) return;
+            var mgr = PandemicManager.Instance;
+            if (mgr == null) return;
+            bool isMasked = mgr.IsCitizenWearingMask(currentViewedCitizenId);
+            mgr.ForceSetCitizenMask(currentViewedCitizenId, !isMasked);
+            bool inQ = QuarantineManager.Instance.IsInQuarantine(
+                currentViewedCitizenId,
+                ColossalFramework.Singleton<SimulationManager>.instance.m_currentGameTime);
+            RefreshCitizenPandemicButtons(currentViewedCitizenId, inQ, !isMasked);
+        }
+
+        private void OnQuarantineToggleClicked()
+        {
+            if (currentViewedCitizenId == 0) return;
+            var mgr = PandemicManager.Instance;
+            if (mgr == null) return;
+            mgr.ToggleCitizenQuarantine(currentViewedCitizenId);
+            bool inQ = QuarantineManager.Instance.IsInQuarantine(
+                currentViewedCitizenId,
+                ColossalFramework.Singleton<SimulationManager>.instance.m_currentGameTime);
+            bool masked = mgr.IsCitizenWearingMask(currentViewedCitizenId);
+            RefreshCitizenPandemicButtons(currentViewedCitizenId, inQ, masked);
+        }
+
+        private void RefreshCitizenPandemicButtons(uint citizenId, bool inQuarantine, bool masked)
+        {
+            if (maskToggleButton == null || quarantineToggleButton == null) return;
+            maskToggleButton.text = "Mask: " + (masked ? "ON" : "OFF");
+            maskToggleButton.color = masked
+                ? new Color32(30, 160, 30, 255)
+                : new Color32(160, 30, 30, 255);
+            quarantineToggleButton.text = inQuarantine ? "Unquarantine" : "Quarantine";
+            quarantineToggleButton.color = inQuarantine
+                ? new Color32(30, 160, 30, 255)
+                : new Color32(100, 100, 100, 255);
+        }
+
+        private static UIButton CreateCitizenToggleButton(UIPanel parent, string label, float x, float width)
+        {
+            var btn = parent.AddUIComponent<UIButton>();
+            btn.autoSize = false;
+            btn.width = width;
+            btn.height = 26f;
+            btn.relativePosition = new UnityEngine.Vector3(x, 2f);
+            btn.text = label;
+            btn.textScale = 0.72f;
+            btn.textColor = new Color32(255, 255, 255, 255);
+            btn.normalBgSprite = "ButtonMenu";
+            btn.hoveredBgSprite = "ButtonMenuHovered";
+            btn.pressedBgSprite = "ButtonMenuPressed";
+            btn.textHorizontalAlignment = UIHorizontalAlignment.Center;
+            return btn;
         }
     }
 }

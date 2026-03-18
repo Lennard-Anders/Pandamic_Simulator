@@ -91,6 +91,22 @@ namespace RealTime.Pandemic
             return _masksOthersProtection.Contains(citizenId) || _masksOwnProtection.Contains(citizenId);
         }
 
+        public void SetMaskForCitizen(uint citizenId, bool masked)
+        {
+            // Mark as considered so the random assignment in GetMaskBehavior doesn't override this
+            _allConsideredCitizens.Add(citizenId);
+            if (masked)
+            {
+                _masksOthersProtection.Add(citizenId);
+                _masksOwnProtection.Remove(citizenId);
+            }
+            else
+            {
+                _masksOthersProtection.Remove(citizenId);
+                _masksOwnProtection.Remove(citizenId);
+            }
+        }
+
         public void SetStepLengthInHours(double stepLengthInHours)
         {
             this.stepLengthInHours = stepLengthInHours;

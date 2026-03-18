@@ -35,12 +35,18 @@ namespace RealTime.Pandemic
 
         private HashSet<ushort> infectedBuildingIds = new HashSet<ushort>();
         private HashSet<ushort> quarantineBuildingIds = new HashSet<ushort>();
+        private HashSet<ushort> hotspotBuildingIds = new HashSet<ushort>();
 
         private PandemicObserver Observer;
 
         private Dictionary<uint, long> activeInfections = new Dictionary<uint, long>();
         private HashSet<uint> infectedCitizens = new HashSet<uint>();
         private HashSet<uint> infectedCitizensWithSymptoms = new HashSet<uint>();
+
+        // Quarantine fate: citizen → fate timestamp (ms), and whether they die
+        private Dictionary<uint, long> quarantineFateTimestampMs = new Dictionary<uint, long>();
+        private HashSet<uint> quarantineFatedToDie = new HashSet<uint>();
+        private const int QuarantineFateDays = 14;
 
         private SimulationManager simulation;
         private bool startCompleted;
@@ -342,6 +348,15 @@ namespace RealTime.Pandemic
 
                 try
                 {
+                    ProcessQuarantineFates();
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning("The 'Real Time' pandemic manager failed during quarantine fate processing: " + ex);
+                }
+
+                try
+                {
                     spread();
                 }
                 catch (Exception ex)
@@ -439,6 +454,7 @@ namespace RealTime.Pandemic
         {
             infectedBuildingIds.Clear();
             quarantineBuildingIds.Clear();
+            hotspotBuildingIds.Clear();
 
             if (!IsVisualizationDataAvailable())
             {
@@ -451,6 +467,7 @@ namespace RealTime.Pandemic
                 return;
             }
 
+            var infectedCountPerBuilding = new Dictionary<ushort, int>();
             foreach (uint citizenId in activeInfections.Keys)
             {
                 uint realId = retrieveID(citizenId);
@@ -469,6 +486,19 @@ namespace RealTime.Pandemic
                 if (home != 0)
                 {
                     infectedBuildingIds.Add(home);
+                    if (infectedCountPerBuilding.TryGetValue(home, out int cnt))
+                        infectedCountPerBuilding[home] = cnt + 1;
+                    else
+                        infectedCountPerBuilding[home] = 1;
+                }
+            }
+
+            foreach (var kvp in infectedCountPerBuilding)
+            {
+                if (kvp.Value > 1)
+                {
+                    hotspotBuildingIds.Add(kvp.Key);
+                    quarantineBuildingIds.Add(kvp.Key);
                 }
             }
 
@@ -570,6 +600,8 @@ namespace RealTime.Pandemic
 
         public HashSet<ushort> QuarantineBuildingIds => quarantineBuildingIds;
 
+        public HashSet<ushort> HotspotBuildingIds => hotspotBuildingIds;
+
         public bool IsCitizenWearingMask(uint citizenId)
         {
             return Masks?.IsWearingMask(citizenId) ?? false;
@@ -580,6 +612,34 @@ namespace RealTime.Pandemic
         public bool IsQuarantineEnabled() => Config != null && Config.QuarantineBehavior != RealTime.Config.QuarantineBehavior.None;
 
         public bool IsLockdownEnabled() => QuarantineManager.Instance.InLockDown;
+
+        /// <summary>Forces the mask state for a single citizen, overriding random assignment.</summary>
+        public void ForceSetCitizenMask(uint citizenId, bool masked)
+        {
+            Masks?.SetMaskForCitizen(citizenId, masked);
+        }
+
+        /// <summary>Toggles quarantine for a single citizen. Adding quarantine also schedules a 14-day fate.</summary>
+        public void ToggleCitizenQuarantine(uint citizenId)
+        {
+            if (simulation != null)
+            {
+                currentDateTime = simulation.m_currentGameTime;
+            }
+
+            DateTime now = currentDateTime;
+            if (QuarantineManager.Instance.IsInQuarantine(citizenId, now))
+            {
+                QuarantineManager.Instance.RemoveCitizenInQuarantine(citizenId);
+                quarantineFateTimestampMs.Remove(citizenId);
+                quarantineFatedToDie.Remove(citizenId);
+            }
+            else
+            {
+                QuarantineManager.Instance.AddCitizenInQuarantine(citizenId, now);
+                ScheduleQuarantineFate(citizenId);
+            }
+        }
 
         public bool ToggleMasks()
         {
@@ -1128,6 +1188,142 @@ namespace RealTime.Pandemic
             return citizenID;
         }
 
+        private void ScheduleQuarantineFate(uint citizenID)
+        {
+            if (quarantineFateTimestampMs.ContainsKey(citizenID))
+            {
+                return;
+            }
+
+            // Random resolution day between 1 and QuarantineFateDays (in ms)
+            int fateDays = random.Next(1, QuarantineFateDays + 1);
+            long fateTs = (currentDateTime.Ticks / 10000) + (long)fateDays * 24 * 3600 * 1000;
+            quarantineFateTimestampMs[citizenID] = fateTs;
+
+            double deathProb = GetDeathProbabilityForCitizen(citizenID);
+            if (random.NextDouble() < deathProb)
+            {
+                quarantineFatedToDie.Add(citizenID);
+            }
+        }
+
+        private double GetDeathProbabilityForCitizen(uint citizenID)
+        {
+            if (Config == null || CitizenMgr == null || CitizenProxy == null)
+            {
+                return 0;
+            }
+
+            Citizen[] citizens = CitizenMgr.GetCitizensArray();
+            uint realId = retrieveID(citizenID);
+            if (realId >= citizens.Length)
+            {
+                return 0;
+            }
+
+            Citizen.AgeGroup age = CitizenProxy.GetAge(ref citizens[realId]);
+            switch (age)
+            {
+                case Citizen.AgeGroup.Child:  return Config.DeathChild  / 100.0;
+                case Citizen.AgeGroup.Teen:   return Config.DeathTeen   / 100.0;
+                case Citizen.AgeGroup.Young:  return Config.DeathYoung  / 100.0;
+                case Citizen.AgeGroup.Adult:  return Config.DeathAdult  / 100.0;
+                case Citizen.AgeGroup.Senior: return Config.DeathSenior / 100.0;
+                default: return 0;
+            }
+        }
+
+        private void ProcessQuarantineFates()
+        {
+            if (!IsVisualizationDataAvailable() || quarantineFateTimestampMs.Count == 0)
+            {
+                return;
+            }
+
+            long nowMs = currentDateTime.Ticks / 10000;
+            Citizen[] citizens = CitizenMgr.GetCitizensArray();
+            var toProcess = new List<uint>();
+
+            foreach (var kvp in quarantineFateTimestampMs)
+            {
+                if (nowMs >= kvp.Value)
+                {
+                    toProcess.Add(kvp.Key);
+                }
+            }
+
+            foreach (uint citizenID in toProcess)
+            {
+                quarantineFateTimestampMs.Remove(citizenID);
+
+                uint realId = retrieveID(citizenID);
+                if (realId >= citizens.Length)
+                {
+                    quarantineFatedToDie.Remove(citizenID);
+                    continue;
+                }
+
+                if (!activeInfections.ContainsKey(citizenID))
+                {
+                    quarantineFatedToDie.Remove(citizenID);
+                    continue;
+                }
+
+                if (quarantineFatedToDie.Contains(citizenID))
+                {
+                    quarantineFatedToDie.Remove(citizenID);
+                    KillCitizen(citizenID, ref citizens[realId]);
+                }
+                else
+                {
+                    HealCitizen(citizenID, ref citizens[realId]);
+                    QuarantineManager.Instance.RemoveCitizenInQuarantine(citizenID);
+                }
+            }
+        }
+
+        /// <summary>Returns the number of days the citizen has been infected, or -1 if not infected.</summary>
+        public int GetDaysInfected(uint citizenId)
+        {
+            if (!activeInfections.ContainsKey(citizenId) || simulation == null)
+            {
+                return -1;
+            }
+
+            long nowMs = simulation.m_currentGameTime.Ticks / 10000;
+            long infectionMs = activeInfections[citizenId];
+            long deltaMs = nowMs - infectionMs;
+            if (deltaMs < 0) deltaMs = 0;
+            return (int)(deltaMs / (24L * 3600 * 1000));
+        }
+
+        /// <summary>Returns the age-based death probability as a percentage (0-100).</summary>
+        public float GetCitizenDeathProbabilityPercent(uint citizenId)
+        {
+            if (Config == null || CitizenMgr == null || CitizenProxy == null)
+            {
+                return 0f;
+            }
+
+            Citizen[] citizens = CitizenMgr.GetCitizensArray();
+            uint realId = retrieveID(citizenId);
+            if (realId >= citizens.Length)
+            {
+                return 0f;
+            }
+
+            Citizen.AgeGroup age = CitizenProxy.GetAge(ref citizens[realId]);
+            switch (age)
+            {
+                case Citizen.AgeGroup.Child:  return Config.DeathChild;
+                case Citizen.AgeGroup.Teen:   return Config.DeathTeen;
+                case Citizen.AgeGroup.Young:  return Config.DeathYoung;
+                case Citizen.AgeGroup.Adult:  return Config.DeathAdult;
+                case Citizen.AgeGroup.Senior: return Config.DeathSenior;
+                default: return 0f;
+            }
+        }
+
         public bool ShouldBeInQuarantine(uint citizenID)
         {
             if (IsInQuarantine(citizenID))
@@ -1145,6 +1341,7 @@ namespace RealTime.Pandemic
                     if (!IsInQuarantine(citizenID))
                     {
                         QuarantineManager.Instance.AddCitizenInQuarantine(citizenID, currentDateTime);
+                        ScheduleQuarantineFate(citizenID);
                     }
                     return true;
                 }

@@ -384,7 +384,12 @@ namespace RealTime.GameConnection.Patches
                             var pm = PandemicManager.Instance;
                             if (pm != null)
                             {
-                                if (pm.InfectedBuildingIds.Contains(buildingID))
+                                if (pm.HotspotBuildingIds.Contains(buildingID))
+                                {
+                                    // Multiple infected residents → vivid solid red (hotspot)
+                                    __result = Color.Lerp(__result, new Color(1f, 0f, 0f, __result.a), 0.75f);
+                                }
+                                else if (pm.InfectedBuildingIds.Contains(buildingID))
                                 {
                                     __result = Color.Lerp(__result, new Color(1f, 0.1f, 0.1f, __result.a), 0.45f);
                                 }

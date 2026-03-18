@@ -18,10 +18,12 @@ namespace RealTime.UI
         private const string PanelName = "RealTimePandemicLivePanel";
         private const float PanelWidth = 420f;
         private const float PanelHeight = 290f;
+        private const float CollapsedPanelHeight = 38f;
         private const float PanelMargin = 15f;
         private const float TopOffset = 105f;
 
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
+        private bool collapsed = false;
         private UIPanel panel;
         private UILabel titleLabel;
         private UILabel bodyLabel;
@@ -62,13 +64,16 @@ namespace RealTime.UI
             PositionPanel(view);
 
             titleLabel = panel.AddUIComponent<UILabel>();
-            titleLabel.text = "Real Time Pandemic Monitor";
+            titleLabel.text = "\u25bc Real Time Pandemic Monitor";
             titleLabel.textScale = 0.95f;
             titleLabel.relativePosition = new Vector3(12f, 10f);
             titleLabel.autoSize = false;
             titleLabel.width = PanelWidth - 24f;
             titleLabel.height = 20f;
             titleLabel.textAlignment = UIHorizontalAlignment.Left;
+            titleLabel.isInteractive = true;
+            titleLabel.tooltip = "Click to collapse / expand";
+            titleLabel.eventClicked += (c, e) => ToggleCollapse();
 
             bodyLabel = panel.AddUIComponent<UILabel>();
             bodyLabel.relativePosition = new Vector3(12f, 36f);
@@ -125,6 +130,11 @@ namespace RealTime.UI
                 return;
             }
 
+            if (collapsed)
+            {
+                return;
+            }
+
             var view = UIView.GetAView();
             if (view != null)
             {
@@ -162,6 +172,18 @@ namespace RealTime.UI
                 + $"Trajectory points: {snapshot.ObservationCount:N0}";
 
             RefreshButtons();
+        }
+
+        private void ToggleCollapse()
+        {
+            collapsed = !collapsed;
+            if (bodyLabel != null) bodyLabel.isVisible = !collapsed;
+            if (maskButton != null) maskButton.isVisible = !collapsed;
+            if (quarantineButton != null) quarantineButton.isVisible = !collapsed;
+            if (lockdownButton != null) lockdownButton.isVisible = !collapsed;
+            panel.height = collapsed ? CollapsedPanelHeight : PanelHeight;
+            panel.clipChildren = true;
+            titleLabel.text = (collapsed ? "\u25ba" : "\u25bc") + " Real Time Pandemic Monitor";
         }
 
         private void RefreshButtons()
