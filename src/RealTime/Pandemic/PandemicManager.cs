@@ -37,6 +37,7 @@ namespace RealTime.Pandemic
         private HashSet<ushort> infectedBuildingIds = new HashSet<ushort>();
         private HashSet<ushort> quarantineBuildingIds = new HashSet<ushort>();
         private HashSet<ushort> hotspotBuildingIds = new HashSet<ushort>();
+        private Dictionary<ushort, int> buildingInfectedCounts = new Dictionary<ushort, int>();
 
         private PandemicObserver Observer;
 
@@ -48,6 +49,8 @@ namespace RealTime.Pandemic
         private Dictionary<uint, long> quarantineFateTimestampMs = new Dictionary<uint, long>();
         private HashSet<uint> quarantineFatedToDie = new HashSet<uint>();
         private const int QuarantineFateDays = 14;
+        private Dictionary<uint, ushort> infectionSourceBuilding = new Dictionary<uint, ushort>();
+        private Dictionary<uint, InfectionType> infectionSourceType = new Dictionary<uint, InfectionType>();
         private static readonly Citizen.AgeGroup[] LiveSnapshotAgeGroups =
         {
             Citizen.AgeGroup.Child,
@@ -476,7 +479,8 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            var infectedCountPerBuilding = new Dictionary<ushort, int>();
+            var infectedCountPerBuilding = buildingInfectedCounts;
+            infectedCountPerBuilding.Clear();
             foreach (uint citizenId in activeInfections.Keys)
             {
                 uint realId = retrieveID(citizenId);
@@ -504,7 +508,7 @@ namespace RealTime.Pandemic
 
             foreach (var kvp in infectedCountPerBuilding)
             {
-                if (kvp.Value > 1)
+                if (kvp.Value >= 6)
                 {
                     hotspotBuildingIds.Add(kvp.Key);
                     quarantineBuildingIds.Add(kvp.Key);
@@ -611,6 +615,12 @@ namespace RealTime.Pandemic
 
         public HashSet<ushort> HotspotBuildingIds => hotspotBuildingIds;
 
+        public int GetInfectedCountInBuilding(ushort buildingId)
+        {
+            if (buildingId == 0) return 0;
+            return buildingInfectedCounts.TryGetValue(buildingId, out int count) ? count : 0;
+        }
+
         public bool IsCitizenWearingMask(uint citizenId)
         {
             return Masks?.IsWearingMask(citizenId) ?? false;
@@ -672,6 +682,33 @@ namespace RealTime.Pandemic
         {
             QuarantineManager.Instance.InLockDown = !QuarantineManager.Instance.InLockDown;
             return QuarantineManager.Instance.InLockDown;
+        }
+
+        private void RecordInfectionSource(uint citizenId, ushort buildingId, InfectionType type)
+        {
+            infectionSourceBuilding[citizenId] = buildingId;
+            infectionSourceType[citizenId] = type;
+        }
+
+        public bool TryGetInfectionSource(uint citizenId, out ushort buildingId, out InfectionType infType)
+        {
+            infType = InfectionType.OUTDOOR;
+            bool hasBuilding = infectionSourceBuilding.TryGetValue(citizenId, out buildingId);
+            infectionSourceType.TryGetValue(citizenId, out infType);
+            return hasBuilding;
+        }
+
+        public void ManuallyInfectCitizen(uint citizenId)
+        {
+            if (activeInfections.ContainsKey(citizenId)) return;
+            if (CitizenMgr == null || CitizenProxy == null) return;
+            Citizen[] citizens = CitizenMgr.GetCitizensArray();
+            uint realId = retrieveID(citizenId);
+            if (realId >= citizens.Length) return;
+            ref Citizen citizen = ref citizens[realId];
+            if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen)) return;
+            InfectCitizen(citizenId, ref citizen);
+            RecordInfectionSource(citizenId, 0, InfectionType.OUTDOOR);
         }
 
         public IEnumerable<ushort> GetInfectedCitizenInstanceIds()
@@ -1074,6 +1111,8 @@ namespace RealTime.Pandemic
                 CitizenProxy.SetSick(ref infectedCitizen, false);
             }
             activeInfections.Remove(infectedCitizenID);
+            infectionSourceBuilding.Remove(infectedCitizenID);
+            infectionSourceType.Remove(infectedCitizenID);
 
             initialPopulationRecovered.Add(infectedCitizenID);
             initialPopulationSick.Remove(infectedCitizenID);
@@ -1088,6 +1127,8 @@ namespace RealTime.Pandemic
 
             CitizenProxy.SetDead(ref infectedCitizen, true);
             activeInfections.Remove(infectedCitizenID);
+            infectionSourceBuilding.Remove(infectedCitizenID);
+            infectionSourceType.Remove(infectedCitizenID);
 
             initialPopulationDead.Add(infectedCitizenID);
             initialPopulationSick.Remove(infectedCitizenID);
@@ -1215,6 +1256,7 @@ namespace RealTime.Pandemic
 
                                             newlyInfectedCitizenIDs.Add(otherCitizenID);
                                             InfectCitizen(otherCitizenID, ref citizens[retrieveID(otherCitizenID)]);
+                                            RecordInfectionSource(otherCitizenID, 0, InfectionType.OUTDOOR);
                                             j--;
                                             continue;
                                         }
@@ -1257,6 +1299,7 @@ namespace RealTime.Pandemic
 
                                                 newlyInfectedCitizenIDs.Add(otherCitizenID);
                                                 InfectCitizen(otherCitizenID, ref citizens[retrieveID(otherCitizenID)]);
+                                                RecordInfectionSource(otherCitizenID, 0, InfectionType.VEHICLE);
                                                 j--;
                                                 continue;
                                             }
@@ -1326,6 +1369,7 @@ namespace RealTime.Pandemic
 
                                                 newlyInfectedCitizenIDs.Add(otherCitizenID);
                                                 InfectCitizen(otherCitizenID, ref citizens[retrieveID(otherCitizenID)]);
+                                                RecordInfectionSource(otherCitizenID, buildingID, InfectionType.INDOOR);
                                                 j--;
                                                 continue;
                                             }
@@ -1497,7 +1541,7 @@ namespace RealTime.Pandemic
             {
                 long infectionInDays = ((simulation.m_currentGameTime.Ticks / 10000) - GetInfectionDate(citizenID)) / 1000 / 3600 / 24;
                 bool knownSick = IsKnownSick(citizenID);
-                if ((knownSick && !Config.OnlyTestedCitizensToQuarantine) || TestManager.Instance.IsBlocked(citizenID, currentDateTime) || infectionInDays > Config.DetectionTime)
+                if ((knownSick && !Config.OnlyTestedCitizensToQuarantine) || TestManager.Instance.IsBlocked(citizenID, currentDateTime) || infectionInDays >= 2)
                 {
                     if (!IsInQuarantine(citizenID))
                     {

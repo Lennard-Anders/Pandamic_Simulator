@@ -12,7 +12,7 @@ namespace RealTime.CustomAI
     {
         private bool ProcessCitizenMoving(ref CitizenSchedule schedule, uint citizenId, ref TCitizen citizen)
         {
-            if (ShouldBeInQuarantine(citizenId) && Config.QuarantineBehavior != RealTime.Config.QuarantineBehavior.None)
+            if (ShouldBeInQuarantine(citizenId))
             {
                 schedule.Schedule(ResidentState.Unknown);
                 return true;

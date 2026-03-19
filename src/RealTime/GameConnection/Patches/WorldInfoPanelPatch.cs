@@ -23,6 +23,9 @@ namespace RealTime.GameConnection.Patches
         /// <summary>Gets or sets the customized campus information panel.</summary>
         public static CustomCampusWorldInfoPanel CampusWorldInfoPanel { get; set; }
 
+        /// <summary>Gets or sets the customized building information panel.</summary>
+        public static CustomBuildingInfoPanel BuildingInfoPanel { get; set; }
+
         /// <summary>Gets the patch for the update bindings method.</summary>
         public static IPatch UpdateBindings { get; } = new WorldInfoPanel_UpdateBindings();
 
@@ -52,6 +55,10 @@ namespace RealTime.GameConnection.Patches
 
                     case CampusWorldInfoPanel _:
                         CampusWorldInfoPanel?.UpdateCustomInfo(ref ___m_InstanceID);
+                        break;
+
+                    case ZonedBuildingWorldInfoPanel _:
+                        BuildingInfoPanel?.UpdateCustomInfo(ref ___m_InstanceID);
                         break;
                 }
             }

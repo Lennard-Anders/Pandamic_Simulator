@@ -98,8 +98,22 @@ namespace RealTime.CustomAI
                 case ScheduleAction.Ignore:
                     return;
 
-                case ScheduleAction.ProcessTransition when ProcessCitizenMoving(ref schedule, citizenId, ref citizen):
-                    return;
+                case ScheduleAction.ProcessTransition:
+                    if (ShouldBeInQuarantine(citizenId))
+                    {
+                        ushort movingInstanceId = CitizenProxy.GetInstance(ref citizen);
+                        if (movingInstanceId != 0)
+                        {
+                            CitizenMgr.StopMoving(movingInstanceId, resetTarget: true);
+                        }
+                        DoScheduledQuarantine(ref schedule, instance, citizenId, ref citizen);
+                        return;
+                    }
+                    if (ProcessCitizenMoving(ref schedule, citizenId, ref citizen))
+                    {
+                        return;
+                    }
+                    break;
             }
 
             switch (schedule.CurrentState)

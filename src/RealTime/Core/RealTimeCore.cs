@@ -213,6 +213,7 @@ namespace RealTime.Core
                 WorldInfoPanelPatch.CitizenInfoPanel = CustomCitizenInfoPanel.Enable(ResidentAIPatch.RealTimeAI, localizationProvider);
                 WorldInfoPanelPatch.VehicleInfoPanel = CustomVehicleInfoPanel.Enable(ResidentAIPatch.RealTimeAI, localizationProvider);
                 WorldInfoPanelPatch.CampusWorldInfoPanel = CustomCampusWorldInfoPanel.Enable(localizationProvider);
+                WorldInfoPanelPatch.BuildingInfoPanel = CustomBuildingInfoPanel.Enable();
             }
 
             AwakeSleepSimulation.Install(configProvider.Configuration);

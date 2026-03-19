@@ -375,7 +375,14 @@ namespace RealTime.CustomAI
                 UpdateCitizenSchedule(ref schedule, citizenId, ref citizen);
             }
 
-            if (TimeInfo.Now < schedule.ScheduledStateTime)
+            if (ShouldBeInQuarantine(citizenId)
+                && schedule.ScheduledState != ResidentState.InQuarantine
+                && schedule.ScheduledState != ResidentState.AtHome)
+            {
+                schedule.Schedule(ResidentState.InQuarantine);
+            }
+
+            if (TimeInfo.Now < schedule.ScheduledStateTime && schedule.ScheduledState != ResidentState.InQuarantine)
             {
                 return;
             }
