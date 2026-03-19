@@ -155,6 +155,11 @@ namespace RealTime.Pandemic
         internal void Init(RealTimeConfig config)
         {
             this.Config = config;
+            _allConsideredCitizens.Clear();
+            _masksOthersProtection.Clear();
+            _masksOwnProtection.Clear();
+            stepLengthInHours = -1;
+            indoorInfectionProbabilityNoContact = 0;
 
             for (int i = 0; i < outdoorTransmissionProbability.Length; i++)
             {

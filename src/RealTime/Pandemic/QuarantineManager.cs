@@ -17,6 +17,13 @@ namespace RealTime.Pandemic
 
         public bool InLockDown { get; set; } = false;
 
+        internal void Reset()
+        {
+            citizensInQuarantine.Clear();
+            citizensInQuarantineAlreadyChecked.Clear();
+            prophylacticQuarantine.Clear();
+        }
+
         public void AddCitizenInQuarantine(uint citizenId, DateTime currentTime)
         {
             citizensInQuarantine[citizenId] = currentTime;

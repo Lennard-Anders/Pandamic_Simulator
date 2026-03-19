@@ -26,8 +26,18 @@ namespace RealTime.Pandemic
         private DateTime lastPerformedTestSick = default;
         private DateTime lastPerformedTestNonSick = default;
 
+        internal void Reset()
+        {
+            positive.Clear();
+            testedCitizens.Clear();
+            population = 0;
+            lastPerformedTestSick = default;
+            lastPerformedTestNonSick = default;
+        }
+
         public void Init(Config.RealTimeConfig config, int population, DateTime initialTime)
         {
+            Reset();
             this.config = config;
             this.population = population;
 

@@ -19,8 +19,8 @@ namespace RealTime.UI
     {
         private const string PanelName = "RealTimePandemicLivePanel";
         private const float PanelWidth = 460f;
-        private const float ExpandedPanelHeight = 428f;
-        private const float DistrictsCollapsedPanelHeight = 332f;
+        private const float ExpandedPanelHeight = 464f;
+        private const float DistrictsCollapsedPanelHeight = 368f;
         private const float CollapsedPanelHeight = 38f;
         private const float PanelMargin = 15f;
         private const float TopOffset = 105f;
@@ -38,11 +38,15 @@ namespace RealTime.UI
         private const float DistrictScrollbarWidth = 10f;
         private const float DistrictContentWidth = ContentWidth - DistrictScrollbarWidth - 6f;
         private const float DistrictLineHeight = 18f;
-        private const float ButtonsYExpanded = 390f;
-        private const float ButtonsYCollapsed = 294f;
-        private const float ButtonWidth = 140f;
         private const float ButtonHeight = 28f;
         private const float ButtonSpacing = 8f;
+        private const float ButtonsRow1YExpanded = 390f;
+        private const float ButtonsRow2YExpanded = ButtonsRow1YExpanded + ButtonHeight + ButtonSpacing;
+        private const float ButtonsRow1YCollapsed = 294f;
+        private const float ButtonsRow2YCollapsed = ButtonsRow1YCollapsed + ButtonHeight + ButtonSpacing;
+        private const float ButtonWidth = (ContentWidth - ButtonSpacing) / 2f;
+        private const string RestartDialogTitle = "Restart Pandemic";
+        private const string RestartDialogMessage = "Discard the current pandemic run and restart it with the current settings?";
 
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
         private bool collapsed;
@@ -59,6 +63,7 @@ namespace RealTime.UI
         private UIButton maskButton;
         private UIButton quarantineButton;
         private UIButton lockdownButton;
+        private UIButton restartButton;
 
         /// <summary>Enables the live panel.</summary>
         public void Enable()
@@ -146,14 +151,18 @@ namespace RealTime.UI
             districtScrollbar.eventValueChanged += (c, value) => districtScrollPanel.scrollPosition = new Vector2(0f, value);
 
             float buttonsX = HorizontalPadding;
-            maskButton = CreateToggleButton("Masks", buttonsX, ButtonsYExpanded, ButtonWidth);
+            float buttonsRightX = HorizontalPadding + ButtonWidth + ButtonSpacing;
+            maskButton = CreateToggleButton("Masks", buttonsX, ButtonsRow1YExpanded, ButtonWidth);
             maskButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleMasks(); RefreshButtons(); };
 
-            quarantineButton = CreateToggleButton("Quarantine", buttonsX + ButtonWidth + ButtonSpacing, ButtonsYExpanded, ButtonWidth);
+            quarantineButton = CreateToggleButton("Quarantine", buttonsRightX, ButtonsRow1YExpanded, ButtonWidth);
             quarantineButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleQuarantine(); RefreshButtons(); };
 
-            lockdownButton = CreateToggleButton("Social Dist.", buttonsX + ((ButtonWidth + ButtonSpacing) * 2f), ButtonsYExpanded, ButtonWidth);
+            lockdownButton = CreateToggleButton("Lock", buttonsX, ButtonsRow2YExpanded, ButtonWidth);
             lockdownButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleLockdown(); RefreshButtons(); };
+
+            restartButton = CreateToggleButton("Restart", buttonsRightX, ButtonsRow2YExpanded, ButtonWidth);
+            restartButton.eventClicked += (c, e) => ShowRestartConfirmation();
 
             PandemicLivePanelUpdateBehavior updater = panel.gameObject.AddComponent<PandemicLivePanelUpdateBehavior>();
             updater.Owner = this;
@@ -179,6 +188,7 @@ namespace RealTime.UI
                 maskButton = null;
                 quarantineButton = null;
                 lockdownButton = null;
+                restartButton = null;
             }
         }
 
@@ -400,6 +410,7 @@ namespace RealTime.UI
             if (maskButton != null) maskButton.isVisible = !collapsed;
             if (quarantineButton != null) quarantineButton.isVisible = !collapsed;
             if (lockdownButton != null) lockdownButton.isVisible = !collapsed;
+            if (restartButton != null) restartButton.isVisible = !collapsed;
 
             panel.height = collapsed
                 ? CollapsedPanelHeight
@@ -432,12 +443,22 @@ namespace RealTime.UI
             districtScrollPanel.isVisible = showDistricts;
             districtScrollbar.isVisible = showDistricts;
 
-            float buttonsY = showDistricts ? ButtonsYExpanded : ButtonsYCollapsed;
-            maskButton.relativePosition = new Vector3(maskButton.relativePosition.x, buttonsY);
-            quarantineButton.relativePosition = new Vector3(quarantineButton.relativePosition.x, buttonsY);
-            lockdownButton.relativePosition = new Vector3(lockdownButton.relativePosition.x, buttonsY);
+            float topRowY = showDistricts ? ButtonsRow1YExpanded : ButtonsRow1YCollapsed;
+            float bottomRowY = showDistricts ? ButtonsRow2YExpanded : ButtonsRow2YCollapsed;
+            LayoutButtons(topRowY, bottomRowY);
 
             SyncDistrictScrollbar();
+        }
+
+        private void LayoutButtons(float topRowY, float bottomRowY)
+        {
+            float leftX = HorizontalPadding;
+            float rightX = HorizontalPadding + ButtonWidth + ButtonSpacing;
+
+            maskButton.relativePosition = new Vector3(leftX, topRowY);
+            quarantineButton.relativePosition = new Vector3(rightX, topRowY);
+            lockdownButton.relativePosition = new Vector3(leftX, bottomRowY);
+            restartButton.relativePosition = new Vector3(rightX, bottomRowY);
         }
 
         private void RefreshDistrictToggle()
@@ -468,6 +489,28 @@ namespace RealTime.UI
             quarantineButton.color = quarantineOn ? new Color32(30, 160, 30, 255) : new Color32(160, 30, 30, 255);
             lockdownButton.text = "Lock: " + (lockdownOn ? "ON" : "OFF");
             lockdownButton.color = lockdownOn ? new Color32(30, 160, 30, 255) : new Color32(160, 30, 30, 255);
+            restartButton.text = "Restart";
+            restartButton.color = new Color32(70, 110, 170, 255);
+        }
+
+        private void ShowRestartConfirmation()
+        {
+            PandemicManager manager = PandemicManager.Instance;
+            if (manager == null)
+            {
+                return;
+            }
+
+            ConfirmPanel.ShowModal(RestartDialogTitle, RestartDialogMessage, (component, result) =>
+            {
+                if (result != 1)
+                {
+                    return;
+                }
+
+                manager.RestartSimulation();
+                Refresh();
+            });
         }
 
         private void SyncDistrictScrollbar()

@@ -20,6 +20,21 @@ namespace RealTime.Pandemic
         int totalOutdoorInfections;
         int totalVehicleInfections;
 
+        internal void Reset()
+        {
+            observations.Clear();
+            ignored = default;
+            exported = false;
+            totalIndoorInfections = 0;
+            totalOutdoorInfections = 0;
+            totalVehicleInfections = 0;
+            GeneralObservation.HealthyCitizens = 0;
+            GeneralObservation.SickCitizens = 0;
+            GeneralObservation.RecoveredCitizens = 0;
+            GeneralObservation.DeadCitizens = 0;
+            GeneralObservation.Infections.Clear();
+        }
+
         public void WriteToDisc(bool force)
         {
             if (!force && exported)

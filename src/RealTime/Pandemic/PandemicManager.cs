@@ -131,23 +131,27 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            if (!active || Config == null || CitizenMgr == null || CitizenProxy == null || BuildingMgr == null)
-            {
-                Log.Warning("The 'Real Time' pandemic manager cannot start because it was not initialized.");
-                return;
-            }
+            BootstrapSimulation(lockdownEnabled: true);
+        }
 
-            var simulationObject = GameObject.Find("SimulationManager");
-            simulation = simulationObject?.GetComponent<SimulationManager>();
-            if (simulation == null)
+        public bool RestartSimulation()
+        {
+            bool lockdownEnabled = QuarantineManager.Instance.InLockDown;
+            BootstrapSimulation(lockdownEnabled);
+            return startCompleted;
+        }
+
+        private void BootstrapSimulation(bool lockdownEnabled)
+        {
+            if (!TryPrepareSimulationForBootstrap())
             {
-                Log.Warning("The 'Real Time' pandemic manager could not find the simulation manager.");
                 return;
             }
 
             try
             {
                 ResetRuntimeStateForBootstrap();
+                ResetPandemicServices(lockdownEnabled);
                 currentDateTime = simulation.m_currentGameTime;
 
                 Citizen[] citizens = CitizenMgr.GetCitizensArray();
@@ -156,7 +160,7 @@ namespace RealTime.Pandemic
 
                 for (uint i = 0; i < citizens.Length; i++)
                 {
-                    if (CitizenProxy.IsEmpty(ref citizens[retrieveID(i)]) || CitizenProxy.GetHomeBuilding(ref citizens[retrieveID(i)]) == 0)
+                    if (CitizenProxy.IsEmpty(ref citizens[i]) || CitizenProxy.IsDead(ref citizens[i]) || CitizenProxy.GetHomeBuilding(ref citizens[i]) == 0)
                     {
                         continue;
                     }
@@ -164,13 +168,13 @@ namespace RealTime.Pandemic
                     initialPopulation.Add(i);
                     usedCitizens.Add(i);
 
-                    if (CitizenProxy.IsSick(ref citizens[retrieveID(i)]))
+                    if (CitizenProxy.IsSick(ref citizens[i]))
                     {
-                        CitizenProxy.SetSick(ref citizens[retrieveID(i)], false);
+                        CitizenProxy.SetSick(ref citizens[i], false);
                     }
 
                     initialPopulationHealthy.Add(i);
-                    if (CitizenProxy.GetLocation(ref citizens[retrieveID(i)]) == Citizen.Location.Home)
+                    if (CitizenProxy.GetLocation(ref citizens[i]) == Citizen.Location.Home)
                     {
                         infectionCandidates.Add(i);
                     }
@@ -241,11 +245,10 @@ namespace RealTime.Pandemic
                     Log.Warning("The 'Real Time' pandemic manager failed to persist initial observer output: " + ex);
                 }
 
-                QuarantineManager.Instance.InLockDown = true;
-
                 TestManager.Instance.Init(Config, initialPopulation.Count, currentDateTime);
-                Masks?.Init(Config);
+                QuarantineManager.Instance.InLockDown = lockdownEnabled;
                 startCompleted = true;
+                BuildPandemicBuildingSets();
             }
             catch (Exception ex)
             {
@@ -253,6 +256,43 @@ namespace RealTime.Pandemic
                 active = false;
                 startCompleted = false;
             }
+        }
+
+        private bool TryPrepareSimulationForBootstrap()
+        {
+            if (Config == null || CitizenMgr == null || CitizenProxy == null || BuildingMgr == null)
+            {
+                Log.Warning("The 'Real Time' pandemic manager cannot start because it was not initialized.");
+                active = false;
+                return false;
+            }
+
+            EnsureRuntimeConfigDefaults();
+            active = true;
+            if (Observer == null)
+            {
+                Observer = new PandemicObserver();
+            }
+
+            var simulationObject = GameObject.Find("SimulationManager");
+            simulation = simulationObject?.GetComponent<SimulationManager>();
+            if (simulation == null)
+            {
+                Log.Warning("The 'Real Time' pandemic manager could not find the simulation manager.");
+                return false;
+            }
+
+            return true;
+        }
+
+        private void ResetPandemicServices(bool lockdownEnabled)
+        {
+            Observer?.Reset();
+            ContactManager.Instance.Init(Config);
+            TestManager.Instance.Reset();
+            Masks?.Init(Config);
+            QuarantineManager.Instance.Reset();
+            QuarantineManager.Instance.InLockDown = lockdownEnabled;
         }
 
         public void Update()
@@ -937,6 +977,7 @@ namespace RealTime.Pandemic
 
         private void ResetRuntimeStateForBootstrap()
         {
+            startCompleted = false;
             initialPopulation.Clear();
             initialPopulationHealthy.Clear();
             initialPopulationRecovered.Clear();
@@ -950,6 +991,16 @@ namespace RealTime.Pandemic
             infectedCitizensWithSymptoms.Clear();
             infectedBuildingIds.Clear();
             quarantineBuildingIds.Clear();
+            hotspotBuildingIds.Clear();
+            buildingInfectedCounts.Clear();
+            quarantineFateTimestampMs.Clear();
+            quarantineFatedToDie.Clear();
+            infectionSourceBuilding.Clear();
+            infectionSourceType.Clear();
+            lastDateTime = default;
+            lastDateTimeCitizensUpdate = default;
+            lastStoreTime = default;
+            currentDateTime = default;
             hadAnySickCitizens = false;
         }
 
