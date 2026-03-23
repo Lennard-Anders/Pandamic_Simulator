@@ -73,6 +73,12 @@ namespace RealTime.CustomAI
 
             ushort targetBuilding = CitizenMgr.GetTargetBuilding(instanceId);
             bool headingToWork = targetBuilding == CitizenProxy.GetWorkBuilding(ref citizen);
+            if (targetBuilding != 0 && !buildingAI.IsBuildingActive(targetBuilding))
+            {
+                schedule.Schedule(ResidentState.AtHome);
+                return false;
+            }
+
             if (vehicleId != 0 && schedule.DepartureTime != default)
             {
                 float maxTravelTime = headingToWork

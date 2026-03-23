@@ -276,6 +276,101 @@ namespace RealTime.Config
         [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
         public float SymptomProbability { get; set; }
 
+        /// <summary>Gets or sets the infected count threshold for hub highlighting.</summary>
+        [ConfigItem("PandemicMonitor", "Overlays", 0)]
+        [ConfigItemSlider(2, 30, 1, ValueType = SliderValueType.Default)]
+        public int HubHighlightThreshold { get; set; }
+
+        /// <summary>Gets or sets the minimum infection count for a citizen superspreader label.</summary>
+        [ConfigItem("PandemicMonitor", "Superspreaders", 0)]
+        [ConfigItemSlider(2, 20, 1, ValueType = SliderValueType.Default)]
+        public int SuperspreaderCitizenThreshold { get; set; }
+
+        /// <summary>Gets or sets the minimum infection count for a location superspreader label.</summary>
+        [ConfigItem("PandemicMonitor", "Superspreaders", 1)]
+        [ConfigItemSlider(2, 50, 1, ValueType = SliderValueType.Default)]
+        public int SuperspreaderLocationThreshold { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether education buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 0)]
+        [ConfigItemCheckBox]
+        public bool CloseEducationDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the education auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 1)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float CloseEducationThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether public transport buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 2)]
+        [ConfigItemCheckBox]
+        public bool ClosePublicTransportDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the public transport auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 3)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ClosePublicTransportThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether commercial buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 4)]
+        [ConfigItemCheckBox]
+        public bool CloseCommercialDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the commercial auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 5)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float CloseCommercialThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether leisure, tourism and park buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 6)]
+        [ConfigItemCheckBox]
+        public bool CloseLeisureTourismParksDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the leisure, tourism and park auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 7)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float CloseLeisureTourismParksThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether office buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 8)]
+        [ConfigItemCheckBox]
+        public bool CloseOfficeDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the office auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 9)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float CloseOfficeThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether industry buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 10)]
+        [ConfigItemCheckBox]
+        public bool CloseIndustryDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the industry auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 11)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float CloseIndustryThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether government and other public buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 12)]
+        [ConfigItemCheckBox]
+        public bool CloseGovernmentOtherPublicDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the government and other public auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 13)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float CloseGovernmentOtherPublicThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether essential-service buildings close during lockdown.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 14)]
+        [ConfigItemCheckBox]
+        public bool CloseEssentialServicesDuringLockdown { get; set; }
+
+        /// <summary>Gets or sets the essential-services auto-close threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 15)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float CloseEssentialServicesThresholdPercent { get; set; }
+
         /// <summary>
         /// Gets or sets a value that determines the percentage of the Cims that will work second shift.
         /// Valid values are 1..8.
@@ -537,6 +632,17 @@ namespace RealTime.Config
             IndoorDiseaseTransmissionProbability = FastMath.Clamp(IndoorDiseaseTransmissionProbability, 0f, 10f);
             OutdoorDiseaseTransmissionProbability = FastMath.Clamp(OutdoorDiseaseTransmissionProbability, 0f, 10f);
             SymptomProbability = FastMath.Clamp(SymptomProbability, 0f, 100f);
+            HubHighlightThreshold = FastMath.Clamp(HubHighlightThreshold, 2, 30);
+            SuperspreaderCitizenThreshold = FastMath.Clamp(SuperspreaderCitizenThreshold, 2, 20);
+            SuperspreaderLocationThreshold = FastMath.Clamp(SuperspreaderLocationThreshold, 2, 50);
+            CloseEducationThresholdPercent = FastMath.Clamp(CloseEducationThresholdPercent, 0f, 100f);
+            ClosePublicTransportThresholdPercent = FastMath.Clamp(ClosePublicTransportThresholdPercent, 0f, 100f);
+            CloseCommercialThresholdPercent = FastMath.Clamp(CloseCommercialThresholdPercent, 0f, 100f);
+            CloseLeisureTourismParksThresholdPercent = FastMath.Clamp(CloseLeisureTourismParksThresholdPercent, 0f, 100f);
+            CloseOfficeThresholdPercent = FastMath.Clamp(CloseOfficeThresholdPercent, 0f, 100f);
+            CloseIndustryThresholdPercent = FastMath.Clamp(CloseIndustryThresholdPercent, 0f, 100f);
+            CloseGovernmentOtherPublicThresholdPercent = FastMath.Clamp(CloseGovernmentOtherPublicThresholdPercent, 0f, 100f);
+            CloseEssentialServicesThresholdPercent = FastMath.Clamp(CloseEssentialServicesThresholdPercent, 0f, 100f);
         }
 
         /// <summary>Resets all values to their defaults.</summary>
@@ -616,6 +722,25 @@ namespace RealTime.Config
             DeathAdult = 0.5f;
             DeathSenior = 2.0f;
             SymptomProbability = 60f;
+            HubHighlightThreshold = 6;
+            SuperspreaderCitizenThreshold = 5;
+            SuperspreaderLocationThreshold = 10;
+            CloseEducationDuringLockdown = true;
+            CloseEducationThresholdPercent = 0f;
+            ClosePublicTransportDuringLockdown = false;
+            ClosePublicTransportThresholdPercent = 35f;
+            CloseCommercialDuringLockdown = true;
+            CloseCommercialThresholdPercent = 0f;
+            CloseLeisureTourismParksDuringLockdown = true;
+            CloseLeisureTourismParksThresholdPercent = 0f;
+            CloseOfficeDuringLockdown = false;
+            CloseOfficeThresholdPercent = 25f;
+            CloseIndustryDuringLockdown = false;
+            CloseIndustryThresholdPercent = 30f;
+            CloseGovernmentOtherPublicDuringLockdown = false;
+            CloseGovernmentOtherPublicThresholdPercent = 40f;
+            CloseEssentialServicesDuringLockdown = false;
+            CloseEssentialServicesThresholdPercent = 100f;
 
             ShowIncompatibilityNotifications = true;
         }

@@ -13,6 +13,7 @@ namespace RealTime.Pandemic
     {
         public PandemicObservation GeneralObservation { get; } = new PandemicObservation(default);
         List<PandemicObservation> observations = new List<PandemicObservation>();
+        Dictionary<PandemicInfectionOriginCategory, int> totalOriginCounts = new Dictionary<PandemicInfectionOriginCategory, int>();
         DateTime ignored;
 
         bool exported = false;
@@ -28,6 +29,7 @@ namespace RealTime.Pandemic
             totalIndoorInfections = 0;
             totalOutdoorInfections = 0;
             totalVehicleInfections = 0;
+            totalOriginCounts.Clear();
             GeneralObservation.HealthyCitizens = 0;
             GeneralObservation.SickCitizens = 0;
             GeneralObservation.RecoveredCitizens = 0;
@@ -66,7 +68,16 @@ namespace RealTime.Pandemic
 
                 foreach (Infection infection in GeneralObservation.Infections[citizenID])
                 {
-                    csv.AppendLine(string.Format(";{0};{1};{2};{3};{4}", infection.infectedCitizenId, infection.type, infection.time.Ticks / TimeSpan.TicksPerMillisecond, infection.position, infection.buildingType));
+                    csv.AppendLine(string.Format(
+                        ";{0};{1};{2};{3};{4};{5};{6};{7}",
+                        infection.infectedCitizenId,
+                        infection.type,
+                        infection.OriginCategory,
+                        infection.time.Ticks / TimeSpan.TicksPerMillisecond,
+                        infection.position,
+                        infection.buildingType,
+                        infection.BuildingId,
+                        infection.VehicleId));
                 }
             }
 
@@ -214,28 +225,28 @@ namespace RealTime.Pandemic
             GeneralObservation.AddInfectiousCitizen(infectingCitizenId);
         }
 
-        public void AddCitizenInfection(uint infectingCitizenId, uint infectedCitizenId, InfectionType type, DateTime simulationTime, Vector3 position, ItemClass.Service buildingType)
+        public void AddCitizenInfection(uint infectingCitizenId, uint infectedCitizenId, DateTime simulationTime, PandemicInfectionOriginInfo origin)
         {
             if (simulationTime.Ticks == ignored.Ticks)
             {
                 return;
             }
-            CountInfection(type);
-            PandemicObservation observation = GetObservation(simulationTime);
-            observation.AddInfection(infectingCitizenId, infectedCitizenId, simulationTime, type, position, buildingType);
-            GeneralObservation.AddInfection(infectingCitizenId, infectedCitizenId, simulationTime, type, position, buildingType);
-        }
 
-        public void AddCitizenInfection(uint infectingCitizenId, uint infectedCitizenId, InfectionType type, DateTime simulationTime, Vector3 position)
-        {
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (origin == null)
             {
-                return;
+                origin = new PandemicInfectionOriginInfo
+                {
+                    Category = PandemicInfectionOriginCategory.OtherUnknown,
+                    LegacyType = InfectionType.OUTDOOR,
+                    Position = Vector3.zero,
+                };
             }
-            CountInfection(type);
+
+            CountInfection(origin.LegacyType);
+            CountOrigin(origin.Category);
             PandemicObservation observation = GetObservation(simulationTime);
-            observation.AddInfection(infectingCitizenId, infectedCitizenId, simulationTime, type, position);
-            GeneralObservation.AddInfection(infectingCitizenId, infectedCitizenId, simulationTime, type, position);
+            observation.AddInfection(infectingCitizenId, infectedCitizenId, simulationTime, origin);
+            GeneralObservation.AddInfection(infectingCitizenId, infectedCitizenId, simulationTime, origin);
         }
 
         public int GetObservationCount()
@@ -261,6 +272,16 @@ namespace RealTime.Pandemic
         public int GetVehicleInfections()
         {
             return totalVehicleInfections;
+        }
+
+        public IDictionary<PandemicInfectionOriginCategory, int> GetOriginCounts()
+        {
+            return new Dictionary<PandemicInfectionOriginCategory, int>(totalOriginCounts);
+        }
+
+        public IList<PandemicObservation> GetObservations()
+        {
+            return new List<PandemicObservation>(observations);
         }
 
         public bool TryGetLatestObservation(out PandemicObservation observation)
@@ -324,9 +345,21 @@ namespace RealTime.Pandemic
                     break;
             }
         }
+
+        private void CountOrigin(PandemicInfectionOriginCategory category)
+        {
+            if (totalOriginCounts.ContainsKey(category))
+            {
+                totalOriginCounts[category]++;
+            }
+            else
+            {
+                totalOriginCounts[category] = 1;
+            }
+        }
     }
 
-    public class PandemicObservation
+    internal class PandemicObservation
     {
         public PandemicObservation(DateTime simulationTime)
         {
@@ -342,22 +375,13 @@ namespace RealTime.Pandemic
 
         public Dictionary<uint, List<Infection>> Infections { get; } = new Dictionary<uint, List<Infection>>();
 
-        internal void AddInfection(uint infectingCitizenId, uint infectedCitizenId, DateTime currentTime, InfectionType type, Vector3 position, ItemClass.Service buildingType)
+        internal void AddInfection(uint infectingCitizenId, uint infectedCitizenId, DateTime currentTime, PandemicInfectionOriginInfo origin)
         {
             if (!Infections.ContainsKey(infectingCitizenId))
             {
                 Infections.Add(infectingCitizenId, new List<Infection>());
             }
-            Infections[infectingCitizenId].Add(new Infection(infectedCitizenId, currentTime, type, position, buildingType));
-        }
-
-        internal void AddInfection(uint infectingCitizenId, uint infectedCitizenId, DateTime currentTime, InfectionType type, Vector3 position)
-        {
-            if (!Infections.ContainsKey(infectingCitizenId))
-            {
-                Infections.Add(infectingCitizenId, new List<Infection>());
-            }
-            Infections[infectingCitizenId].Add(new Infection(infectedCitizenId, currentTime, type, position));
+            Infections[infectingCitizenId].Add(new Infection(infectedCitizenId, currentTime, origin));
         }
 
         internal void AddInfectiousCitizen(uint infectingCitizenId)
@@ -369,26 +393,29 @@ namespace RealTime.Pandemic
         }
     }
 
-    public class Infection
+    internal class Infection
     {
         public InfectionType type { get; }
         public DateTime time { get; }
         public uint infectedCitizenId { get; }
         public Vector3 position { get; }
         public ItemClass.Service buildingType { get; }
+        public ItemClass.SubService buildingSubType { get; }
+        public PandemicInfectionOriginCategory OriginCategory { get; }
+        public ushort BuildingId { get; }
+        public ushort VehicleId { get; }
 
-        public Infection(uint infectedCitizenId, DateTime time, InfectionType type, Vector3 position, ItemClass.Service buildingType) : this(infectedCitizenId, time, type, position)
-        {
-            this.buildingType = buildingType;
-
-        }
-
-        public Infection(uint infectedCitizenId, DateTime time, InfectionType type, Vector3 position)
+        public Infection(uint infectedCitizenId, DateTime time, PandemicInfectionOriginInfo origin)
         {
             this.infectedCitizenId = infectedCitizenId;
             this.time = time;
-            this.type = type;
-            this.position = position;
+            type = origin?.LegacyType ?? InfectionType.OUTDOOR;
+            position = origin?.Position ?? Vector3.zero;
+            buildingType = origin?.BuildingService ?? ItemClass.Service.None;
+            buildingSubType = origin?.BuildingSubService ?? ItemClass.SubService.None;
+            OriginCategory = origin?.Category ?? PandemicInfectionOriginCategory.OtherUnknown;
+            BuildingId = origin?.BuildingId ?? 0;
+            VehicleId = origin?.VehicleId ?? 0;
         }
     }
 

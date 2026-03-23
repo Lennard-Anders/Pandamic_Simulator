@@ -107,6 +107,7 @@ namespace RealTime.CustomAI
                 switch (BuildingMgr.GetBuildingService(visitBuilding))
                 {
                     case ItemClass.Service.HealthCare:
+                        PandemicManager.Instance?.OnCitizenVisitedHealthcare(citizenId);
                         UpdateSickStateOnVisitingHealthcare(citizenId, visitBuilding, ref citizen);
                         return true;
 
@@ -116,7 +117,11 @@ namespace RealTime.CustomAI
             }
 
             Log.Debug(LogCategory.State, TimeInfo.Now, $"{GetCitizenDesc(citizenId, ref citizen)} is sick, trying to get to a hospital");
-            residentAI.FindHospital(instance, citizenId, currentBuilding, TransferManager.TransferReason.Sick);
+            if (!residentAI.FindHospital(instance, citizenId, currentBuilding, TransferManager.TransferReason.Sick))
+            {
+                PandemicManager.Instance?.OnHospitalUnavailable(citizenId);
+            }
+
             return true;
         }
 

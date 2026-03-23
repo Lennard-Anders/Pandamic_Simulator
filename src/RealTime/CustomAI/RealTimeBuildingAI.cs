@@ -9,6 +9,7 @@ namespace RealTime.CustomAI
     using System.Linq;
     using RealTime.Config;
     using RealTime.GameConnection;
+    using RealTime.Pandemic;
     using RealTime.Simulation;
     using static Constants;
 
@@ -307,6 +308,11 @@ namespace RealTime.CustomAI
                 return false;
             }
 
+            if (PandemicManager.Instance != null && !PandemicManager.Instance.IsBuildingOpenForPandemic(buildingId))
+            {
+                return false;
+            }
+
             var buildingService = buildingManager.GetBuildingService(buildingId);
             if (buildingService == ItemClass.Service.VarsitySports)
             {
@@ -352,6 +358,11 @@ namespace RealTime.CustomAI
                 return false;
             }
 
+            if (PandemicManager.Instance != null && !PandemicManager.Instance.IsBuildingOpenForPandemic(buildingId))
+            {
+                return false;
+            }
+
             var buildingService = buildingManager.GetBuildingService(buildingId);
             if (buildingService == ItemClass.Service.VarsitySports)
             {
@@ -372,7 +383,15 @@ namespace RealTime.CustomAI
         /// <returns>
         ///   <c>true</c> if the building with specified ID is currently active; otherwise, <c>false</c>.
         /// </returns>
-        public bool IsBuildingActive(ushort buildingId) => buildingManager.BuildingHasFlags(buildingId, Building.Flags.Active);
+        public bool IsBuildingActive(ushort buildingId)
+        {
+            if (!buildingManager.BuildingHasFlags(buildingId, Building.Flags.Active))
+            {
+                return false;
+            }
+
+            return PandemicManager.Instance == null || PandemicManager.Instance.IsBuildingOpenForPandemic(buildingId);
+        }
 
         /// <summary>
         /// Determines whether the building with the specified <paramref name="buildingId"/> is noise restricted

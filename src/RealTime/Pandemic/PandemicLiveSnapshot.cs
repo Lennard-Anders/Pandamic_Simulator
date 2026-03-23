@@ -1,12 +1,25 @@
 namespace RealTime.Pandemic
 {
     using System.Collections.Generic;
+    using UnityEngine;
 
     internal sealed class PandemicLiveSnapshot
     {
         public bool IsActive { get; set; }
 
         public bool IsInitialized { get; set; }
+
+        public PandemicLifecycleState LifecycleState { get; set; }
+
+        public bool HasStartedAtLeastOnce { get; set; }
+
+        public bool CanStart { get; set; }
+
+        public bool CanRestart { get; set; }
+
+        public bool WorldOverlaysEnabled { get; set; }
+
+        public PandemicXRayMode XRayMode { get; set; }
 
         public System.DateTime SimulationTime { get; set; }
 
@@ -46,9 +59,27 @@ namespace RealTime.Pandemic
 
         public int ObservationCount { get; set; }
 
+        public int HotspotBuildings { get; set; }
+
+        public int HubBuildings { get; set; }
+
+        public bool HasChartData { get; set; }
+
         public IList<PandemicAgeGroupSnapshot> AgeGroups { get; } = new List<PandemicAgeGroupSnapshot>();
 
         public IList<PandemicDistrictSnapshot> Districts { get; } = new List<PandemicDistrictSnapshot>();
+
+        public IList<PandemicOriginSnapshot> Origins { get; } = new List<PandemicOriginSnapshot>();
+
+        public IList<PandemicSuperspreaderCitizenSnapshot> TopSpreaders { get; } = new List<PandemicSuperspreaderCitizenSnapshot>();
+
+        public IList<PandemicSuperspreaderLocationSnapshot> TopOriginLocations { get; } = new List<PandemicSuperspreaderLocationSnapshot>();
+
+        public IList<PandemicLockdownFamilySnapshot> LockdownFamilies { get; } = new List<PandemicLockdownFamilySnapshot>();
+
+        public IList<PandemicChartPointSnapshot> ChartPoints { get; } = new List<PandemicChartPointSnapshot>();
+
+        public IList<PandemicPolicyMarkerSnapshot> PolicyMarkers { get; } = new List<PandemicPolicyMarkerSnapshot>();
     }
 
     internal sealed class PandemicAgeGroupSnapshot
@@ -71,5 +102,77 @@ namespace RealTime.Pandemic
         public int ResidentCount { get; set; }
 
         public float InfectedPercent { get; set; }
+    }
+
+    internal sealed class PandemicOriginSnapshot
+    {
+        public string Label { get; set; }
+
+        public int Count { get; set; }
+
+        public float Percent { get; set; }
+    }
+
+    internal sealed class PandemicSuperspreaderCitizenSnapshot
+    {
+        public uint CitizenId { get; set; }
+
+        public string Label { get; set; }
+
+        public int InfectionCount { get; set; }
+
+        public bool IsSuperspreader { get; set; }
+
+        public bool CanFocus { get; set; }
+
+        public Vector3 FocusPosition { get; set; }
+    }
+
+    internal sealed class PandemicSuperspreaderLocationSnapshot
+    {
+        public string Label { get; set; }
+
+        public int InfectionCount { get; set; }
+
+        public bool IsSuperspreader { get; set; }
+
+        public ushort BuildingId { get; set; }
+
+        public bool CanFocus { get; set; }
+
+        public Vector3 FocusPosition { get; set; }
+    }
+
+    internal sealed class PandemicLockdownFamilySnapshot
+    {
+        public PandemicLockdownFamily Family { get; set; }
+
+        public string Label { get; set; }
+
+        public bool IsClosed { get; set; }
+
+        public bool ManualClosed { get; set; }
+
+        public float AutoCloseThresholdPercent { get; set; }
+
+        public float CurrentInfectedPercent { get; set; }
+    }
+
+    internal sealed class PandemicChartPointSnapshot
+    {
+        public System.DateTime SimulationTime { get; set; }
+
+        public int InfectedCount { get; set; }
+    }
+
+    internal sealed class PandemicPolicyMarkerSnapshot
+    {
+        public System.DateTime SimulationTime { get; set; }
+
+        public PandemicPolicyMarkerType Type { get; set; }
+
+        public bool Enabled { get; set; }
+
+        public string ShortLabel { get; set; }
     }
 }

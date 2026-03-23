@@ -6,15 +6,13 @@ namespace RealTime.Pandemic
     using UnityEngine;
 
     /// <summary>
-    /// A MonoBehaviour that shows a floating quarantine icon above residential buildings
-    /// that have more than one infected resident (hotspots).
-    /// Uses a TextMesh billboard so it always faces the camera.
+    /// Shows floating pandemic icons above infected residential buildings and highlighted hubs.
+    /// Residential icons scale with infected residents; hubs use a separate warning symbol.
     /// </summary>
     internal sealed class QuarantineBuildingIconBehavior : MonoBehaviour
     {
-        // Height in world units above the building position
         private const float IconHeight = 30f;
-        private const float IconCharSize = 1.2f;
+        private const float BaseIconCharSize = 1.2f;
         private const int IconFontSize = 80;
 
         private readonly Dictionary<ushort, GameObject> iconObjects = new Dictionary<ushort, GameObject>();
@@ -30,14 +28,15 @@ namespace RealTime.Pandemic
         private void LateUpdate()
         {
             var manager = PandemicManager.Instance;
-            if (manager == null)
+            if (manager == null || !manager.AreWorldOverlaysEnabled())
             {
                 ClearAll();
                 return;
             }
 
-            var hotspots = manager.HotspotBuildingIds;
-            if (hotspots == null || hotspots.Count == 0)
+            var infectedHomes = manager.InfectedBuildingIds;
+            var hubs = manager.HubBuildingIds;
+            if ((infectedHomes == null || infectedHomes.Count == 0) && (hubs == null || hubs.Count == 0))
             {
                 ClearAll();
                 return;
@@ -49,83 +48,128 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            var cam = Camera.main;
+            var camera = Camera.main;
+            var activeBuildings = new HashSet<ushort>();
 
-            foreach (ushort buildingId in hotspots)
+            if (infectedHomes != null)
             {
-                if (buildingId == 0 || buildingId >= buildingBuffer.Length)
+                foreach (ushort buildingId in infectedHomes)
                 {
-                    continue;
-                }
-
-                if ((buildingBuffer[buildingId].m_flags & Building.Flags.Created) == 0)
-                {
-                    continue;
-                }
-
-                Vector3 pos = buildingBuffer[buildingId].m_position;
-                pos.y += IconHeight;
-
-                if (!iconObjects.TryGetValue(buildingId, out var go) || go == null)
-                {
-                    go = CreateIcon(buildingId);
-                    iconObjects[buildingId] = go;
-                }
-
-                go.transform.position = pos;
-
-                if (cam != null)
-                {
-                    go.transform.LookAt(cam.transform.position);
-                    go.transform.Rotate(0f, 180f, 0f);
+                    UpdateBuildingIcon(
+                        buildingId,
+                        infectedCount: manager.GetInfectedCountInBuilding(buildingId),
+                        isHub: false,
+                        buildingBuffer: buildingBuffer,
+                        camera: camera,
+                        activeBuildings: activeBuildings);
                 }
             }
 
-            // Remove icons for buildings that are no longer hotspots
+            if (hubs != null)
+            {
+                foreach (ushort buildingId in hubs)
+                {
+                    UpdateBuildingIcon(
+                        buildingId,
+                        infectedCount: manager.GetCurrentInfectedCountAtBuilding(buildingId),
+                        isHub: true,
+                        buildingBuffer: buildingBuffer,
+                        camera: camera,
+                        activeBuildings: activeBuildings);
+                }
+            }
+
             removalBuffer.Clear();
             foreach (var kvp in iconObjects)
             {
-                if (!hotspots.Contains(kvp.Key))
+                if (!activeBuildings.Contains(kvp.Key))
                 {
                     removalBuffer.Add(kvp.Key);
                 }
             }
 
-            foreach (ushort id in removalBuffer)
+            foreach (ushort buildingId in removalBuffer)
             {
-                if (iconObjects.TryGetValue(id, out var go) && go != null)
+                if (iconObjects.TryGetValue(buildingId, out GameObject go) && go != null)
                 {
                     Destroy(go);
                 }
 
-                iconObjects.Remove(id);
+                iconObjects.Remove(buildingId);
+            }
+        }
+
+        private void UpdateBuildingIcon(
+            ushort buildingId,
+            int infectedCount,
+            bool isHub,
+            Building[] buildingBuffer,
+            Camera camera,
+            HashSet<ushort> activeBuildings)
+        {
+            if (buildingId == 0 || infectedCount <= 0 || buildingId >= buildingBuffer.Length)
+            {
+                return;
+            }
+
+            if ((buildingBuffer[buildingId].m_flags & Building.Flags.Created) == 0)
+            {
+                return;
+            }
+
+            activeBuildings.Add(buildingId);
+
+            if (!iconObjects.TryGetValue(buildingId, out GameObject go) || go == null)
+            {
+                go = CreateIcon(buildingId);
+                iconObjects[buildingId] = go;
+            }
+
+            TextMesh textMesh = go.GetComponent<TextMesh>();
+            if (textMesh != null)
+            {
+                float scale = Mathf.Clamp(1f + ((infectedCount - 1) * 0.25f), 1f, 2.5f);
+                textMesh.text = isHub ? "\u26A0" : "\u2623";
+                textMesh.characterSize = BaseIconCharSize * scale;
+                textMesh.color = isHub
+                    ? new Color(1f, 0.2f, 0.2f, 1f)
+                    : new Color(1f, 0.9f, 0f, 1f);
+            }
+
+            Vector3 position = buildingBuffer[buildingId].m_position;
+            position.y += IconHeight;
+            go.transform.position = position;
+
+            if (camera != null)
+            {
+                go.transform.LookAt(camera.transform.position);
+                go.transform.Rotate(0f, 180f, 0f);
             }
         }
 
         private GameObject CreateIcon(ushort buildingId)
         {
-            var go = new GameObject("QuarantineIcon_" + buildingId);
+            var go = new GameObject("PandemicBuildingIcon_" + buildingId);
             go.hideFlags = HideFlags.HideAndDontSave;
 
-            var tm = go.AddComponent<TextMesh>();
-            // ☢ radioactive/hazard mark — visually distinct from citizen ☣ (biohazard, yellow)
-            tm.text = "\u2622";
-            tm.fontSize = IconFontSize;
-            tm.characterSize = IconCharSize;
-            tm.color = new Color(1f, 0f, 0f, 1f); // solid red
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.alignment = TextAlignment.Center;
+            var textMesh = go.AddComponent<TextMesh>();
+            textMesh.text = "\u2623";
+            textMesh.fontSize = IconFontSize;
+            textMesh.characterSize = BaseIconCharSize;
+            textMesh.color = new Color(1f, 0.9f, 0f, 1f);
+            textMesh.anchor = TextAnchor.MiddleCenter;
+            textMesh.alignment = TextAlignment.Center;
 
             if (iconFont != null)
             {
-                tm.font = iconFont;
+                textMesh.font = iconFont;
             }
 
-            var mr = go.GetComponent<MeshRenderer>();
-            if (mr != null)
+            var meshRenderer = go.GetComponent<MeshRenderer>();
+            if (meshRenderer != null)
             {
-                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                mr.receiveShadows = false;
+                meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                meshRenderer.receiveShadows = false;
             }
 
             return go;

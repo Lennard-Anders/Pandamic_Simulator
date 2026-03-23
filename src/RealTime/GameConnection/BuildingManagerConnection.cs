@@ -6,6 +6,7 @@ namespace RealTime.GameConnection
 {
     using System.Collections.Generic;
     using System.Linq;
+    using RealTime.Pandemic;
     using UnityEngine;
 
     /// <summary>
@@ -197,6 +198,17 @@ namespace RealTime.GameConnection
                             && (subService == ItemClass.SubService.None || building.Info.m_class.m_subService == subService)
                             && (building.m_flags & combinedFlags) == requiredFlags)
                         {
+                            if (PandemicManager.Instance != null && !PandemicManager.Instance.IsBuildingOpenForPandemic(buildingId))
+                            {
+                                buildingId = building.m_nextGridBuilding;
+                                if (++counter >= BuildingManager.MAX_BUILDING_COUNT)
+                                {
+                                    break;
+                                }
+
+                                continue;
+                            }
+
                             float sqrDistance = Vector3.SqrMagnitude(position - building.m_position);
                             if (sqrDistance < sqrMaxDistance && BuildingCanBeVisited(buildingId))
                             {

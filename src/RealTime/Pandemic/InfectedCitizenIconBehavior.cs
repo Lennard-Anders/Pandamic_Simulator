@@ -28,7 +28,7 @@ namespace RealTime.Pandemic
         private void LateUpdate()
         {
             var manager = PandemicManager.Instance;
-            if (manager == null)
+            if (manager == null || !manager.AreWorldOverlaysEnabled())
             {
                 ClearAll();
                 return;

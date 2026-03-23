@@ -86,7 +86,13 @@ namespace RealTime.CustomAI
                 return;
             }
 
-            // CitizenProxy.IsSick(ref citizen) && ProcessCitizenSick(instance, citizenId, ref citizen)
+            if ((CitizenProxy.IsSick(ref citizen) || PandemicManager.Instance?.ShouldSeekHospital(citizenId) == true)
+                && ProcessCitizenSick(instance, citizenId, ref citizen))
+            {
+                schedule.Schedule(ResidentState.Unknown);
+                return;
+            }
+
             if (CitizenProxy.IsArrested(ref citizen) && ProcessCitizenArrested(ref citizen))
             {
                 schedule.Schedule(ResidentState.Unknown);

@@ -470,6 +470,7 @@ namespace RealTime.Core
             pandemicManagerObject.AddComponent<InfectedCitizenTrailBehavior>();
             pandemicManagerObject.AddComponent<InfectedCitizenIconBehavior>();
             pandemicManagerObject.AddComponent<QuarantineBuildingIconBehavior>();
+            pandemicManagerObject.AddComponent<PandemicXRayOverlayBehavior>();
 
             return true;
         }

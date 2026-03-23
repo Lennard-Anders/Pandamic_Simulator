@@ -81,9 +81,18 @@ namespace RealTime.Pandemic
             return indoorTransmissionProbability[0][0];
         }
 
-        public double GetIndoorInfectionProbabilityNoContact()
+        public double GetHouseholdInfectionProbability(uint infectingCitizen, uint infectionCandidate)
         {
-            return indoorInfectionProbabilityNoContact;
+            return GetIndoorInfectionProbability(infectingCitizen, infectionCandidate);
+        }
+
+        public double GetIndoorInfectionProbabilityNoContact(uint infectingCitizen, uint infectionCandidate)
+        {
+            int maskBehaviorInfecting = GetMaskBehavior(infectingCitizen);
+            int maskBehaviorCandidate = GetMaskBehavior(infectionCandidate);
+            int modifier = GetMaskModifier(maskBehaviorInfecting, maskBehaviorCandidate);
+            double modificationIndoor = GetIndoorMaskModification(modifier);
+            return 1 - Math.Pow(1 - (Config.IndoorDiseaseTransmissionProbability / 100.0 / 96.0 / modificationIndoor), stepLengthInHours);
         }
 
         public bool IsWearingMask(uint citizenId)
@@ -115,34 +124,11 @@ namespace RealTime.Pandemic
             {
                 for (int j = 0; j < outdoorTransmissionProbability[i].Length; j++)
                 {
-                    int modifier = 0;
-                    if (i != 0)
-                    {
-                        modifier += 1;
-                    }
-                    if (j == 2)
-                    {
-                        modifier += 1;
-                    }
+                    int modifier = GetMaskModifier(i, j);
 
-                    double modificationOutdoor = 1;
-                    double modificationIndoor = 1;
-                    double modificationVehicle = 1;
-                    if (Config.MaskBehavior == RealTime.Config.MaskBehavior.Full)
-                    {
-                        modificationOutdoor = Math.Pow(Config.TransmissionProbabilityReduction, modifier);
-                        modificationIndoor = Math.Pow(Config.TransmissionProbabilityReduction, modifier);
-                        modificationVehicle = Math.Pow(Config.TransmissionProbabilityReduction, modifier);
-                    }
-                    else if (Config.MaskBehavior == RealTime.Config.MaskBehavior.Vehicle)
-                    {
-                        modificationIndoor = Math.Pow(Config.TransmissionProbabilityReduction, modifier);
-                        modificationVehicle = Math.Pow(Config.TransmissionProbabilityReduction, modifier);
-                    }
-                    else if (Config.MaskBehavior == RealTime.Config.MaskBehavior.Building)
-                    {
-                        modificationIndoor = Math.Pow(Config.TransmissionProbabilityReduction, modifier);
-                    }
+                    double modificationOutdoor = GetOutdoorMaskModification(modifier);
+                    double modificationIndoor = GetIndoorMaskModification(modifier);
+                    double modificationVehicle = GetVehicleMaskModification(modifier);
 
                     outdoorTransmissionProbability[i][j] = 1 - Math.Pow(1 - (Config.OutdoorDiseaseTransmissionProbability / 100.0 / modificationOutdoor), stepLengthInHours);
                     indoorTransmissionProbability[i][j] = 1 - Math.Pow(1 - (Config.IndoorDiseaseTransmissionProbability / 100.0 / modificationIndoor), stepLengthInHours);
@@ -175,6 +161,55 @@ namespace RealTime.Pandemic
             {
                 vehicleTransmissionProbability[i] = new double[3];
             }
+        }
+
+        private int GetMaskModifier(int infectingBehavior, int candidateBehavior)
+        {
+            int modifier = 0;
+            if (infectingBehavior != 0)
+            {
+                modifier++;
+            }
+
+            if (candidateBehavior == 2)
+            {
+                modifier++;
+            }
+
+            return modifier;
+        }
+
+        private double GetOutdoorMaskModification(int modifier)
+        {
+            if (Config.MaskBehavior == RealTime.Config.MaskBehavior.Full)
+            {
+                return Math.Pow(Config.TransmissionProbabilityReduction, modifier);
+            }
+
+            return 1;
+        }
+
+        private double GetIndoorMaskModification(int modifier)
+        {
+            if (Config.MaskBehavior == RealTime.Config.MaskBehavior.Full
+                || Config.MaskBehavior == RealTime.Config.MaskBehavior.Vehicle
+                || Config.MaskBehavior == RealTime.Config.MaskBehavior.Building)
+            {
+                return Math.Pow(Config.TransmissionProbabilityReduction, modifier);
+            }
+
+            return 1;
+        }
+
+        private double GetVehicleMaskModification(int modifier)
+        {
+            if (Config.MaskBehavior == RealTime.Config.MaskBehavior.Full
+                || Config.MaskBehavior == RealTime.Config.MaskBehavior.Vehicle)
+            {
+                return Math.Pow(Config.TransmissionProbabilityReduction, modifier);
+            }
+
+            return 1;
         }
     }
 }

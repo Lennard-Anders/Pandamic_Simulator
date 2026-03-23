@@ -21,6 +21,12 @@ namespace RealTime.CustomAI
                 return true;
             }
 
+            if (schedule.WorkBuilding != 0 && !buildingAI.IsBuildingActive(schedule.WorkBuilding))
+            {
+                schedule.Schedule(ResidentState.AtHome);
+                return true;
+            }
+
             ushort currentBuilding = CitizenProxy.GetCurrentBuilding(ref citizen);
             if (!workBehavior.ScheduleGoToWork(ref schedule, currentBuilding, simulationCycle))
             {
@@ -66,6 +72,12 @@ namespace RealTime.CustomAI
         {
             ushort currentBuilding = CitizenProxy.GetCurrentBuilding(ref citizen);
             schedule.WorkStatus = WorkStatus.Working;
+
+            if (schedule.WorkBuilding == 0 || !buildingAI.IsBuildingActive(schedule.WorkBuilding))
+            {
+                schedule.Schedule(ResidentState.AtHome);
+                return;
+            }
 
             if (currentBuilding == schedule.WorkBuilding && schedule.CurrentState != ResidentState.AtSchoolOrWork)
             {

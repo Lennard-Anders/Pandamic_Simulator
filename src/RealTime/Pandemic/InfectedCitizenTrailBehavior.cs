@@ -37,7 +37,7 @@ namespace RealTime.Pandemic
         private void Update()
         {
             var manager = PandemicManager.Instance;
-            if (manager == null)
+            if (manager == null || !manager.AreWorldOverlaysEnabled())
             {
                 ClearAllTrails();
                 return;

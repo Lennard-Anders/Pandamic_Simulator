@@ -354,9 +354,8 @@ namespace RealTime.UI
             }
 
             var manager = PandemicManager.Instance;
-            ushort bldId;
-            InfectionType infType;
-            if (manager == null || !manager.TryGetInfectionSource(citizenId, out bldId, out infType))
+            PandemicInfectionOriginInfo origin;
+            if (manager == null || !manager.TryGetInfectionOrigin(citizenId, out origin) || origin == null)
             {
                 infectionSourceButton.isVisible = false;
                 pandemicButtonPanel.height = 32f;
@@ -364,19 +363,28 @@ namespace RealTime.UI
             }
 
             string sourceText;
-            if (infType == InfectionType.INDOOR && bldId != 0)
+            if (origin.Category == PandemicInfectionOriginCategory.InitialSeed)
             {
-                string bldName = BuildingManager.instance.GetBuildingName(bldId, new InstanceID { Building = bldId });
-                sourceText = "\u21b3 Infected at: " + (string.IsNullOrEmpty(bldName) ? "a building" : bldName);
-                infectionSourceBuildingId = bldId;
+                sourceText = "\u21b3 Initial seed @ " + origin.Position.x.ToString("0") + ", " + origin.Position.z.ToString("0");
+                infectionSourceBuildingId = origin.BuildingId;
             }
-            else if (infType == InfectionType.VEHICLE)
+            else if (origin.LegacyType == InfectionType.INDOOR && origin.BuildingId != 0)
             {
-                sourceText = "\u21b3 Infected: In a vehicle";
+                string bldName = BuildingManager.instance.GetBuildingName(origin.BuildingId, new InstanceID { Building = origin.BuildingId });
+                sourceText = "\u21b3 Infected at: " + (string.IsNullOrEmpty(bldName) ? "a building" : bldName);
+                infectionSourceBuildingId = origin.BuildingId;
+            }
+            else if (origin.LegacyType == InfectionType.VEHICLE)
+            {
+                sourceText = "\u21b3 Infected: " + PandemicTaxonomy.GetOriginCategoryLabel(origin.Category);
             }
             else
             {
-                sourceText = "\u21b3 Infected: Outdoors";
+                sourceText = "\u21b3 Infected: " + PandemicTaxonomy.GetOriginCategoryLabel(origin.Category)
+                    + " @ "
+                    + origin.Position.x.ToString("0")
+                    + ", "
+                    + origin.Position.z.ToString("0");
             }
 
             infectionSourceButton.text = sourceText;

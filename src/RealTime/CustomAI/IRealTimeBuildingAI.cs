@@ -22,6 +22,11 @@ namespace RealTime.CustomAI
         /// </returns>
         bool IsNoiseRestricted(ushort buildingId, ushort currentBuildingId = 0);
 
+        /// <summary>Determines whether a building is currently open and active for visits or work.</summary>
+        /// <param name="buildingId">The building ID to check.</param>
+        /// <returns><c>true</c> if the building can currently be used; otherwise, <c>false</c>.</returns>
+        bool IsBuildingActive(ushort buildingId);
+
         /// <summary>Registers a trouble reaching the building with the specified ID.</summary>
         /// <param name="buildingId">The ID of the building where the citizen will not arrive as planned.</param>
         void RegisterReachingTrouble(ushort buildingId);

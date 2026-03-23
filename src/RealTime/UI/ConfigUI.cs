@@ -93,7 +93,7 @@ namespace RealTime.UI
         {
             var properties = configProvider.Configuration.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Select(p => new { Property = p, Attribute = GetCustomItemAttribute<ConfigItemAttribute>(p) })
-                .Where(v => v.Attribute != null);
+                .Where(v => v.Attribute != null && !IsPandemicTab(v.Attribute.TabId));
 
             foreach (var tab in properties.GroupBy(p => p.Attribute.TabId).OrderBy(p => p.Key))
             {
@@ -167,6 +167,23 @@ namespace RealTime.UI
         private static T GetCustomItemAttribute<T>(PropertyInfo property, bool inherit = false)
             where T : Attribute
             => (T)property.GetCustomAttributes(typeof(T), inherit).FirstOrDefault();
+
+        private static bool IsPandemicTab(string tabId)
+        {
+            switch (tabId)
+            {
+                case "Quarantine":
+                case "Pandemic":
+                case "DiseaseProperties":
+                case "Symptoms":
+                case "PandemicMonitor":
+                case "PandemicLockdown":
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
 
         private void ResetToDefaults()
         {
