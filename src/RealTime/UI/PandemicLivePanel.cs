@@ -24,36 +24,34 @@ namespace RealTime.UI
         private const string PanelName = "RealTimePandemicLivePanel";
         private const string RestartDialogTitle = "Restart Pandemic";
         private const string RestartDialogMessage = "Discard the current pandemic run and restart it with the current in-game settings?";
-        private const string InfectedCurveName = "PandemicInfected";
-        private const float PanelWidth = 700f;
-        private const float ExpandedPanelHeight = 760f;
+        private const float PanelWidth = 760f;
+        private const float ExpandedPanelHeight = 840f;
         private const float CollapsedPanelHeight = 38f;
         private const float PanelMargin = 15f;
         private const float TopOffset = 105f;
         private const float HorizontalPadding = 12f;
         private const float HeaderTop = 36f;
-        private const float HeaderHeight = 246f;
+        private const float HeaderHeight = 318f;
         private const float HeaderWidth = PanelWidth - (HorizontalPadding * 2f);
         private const float ButtonHeight = 28f;
         private const float ButtonSpacing = 8f;
-        private const float SummaryHeight = 64f;
-        private const float ChartTitleHeight = 18f;
-        private const float ChartHeight = 136f;
+        private const float MetricsTop = (ButtonHeight * 2f) + ButtonSpacing + 10f;
+        private const float MetricCardHeight = 56f;
+        private const float MetricCardGap = 8f;
+        private const float ChartTop = MetricsTop + MetricCardHeight + 12f;
+        private const float ChartHeight = 182f;
         private const float DetailTop = HeaderTop + HeaderHeight + 8f;
         private const float DetailScrollHeight = ExpandedPanelHeight - DetailTop - 10f;
         private const float ScrollbarWidth = 10f;
         private const float DetailWidth = PanelWidth - (HorizontalPadding * 2f) - ScrollbarWidth - 6f;
         private const float CardGap = 10f;
         private const float CardPadding = 8f;
-        private const float CardHeaderHeight = 18f;
+        private const float CardSummaryHeight = 16f;
         private const float CardRowHeight = 18f;
         private const float CardRowSpacing = 2f;
         private const float CardButtonHeight = 22f;
         private const float CardMinHeight = 62f;
-        private const float SettingsLabelWidth = 258f;
-        private const float MarkerLabelSpacing = 18f;
-        private static readonly FieldInfo GraphMinField = typeof(UIGraph).GetField("m_Min", BindingFlags.Instance | BindingFlags.NonPublic);
-        private static readonly FieldInfo GraphMaxField = typeof(UIGraph).GetField("m_Max", BindingFlags.Instance | BindingFlags.NonPublic);
+        private const float SettingsLabelWidth = 312f;
 
         private readonly List<PandemicSettingControl> settingControls = new List<PandemicSettingControl>();
         private readonly List<UILabel> settingsHeadings = new List<UILabel>();
@@ -63,14 +61,25 @@ namespace RealTime.UI
         private readonly List<UILabel> lockdownRows = new List<UILabel>();
         private readonly UIButton[] spreaderButtons = new UIButton[5];
         private readonly UIButton[] locationButtons = new UIButton[5];
-        private readonly List<UISprite> chartMarkerLines = new List<UISprite>();
-        private readonly List<UILabel> chartMarkerLabels = new List<UILabel>();
+        private readonly Dictionary<DashboardSection, bool> sectionExpanded = new Dictionary<DashboardSection, bool>
+        {
+            { DashboardSection.Age, true },
+            { DashboardSection.Lockdown, true },
+            { DashboardSection.Spreaders, true },
+            { DashboardSection.Locations, true },
+            { DashboardSection.Origins, false },
+            { DashboardSection.Districts, false },
+            { DashboardSection.Settings, false },
+        };
+        private readonly UIPanel[] metricPanels = new UIPanel[4];
+        private readonly UILabel[] metricTitles = new UILabel[4];
+        private readonly UILabel[] metricValues = new UILabel[4];
 
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
         private bool collapsed;
-        private bool settingsExpanded;
         private bool settingsBuilt;
         private bool layoutDirty = true;
+        private bool suppressScrollbarEvent;
         private int ageVisibleRows;
         private int originVisibleRows;
         private int districtVisibleRows;
@@ -87,28 +96,38 @@ namespace RealTime.UI
         private UIButton lockdownButton;
         private UIButton overlayButton;
         private UIButton xrayButton;
-        private UILabel summaryLabel;
-        private UILabel chartTitleLabel;
-        private UIGraph infectedGraph;
-        private UIPanel chartOverlay;
-        private UILabel chartEmptyLabel;
+        private PandemicTrendChartView trendChart;
         private UIScrollablePanel detailScroll;
         private UIPanel detailContentPanel;
         private UIScrollbar detailScrollbar;
         private UIPanel ageCard;
-        private UILabel ageHeaderLabel;
+        private UIButton ageToggleButton;
+        private UILabel ageSummaryLabel;
+        private UIPanel ageContentPanel;
         private UIPanel lockdownCard;
-        private UILabel lockdownHeaderLabel;
+        private UIButton lockdownToggleButton;
+        private UILabel lockdownSummaryLabel;
+        private UIPanel lockdownContentPanel;
         private UIPanel spreaderCard;
-        private UILabel spreaderHeaderLabel;
+        private UIButton spreaderToggleButton;
+        private UILabel spreaderSummaryLabel;
+        private UIPanel spreaderContentPanel;
         private UIPanel locationCard;
-        private UILabel locationHeaderLabel;
+        private UIButton locationToggleButton;
+        private UILabel locationSummaryLabel;
+        private UIPanel locationContentPanel;
         private UIPanel originCard;
-        private UILabel originHeaderLabel;
+        private UIButton originToggleButton;
+        private UILabel originSummaryLabel;
+        private UIPanel originContentPanel;
         private UIPanel districtCard;
-        private UILabel districtHeaderLabel;
+        private UIButton districtToggleButton;
+        private UILabel districtSummaryLabel;
+        private UIPanel districtContentPanel;
         private UIPanel settingsCard;
         private UIButton settingsToggleButton;
+        private UILabel settingsSummaryLabel;
+        private UIPanel settingsContentPanel;
         private UIPanel settingsPanel;
 
         private PandemicLiveSnapshot currentSnapshot;
@@ -179,11 +198,11 @@ namespace RealTime.UI
             detailScroll = null;
             detailContentPanel = null;
             detailScrollbar = null;
-            infectedGraph = null;
-            chartOverlay = null;
+            trendChart = null;
             currentSnapshot = null;
             settingsBuilt = false;
             layoutDirty = true;
+            suppressScrollbarEvent = false;
             ageVisibleRows = 0;
             originVisibleRows = 0;
             districtVisibleRows = 0;
@@ -196,8 +215,6 @@ namespace RealTime.UI
             originRows.Clear();
             districtRows.Clear();
             lockdownRows.Clear();
-            chartMarkerLines.Clear();
-            chartMarkerLabels.Clear();
         }
 
         public void Translate(CultureInfo culture)
@@ -232,9 +249,9 @@ namespace RealTime.UI
             RefreshButtons(manager, currentSnapshot);
             RefreshSummary(currentSnapshot);
             RefreshAnalytics(currentSnapshot);
-            RefreshChart(currentSnapshot);
             RefreshSettingsControls();
             RefreshLayoutIfDirty();
+            RefreshLiveData();
         }
 
         private void CreateHeader()
@@ -266,52 +283,11 @@ namespace RealTime.UI
             xrayButton = CreateActionButton(headerPanel, "X-Ray", (buttonWidth * 2f) + (ButtonSpacing * 2f), secondRowY, buttonWidth);
             xrayButton.eventClicked += (c, e) => { PandemicManager.Instance?.CycleXRayMode(); Refresh(); };
 
-            summaryLabel = headerPanel.AddUIComponent<UILabel>();
-            summaryLabel.autoSize = false;
-            summaryLabel.width = HeaderWidth;
-            summaryLabel.height = SummaryHeight;
-            summaryLabel.relativePosition = new Vector3(0f, (ButtonHeight * 2f) + ButtonSpacing + 10f);
-            summaryLabel.textScale = 0.72f;
-            summaryLabel.textAlignment = UIHorizontalAlignment.Left;
+            CreateMetricCards();
 
-            chartTitleLabel = headerPanel.AddUIComponent<UILabel>();
-            chartTitleLabel.autoSize = false;
-            chartTitleLabel.width = HeaderWidth;
-            chartTitleLabel.height = ChartTitleHeight;
-            chartTitleLabel.relativePosition = new Vector3(0f, summaryLabel.relativePosition.y + SummaryHeight + 6f);
-            chartTitleLabel.textScale = 0.8f;
-            chartTitleLabel.text = "Infected Over Time";
-            chartTitleLabel.textColor = new Color32(245, 245, 245, 255);
-
-            infectedGraph = headerPanel.AddUIComponent<UIGraph>();
-            infectedGraph.autoSize = false;
-            infectedGraph.width = HeaderWidth;
-            infectedGraph.height = ChartHeight;
-            infectedGraph.relativePosition = new Vector3(0f, chartTitleLabel.relativePosition.y + ChartTitleHeight + 4f);
-            infectedGraph.graphRect = new Rect(0.06f, 0.08f, 0.90f, 0.76f);
-            infectedGraph.AxesColor = new Color32(120, 120, 120, 255);
-            infectedGraph.HelpAxesColor = new Color32(60, 60, 60, 255);
-            infectedGraph.AxesWidth = 1f;
-            infectedGraph.HelpAxesWidth = 1f;
-            infectedGraph.TextColor = new Color32(220, 220, 220, 255);
-            infectedGraph.isInteractive = false;
-
-            chartOverlay = headerPanel.AddUIComponent<UIPanel>();
-            chartOverlay.autoSize = false;
-            chartOverlay.width = infectedGraph.width;
-            chartOverlay.height = infectedGraph.height;
-            chartOverlay.relativePosition = infectedGraph.relativePosition;
-            chartOverlay.isInteractive = false;
-            chartOverlay.canFocus = false;
-
-            chartEmptyLabel = chartOverlay.AddUIComponent<UILabel>();
-            chartEmptyLabel.autoSize = false;
-            chartEmptyLabel.width = infectedGraph.width - 16f;
-            chartEmptyLabel.height = 24f;
-            chartEmptyLabel.relativePosition = new Vector3(8f, (infectedGraph.height / 2f) - 12f);
-            chartEmptyLabel.textScale = 0.75f;
-            chartEmptyLabel.textAlignment = UIHorizontalAlignment.Center;
-            chartEmptyLabel.textColor = new Color32(220, 220, 220, 255);
+            trendChart = new PandemicTrendChartView();
+            trendChart.Initialize(headerPanel, HeaderWidth, ChartHeight);
+            trendChart.Component.relativePosition = new Vector3(0f, ChartTop);
         }
 
         private void CreateDetailScroll()
@@ -324,61 +300,84 @@ namespace RealTime.UI
             detailScroll.scrollWheelAmount = 60;
             detailScroll.scrollWheelDirection = UIOrientation.Vertical;
             detailScroll.useTouchMouseScroll = true;
-            detailScroll.eventMouseWheel += OnContentMouseWheel;
+            AttachDetailMouseWheel(detailScroll);
 
             detailContentPanel = detailScroll.AddUIComponent<UIPanel>();
             detailContentPanel.relativePosition = Vector3.zero;
             detailContentPanel.width = DetailWidth;
             detailContentPanel.height = DetailScrollHeight;
             detailContentPanel.autoLayout = false;
+            detailContentPanel.isInteractive = true;
+            AttachDetailMouseWheel(detailContentPanel);
 
             detailScrollbar = CreateScrollbar();
             detailScroll.verticalScrollbar = detailScrollbar;
-            detailScrollbar.eventValueChanged += (c, value) => detailScroll.scrollPosition = new Vector2(0f, value);
+            detailScrollbar.eventValueChanged += (c, value) =>
+            {
+                if (!suppressScrollbarEvent)
+                {
+                    detailScroll.scrollPosition = new Vector2(0f, value);
+                }
+            };
         }
 
         private void CreateCards()
         {
             ageCard = CreateCardPanel(detailContentPanel);
-            ageHeaderLabel = CreateCardHeader(ageCard, "Infected by Age Group");
+            ageToggleButton = CreateSectionButton(ageCard, "Infected by Age Group");
+            ageToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Age);
+            ageSummaryLabel = CreateCardSummary(ageCard);
+            ageContentPanel = CreateCardContent(ageCard);
 
             lockdownCard = CreateCardPanel(detailContentPanel);
-            lockdownHeaderLabel = CreateCardHeader(lockdownCard, "Lockdown Families");
+            lockdownToggleButton = CreateSectionButton(lockdownCard, "Lockdown Families");
+            lockdownToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Lockdown);
+            lockdownSummaryLabel = CreateCardSummary(lockdownCard);
+            lockdownContentPanel = CreateCardContent(lockdownCard);
 
             spreaderCard = CreateCardPanel(detailContentPanel);
-            spreaderHeaderLabel = CreateCardHeader(spreaderCard, "Top Spreaders");
+            spreaderToggleButton = CreateSectionButton(spreaderCard, "Top Spreaders");
+            spreaderToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Spreaders);
+            spreaderSummaryLabel = CreateCardSummary(spreaderCard);
+            spreaderContentPanel = CreateCardContent(spreaderCard);
             for (int i = 0; i < spreaderButtons.Length; i++)
             {
                 int captured = i;
-                spreaderButtons[i] = CreateCardListButton(spreaderCard);
+                spreaderButtons[i] = CreateCardListButton(spreaderContentPanel);
                 spreaderButtons[i].eventClicked += (c, e) => FocusSpreader(captured);
             }
 
             locationCard = CreateCardPanel(detailContentPanel);
-            locationHeaderLabel = CreateCardHeader(locationCard, "Top Origin Locations");
+            locationToggleButton = CreateSectionButton(locationCard, "Top Origin Locations");
+            locationToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Locations);
+            locationSummaryLabel = CreateCardSummary(locationCard);
+            locationContentPanel = CreateCardContent(locationCard);
             for (int i = 0; i < locationButtons.Length; i++)
             {
                 int captured = i;
-                locationButtons[i] = CreateCardListButton(locationCard);
+                locationButtons[i] = CreateCardListButton(locationContentPanel);
                 locationButtons[i].eventClicked += (c, e) => FocusLocation(captured);
             }
 
             originCard = CreateCardPanel(detailContentPanel);
-            originHeaderLabel = CreateCardHeader(originCard, "Origin Distribution");
+            originToggleButton = CreateSectionButton(originCard, "Origin Distribution");
+            originToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Origins);
+            originSummaryLabel = CreateCardSummary(originCard);
+            originContentPanel = CreateCardContent(originCard);
 
             districtCard = CreateCardPanel(detailContentPanel);
-            districtHeaderLabel = CreateCardHeader(districtCard, "District Infection Rates");
+            districtToggleButton = CreateSectionButton(districtCard, "District Infection Rates");
+            districtToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Districts);
+            districtSummaryLabel = CreateCardSummary(districtCard);
+            districtContentPanel = CreateCardContent(districtCard);
 
             settingsCard = CreateCardPanel(detailContentPanel);
             settingsToggleButton = CreateSectionButton(settingsCard, "Pandemic Settings");
-            settingsToggleButton.eventClicked += (c, e) =>
-            {
-                settingsExpanded = !settingsExpanded;
-                layoutDirty = true;
-                Refresh();
-            };
+            settingsToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Settings);
+            settingsSummaryLabel = CreateCardSummary(settingsCard);
+            settingsContentPanel = CreateCardContent(settingsCard);
 
-            settingsPanel = settingsCard.AddUIComponent<UIPanel>();
+            settingsPanel = settingsContentPanel.AddUIComponent<UIPanel>();
             settingsPanel.autoLayout = false;
             settingsPanel.width = DetailWidth - (CardPadding * 2f);
         }
@@ -489,14 +488,29 @@ namespace RealTime.UI
 
         private void RefreshSummary(PandemicLiveSnapshot snapshot)
         {
-            if (summaryLabel == null)
+            if (metricValues[0] == null)
             {
                 return;
             }
 
             if (snapshot == null)
             {
-                summaryLabel.text = "Pandemic manager not available in this game session.";
+                metricTitles[0].text = "Lifecycle";
+                metricValues[0].text = "Manager unavailable";
+                metricTitles[1].text = "SIRD";
+                metricValues[1].text = "-";
+                metricTitles[2].text = "Change";
+                metricValues[2].text = "-";
+                metricTitles[3].text = "Operations";
+                metricValues[3].text = "-";
+                for (int i = 0; i < metricPanels.Length; i++)
+                {
+                    if (metricPanels[i] != null)
+                    {
+                        metricPanels[i].color = new Color32(72, 72, 72, 255);
+                    }
+                }
+
                 return;
             }
 
@@ -504,25 +518,33 @@ namespace RealTime.UI
                 ? "-"
                 : snapshot.SimulationTime.ToString("g", cultureInfo);
 
-            summaryLabel.text =
-                "Status: " + snapshot.LifecycleState + " | Time: " + timeValue + " | Observations: " + snapshot.ObservationCount.ToString("N0", cultureInfo) + "\n"
-                + "S " + snapshot.Healthy.ToString("N0", cultureInfo)
-                + " | I " + snapshot.Sick.ToString("N0", cultureInfo)
-                + " | R " + snapshot.Recovered.ToString("N0", cultureInfo)
-                + " | D " + snapshot.Dead.ToString("N0", cultureInfo)
-                + " | dI " + FormatSigned(snapshot.DeltaSick)
-                + " | dR " + FormatSigned(snapshot.DeltaRecovered)
-                + " | dD " + FormatSigned(snapshot.DeltaDead) + "\n"
-                + "Quarantine " + snapshot.QuarantineCitizens.ToString("N0", cultureInfo)
-                + " | Positive tests " + snapshot.PositiveTests.ToString("N0", cultureInfo)
-                + " | Tested " + snapshot.TestedCitizens.ToString("N0", cultureInfo)
-                + " | Contacts " + snapshot.ContactsTrackedCitizens.ToString("N0", cultureInfo)
-                + " / " + snapshot.ContactsTrackedPairs.ToString("N0", cultureInfo) + "\n"
-                + "Transmissions " + snapshot.TransmissionsTotal.ToString("N0", cultureInfo)
-                + " | Indoor " + snapshot.TransmissionsIndoor.ToString("N0", cultureInfo)
-                + " | Outdoor " + snapshot.TransmissionsOutdoor.ToString("N0", cultureInfo)
-                + " | Vehicle " + snapshot.TransmissionsVehicle.ToString("N0", cultureInfo)
-                + " | Overlays " + (snapshot.WorldOverlaysEnabled ? "ON" : "OFF");
+            metricTitles[0].text = "Lifecycle";
+            metricValues[0].text = snapshot.LifecycleState + "\n" + timeValue;
+            metricPanels[0].color = snapshot.LifecycleState == PandemicLifecycleState.Running
+                ? new Color32(34, 120, 74, 255)
+                : snapshot.LifecycleState == PandemicLifecycleState.Finished
+                    ? new Color32(124, 84, 34, 255)
+                    : new Color32(72, 72, 72, 255);
+
+            metricTitles[1].text = "SIRD";
+            metricValues[1].text =
+                "S " + snapshot.Healthy.ToString("N0", cultureInfo) + " | I " + snapshot.Sick.ToString("N0", cultureInfo) + "\n"
+                + "R " + snapshot.Recovered.ToString("N0", cultureInfo) + " | D " + snapshot.Dead.ToString("N0", cultureInfo);
+            metricPanels[1].color = new Color32(82, 82, 82, 255);
+
+            metricTitles[2].text = "Change";
+            metricValues[2].text =
+                "dI " + FormatSigned(snapshot.DeltaSick) + " | dR " + FormatSigned(snapshot.DeltaRecovered) + "\n"
+                + "dD " + FormatSigned(snapshot.DeltaDead) + " | Obs " + snapshot.ObservationCount.ToString("N0", cultureInfo);
+            metricPanels[2].color = new Color32(82, 82, 82, 255);
+
+            metricTitles[3].text = "Operations";
+            metricValues[3].text =
+                "Q " + snapshot.QuarantineCitizens.ToString("N0", cultureInfo)
+                + " | T+ " + snapshot.PositiveTests.ToString("N0", cultureInfo) + "\n"
+                + "PT " + GetPublicTransportStateLabel(snapshot.PublicTransportState)
+                + " | Trx " + snapshot.TransmissionsTotal.ToString("N0", cultureInfo);
+            metricPanels[3].color = new Color32(82, 82, 82, 255);
         }
 
         private void RefreshAnalytics(PandemicLiveSnapshot snapshot)
@@ -533,7 +555,7 @@ namespace RealTime.UI
             RefreshDistrictRows(snapshot);
             RefreshSpreaderButtons(snapshot);
             RefreshLocationButtons(snapshot);
-            settingsToggleButton.text = (settingsExpanded ? "\u25bc " : "\u25ba ") + "Pandemic Settings";
+            UpdateCardHeaders();
         }
 
         private void RefreshAgeRows(PandemicLiveSnapshot snapshot)
@@ -544,21 +566,37 @@ namespace RealTime.UI
                     .Select(age => age.Label + " | " + FormatPercent(age.InfectedPercent) + " | " + age.InfectedCount.ToString("N0", cultureInfo))
                     .ToList();
 
-            SetLabelRows(ageCard, ageRows, texts, ref ageVisibleRows);
+            SetLabelRows(ageContentPanel, ageRows, texts, ref ageVisibleRows);
+            ageSummaryLabel.text = snapshot == null
+                ? "No age breakdown."
+                : "Tracked groups: " + snapshot.AgeGroups.Count.ToString("N0", cultureInfo)
+                + " | Active infected: " + snapshot.Sick.ToString("N0", cultureInfo);
         }
 
         private void RefreshLockdownRows(PandemicLiveSnapshot snapshot)
         {
             List<string> texts = snapshot == null || snapshot.LockdownFamilies.Count == 0
                 ? new List<string> { "No lockdown family data available." }
-                : snapshot.LockdownFamilies
+                : new[]
+                    {
+                        "Public transport | " + GetPublicTransportStateLabel(snapshot.PublicTransportState)
+                        + " | lines " + snapshot.PublicTransportTrackedLines.ToString("N0", cultureInfo)
+                        + " | returning " + snapshot.PublicTransportReturningVehicles.ToString("N0", cultureInfo)
+                        + " | depots " + snapshot.PublicTransportClosedDepots.ToString("N0", cultureInfo),
+                    }
+                    .Concat(snapshot.LockdownFamilies
                     .Select(family => family.Label + " | " + (family.IsClosed ? "Closed" : "Open")
                         + " | infected " + FormatPercent(family.CurrentInfectedPercent)
                         + " | threshold " + FormatPercent(family.AutoCloseThresholdPercent)
-                        + " | manual " + (family.ManualClosed ? "ON" : "OFF"))
+                        + " | manual " + (family.ManualClosed ? "ON" : "OFF")))
                     .ToList();
 
-            SetLabelRows(lockdownCard, lockdownRows, texts, ref lockdownVisibleRows);
+            SetLabelRows(lockdownContentPanel, lockdownRows, texts, ref lockdownVisibleRows);
+            int closedFamilies = snapshot?.LockdownFamilies.Count(family => family.IsClosed) ?? 0;
+            int totalFamilies = snapshot?.LockdownFamilies.Count ?? 0;
+            lockdownSummaryLabel.text = "Closed: " + closedFamilies.ToString("N0", cultureInfo)
+                + " / " + totalFamilies.ToString("N0", cultureInfo)
+                + " | PT: " + GetPublicTransportStateLabel(snapshot?.PublicTransportState ?? PandemicPublicTransportShutdownState.Open);
         }
 
         private void RefreshOriginRows(PandemicLiveSnapshot snapshot)
@@ -571,7 +609,9 @@ namespace RealTime.UI
                     .Select(origin => origin.Label + " | " + FormatPercent(origin.Percent) + " | " + origin.Count.ToString("N0", cultureInfo))
                     .ToList();
 
-            SetLabelRows(originCard, originRows, texts, ref originVisibleRows);
+            SetLabelRows(originContentPanel, originRows, texts, ref originVisibleRows);
+            int totalOrigins = snapshot?.Origins.Sum(origin => origin.Count) ?? 0;
+            originSummaryLabel.text = "Tracked infections: " + totalOrigins.ToString("N0", cultureInfo);
         }
 
         private void RefreshDistrictRows(PandemicLiveSnapshot snapshot)
@@ -584,7 +624,10 @@ namespace RealTime.UI
                         + " / " + district.ResidentCount.ToString("N0", cultureInfo))
                     .ToList();
 
-            SetLabelRows(districtCard, districtRows, texts, ref districtVisibleRows);
+            SetLabelRows(districtContentPanel, districtRows, texts, ref districtVisibleRows);
+            districtSummaryLabel.text = snapshot == null
+                ? "No district data."
+                : "Districts: " + snapshot.Districts.Count.ToString("N0", cultureInfo);
         }
 
         private void RefreshSpreaderButtons(PandemicLiveSnapshot snapshot)
@@ -613,13 +656,21 @@ namespace RealTime.UI
                     button.text = entry.Label + " | " + entry.InfectionCount.ToString("N0", cultureInfo)
                         + (entry.IsSuperspreader ? " | Superspreader" : string.Empty);
                     button.isEnabled = entry.CanFocus;
+                    button.tooltip = "Jump to citizen";
                 }
                 else
                 {
                     button.text = "No spreader data available.";
                     button.isEnabled = false;
+                    button.tooltip = string.Empty;
                 }
             }
+
+            int topCount = snapshot?.TopSpreaders.Count ?? 0;
+            int topInfections = snapshot?.TopSpreaders.Count > 0 ? snapshot.TopSpreaders[0].InfectionCount : 0;
+            spreaderSummaryLabel.text = topCount == 0
+                ? "No spreader data."
+                : "Top spreader: " + topInfections.ToString("N0", cultureInfo) + " infections";
         }
 
         private void RefreshLocationButtons(PandemicLiveSnapshot snapshot)
@@ -648,143 +699,28 @@ namespace RealTime.UI
                     button.text = entry.Label + " | " + entry.InfectionCount.ToString("N0", cultureInfo)
                         + (entry.IsSuperspreader ? " | Superspreader" : string.Empty);
                     button.isEnabled = entry.CanFocus;
+                    button.tooltip = "Jump to location";
                 }
                 else
                 {
                     button.text = "No origin location data available.";
                     button.isEnabled = false;
+                    button.tooltip = string.Empty;
                 }
             }
+
+            int locationCount = snapshot?.TopOriginLocations.Count ?? 0;
+            int topLocationInfections = snapshot?.TopOriginLocations.Count > 0 ? snapshot.TopOriginLocations[0].InfectionCount : 0;
+            locationSummaryLabel.text = locationCount == 0
+                ? "No hotspot locations."
+                : "Top location: " + topLocationInfections.ToString("N0", cultureInfo) + " infections";
         }
 
-        private void RefreshChart(PandemicLiveSnapshot snapshot)
+        private void RefreshLiveData()
         {
-            if (infectedGraph == null || chartOverlay == null || chartEmptyLabel == null)
+            if (trendChart != null)
             {
-                return;
-            }
-
-            ClearGraphCurves();
-            HideChartMarkers();
-
-            if (snapshot == null || !snapshot.HasChartData)
-            {
-                chartEmptyLabel.isVisible = true;
-                chartEmptyLabel.text = snapshot != null && snapshot.LifecycleState == PandemicLifecycleState.Dormant
-                    ? "Pandemic not started yet."
-                    : "Waiting for chart data.";
-                infectedGraph.Invalidate();
-                return;
-            }
-
-            List<PandemicChartPointSnapshot> points = snapshot.ChartPoints
-                .OrderBy(point => point.SimulationTime)
-                .ToList();
-            if (points.Count == 0)
-            {
-                chartEmptyLabel.isVisible = true;
-                chartEmptyLabel.text = "Waiting for chart data.";
-                infectedGraph.Invalidate();
-                return;
-            }
-
-            DateTime startTime = points[0].SimulationTime;
-            DateTime endTime = points[points.Count - 1].SimulationTime;
-            if (snapshot.PolicyMarkers.Count > 0)
-            {
-                DateTime markerStart = snapshot.PolicyMarkers.Min(marker => marker.SimulationTime);
-                DateTime markerEnd = snapshot.PolicyMarkers.Max(marker => marker.SimulationTime);
-                if (markerStart < startTime)
-                {
-                    startTime = markerStart;
-                }
-
-                if (markerEnd > endTime)
-                {
-                    endTime = markerEnd;
-                }
-            }
-
-            float[] graphData;
-            if (points.Count == 1)
-            {
-                graphData = new[] { (float)points[0].InfectedCount, (float)points[0].InfectedCount };
-                if (endTime <= startTime)
-                {
-                    endTime = startTime.AddHours(1);
-                }
-            }
-            else
-            {
-                graphData = points.Select(point => (float)point.InfectedCount).ToArray();
-            }
-
-            if (endTime <= startTime)
-            {
-                endTime = startTime.AddHours(1);
-            }
-
-            float maxValue = Mathf.Max(10f, Mathf.Ceil(Mathf.Max(graphData.Max(), 0f) * 1.1f));
-            infectedGraph.StartTime = startTime;
-            infectedGraph.EndTime = endTime;
-            infectedGraph.AddCurve(InfectedCurveName, string.Empty, graphData, 2f, new Color32(235, 96, 72, 255), 0f);
-            GraphMinField?.SetValue(infectedGraph, 0f);
-            GraphMaxField?.SetValue(infectedGraph, maxValue);
-            chartEmptyLabel.isVisible = false;
-            RefreshChartMarkers(snapshot.PolicyMarkers, startTime, endTime);
-            infectedGraph.Invalidate();
-        }
-
-        private void RefreshChartMarkers(IList<PandemicPolicyMarkerSnapshot> markers, DateTime startTime, DateTime endTime)
-        {
-            if (markers == null || markers.Count == 0 || chartOverlay == null || infectedGraph == null)
-            {
-                HideChartMarkers();
-                return;
-            }
-
-            List<PandemicPolicyMarkerSnapshot> orderedMarkers = markers
-                .OrderBy(marker => marker.SimulationTime)
-                .ToList();
-            EnsureMarkerWidgets(orderedMarkers.Count);
-
-            Rect graphRect = infectedGraph.graphRect;
-            float plotX = graphRect.x * infectedGraph.width;
-            float plotY = graphRect.y * infectedGraph.height;
-            float plotWidth = graphRect.width * infectedGraph.width;
-            float plotHeight = graphRect.height * infectedGraph.height;
-            double rangeTicks = Math.Max(1d, (double)(endTime.Ticks - startTime.Ticks));
-            float lastLabelX = float.MinValue;
-
-            for (int i = 0; i < orderedMarkers.Count; i++)
-            {
-                PandemicPolicyMarkerSnapshot marker = orderedMarkers[i];
-                float ratio = (float)((marker.SimulationTime.Ticks - startTime.Ticks) / rangeTicks);
-                float x = plotX + (Mathf.Clamp01(ratio) * plotWidth);
-
-                UISprite line = chartMarkerLines[i];
-                line.isVisible = true;
-                line.relativePosition = new Vector3(x - 1f, plotY, 0f);
-                line.width = 2f;
-                line.height = plotHeight;
-                line.color = GetMarkerColor(marker);
-
-                UILabel label = chartMarkerLabels[i];
-                label.text = marker.ShortLabel;
-                label.textColor = GetMarkerColor(marker);
-                label.relativePosition = new Vector3(Mathf.Clamp(x - 8f, 0f, chartOverlay.width - 18f), Mathf.Max(0f, plotY - 14f), 0f);
-                bool showLabel = x - lastLabelX >= MarkerLabelSpacing;
-                label.isVisible = showLabel;
-                if (showLabel)
-                {
-                    lastLabelX = x;
-                }
-            }
-
-            for (int i = orderedMarkers.Count; i < chartMarkerLines.Count; i++)
-            {
-                chartMarkerLines[i].isVisible = false;
-                chartMarkerLabels[i].isVisible = false;
+                trendChart.Refresh(currentSnapshot, cultureInfo);
             }
         }
 
@@ -817,6 +753,8 @@ namespace RealTime.UI
                     control.ValueButton.color = new Color32(70, 110, 170, 255);
                 }
             }
+
+            settingsSummaryLabel.text = settingControls.Count.ToString("N0", cultureInfo) + " live settings available";
         }
 
         private void RefreshLayoutIfDirty()
@@ -826,7 +764,7 @@ namespace RealTime.UI
                 return;
             }
 
-            float preservedScroll = detailScrollbar != null ? detailScrollbar.value : 0f;
+            float preservedScroll = detailScroll.scrollPosition.y;
             LayoutCards();
             SyncScrollbar(preservedScroll);
             layoutDirty = false;
@@ -837,72 +775,122 @@ namespace RealTime.UI
             float halfWidth = (DetailWidth - CardGap) / 2f;
             float y = 0f;
 
-            float leftHeight = LayoutTextCard(ageCard, ageHeaderLabel, ageRows, 0f, y, halfWidth);
-            float rightHeight = LayoutTextCard(lockdownCard, lockdownHeaderLabel, lockdownRows, halfWidth + CardGap, y, halfWidth);
+            float leftHeight = LayoutTextCard(ageCard, ageToggleButton, ageSummaryLabel, ageContentPanel, ageRows, DashboardSection.Age, 0f, y, halfWidth);
+            float rightHeight = LayoutTextCard(lockdownCard, lockdownToggleButton, lockdownSummaryLabel, lockdownContentPanel, lockdownRows, DashboardSection.Lockdown, halfWidth + CardGap, y, halfWidth);
             y += Mathf.Max(leftHeight, rightHeight) + CardGap;
 
-            leftHeight = LayoutButtonCard(spreaderCard, spreaderHeaderLabel, spreaderButtons, 0f, y, halfWidth);
-            rightHeight = LayoutButtonCard(locationCard, locationHeaderLabel, locationButtons, halfWidth + CardGap, y, halfWidth);
+            leftHeight = LayoutButtonCard(spreaderCard, spreaderToggleButton, spreaderSummaryLabel, spreaderContentPanel, spreaderButtons, DashboardSection.Spreaders, 0f, y, halfWidth);
+            rightHeight = LayoutButtonCard(locationCard, locationToggleButton, locationSummaryLabel, locationContentPanel, locationButtons, DashboardSection.Locations, halfWidth + CardGap, y, halfWidth);
             y += Mathf.Max(leftHeight, rightHeight) + CardGap;
 
-            y += LayoutTextCard(originCard, originHeaderLabel, originRows, 0f, y, DetailWidth) + CardGap;
-            y += LayoutTextCard(districtCard, districtHeaderLabel, districtRows, 0f, y, DetailWidth) + CardGap;
+            y += LayoutTextCard(originCard, originToggleButton, originSummaryLabel, originContentPanel, originRows, DashboardSection.Origins, 0f, y, DetailWidth) + CardGap;
+            y += LayoutTextCard(districtCard, districtToggleButton, districtSummaryLabel, districtContentPanel, districtRows, DashboardSection.Districts, 0f, y, DetailWidth) + CardGap;
             y += LayoutSettingsCard(y) + CardGap;
 
             detailContentPanel.height = Mathf.Max(DetailScrollHeight, y);
         }
 
-        private float LayoutTextCard(UIPanel card, UILabel header, IList<UILabel> rows, float x, float y, float width)
+        private float LayoutTextCard(
+            UIPanel card,
+            UIButton toggleButton,
+            UILabel summaryLabel,
+            UIPanel contentPanel,
+            IList<UILabel> rows,
+            DashboardSection section,
+            float x,
+            float y,
+            float width)
         {
             card.relativePosition = new Vector3(x, y);
             card.width = width;
 
             float innerWidth = width - (CardPadding * 2f);
-            header.relativePosition = new Vector3(CardPadding, CardPadding);
-            header.width = innerWidth;
+            toggleButton.relativePosition = new Vector3(CardPadding, CardPadding);
+            toggleButton.width = innerWidth;
+            summaryLabel.relativePosition = new Vector3(CardPadding, CardPadding + toggleButton.height + 2f);
+            summaryLabel.width = innerWidth;
 
-            float nextY = CardPadding + CardHeaderHeight + 4f;
-            for (int i = 0; i < rows.Count; i++)
+            float nextY = CardPadding + toggleButton.height + 4f + CardSummaryHeight + 4f;
+            contentPanel.relativePosition = new Vector3(CardPadding, nextY);
+            contentPanel.width = innerWidth;
+            contentPanel.isVisible = IsSectionExpanded(section);
+            if (IsSectionExpanded(section))
             {
-                UILabel row = rows[i];
-                if (!row.isVisible)
+                float bodyY = 0f;
+                for (int i = 0; i < rows.Count; i++)
                 {
-                    continue;
+                    UILabel row = rows[i];
+                    if (!row.isVisible)
+                    {
+                        continue;
+                    }
+
+                    row.relativePosition = new Vector3(0f, bodyY);
+                    row.width = innerWidth;
+                    bodyY += CardRowHeight + CardRowSpacing;
                 }
 
-                row.relativePosition = new Vector3(CardPadding, nextY);
-                row.width = innerWidth;
-                nextY += CardRowHeight + CardRowSpacing;
+                contentPanel.height = Mathf.Max(0f, bodyY - CardRowSpacing);
+                nextY += contentPanel.height + 4f;
+            }
+            else
+            {
+                contentPanel.height = 0f;
             }
 
-            card.height = Mathf.Max(CardMinHeight, nextY + CardPadding - CardRowSpacing);
+            card.height = Mathf.Max(CardMinHeight, nextY + CardPadding);
             return card.height;
         }
 
-        private float LayoutButtonCard(UIPanel card, UILabel header, IList<UIButton> buttons, float x, float y, float width)
+        private float LayoutButtonCard(
+            UIPanel card,
+            UIButton toggleButton,
+            UILabel summaryLabel,
+            UIPanel contentPanel,
+            IList<UIButton> buttons,
+            DashboardSection section,
+            float x,
+            float y,
+            float width)
         {
             card.relativePosition = new Vector3(x, y);
             card.width = width;
 
             float innerWidth = width - (CardPadding * 2f);
-            header.relativePosition = new Vector3(CardPadding, CardPadding);
-            header.width = innerWidth;
+            toggleButton.relativePosition = new Vector3(CardPadding, CardPadding);
+            toggleButton.width = innerWidth;
+            summaryLabel.relativePosition = new Vector3(CardPadding, CardPadding + toggleButton.height + 2f);
+            summaryLabel.width = innerWidth;
 
-            float nextY = CardPadding + CardHeaderHeight + 4f;
-            for (int i = 0; i < buttons.Count; i++)
+            float nextY = CardPadding + toggleButton.height + 4f + CardSummaryHeight + 4f;
+            contentPanel.relativePosition = new Vector3(CardPadding, nextY);
+            contentPanel.width = innerWidth;
+            contentPanel.isVisible = IsSectionExpanded(section);
+            if (IsSectionExpanded(section))
             {
-                UIButton button = buttons[i];
-                if (!button.isVisible)
+                float bodyY = 0f;
+                for (int i = 0; i < buttons.Count; i++)
                 {
-                    continue;
+                    UIButton button = buttons[i];
+                    if (!button.isVisible)
+                    {
+                        continue;
+                    }
+
+                    button.relativePosition = new Vector3(0f, bodyY);
+                    button.width = innerWidth;
+                    bodyY += CardButtonHeight + 4f;
                 }
 
-                button.relativePosition = new Vector3(CardPadding, nextY);
-                button.width = innerWidth;
-                nextY += CardButtonHeight + 4f;
+                contentPanel.height = Mathf.Max(0f, bodyY - 4f);
+                nextY += contentPanel.height + 4f;
+            }
+            else
+            {
+                contentPanel.height = 0f;
             }
 
-            card.height = Mathf.Max(CardMinHeight, nextY + CardPadding - 4f);
+            card.height = Mathf.Max(CardMinHeight, nextY + CardPadding);
             return card.height;
         }
 
@@ -914,15 +902,21 @@ namespace RealTime.UI
             float innerWidth = DetailWidth - (CardPadding * 2f);
             settingsToggleButton.relativePosition = new Vector3(CardPadding, CardPadding);
             settingsToggleButton.width = innerWidth;
+            settingsSummaryLabel.relativePosition = new Vector3(CardPadding, CardPadding + settingsToggleButton.height + 2f);
+            settingsSummaryLabel.width = innerWidth;
 
-            float nextY = CardPadding + settingsToggleButton.height + 6f;
-            settingsPanel.relativePosition = new Vector3(CardPadding, nextY);
-            settingsPanel.isVisible = settingsExpanded;
+            float nextY = CardPadding + settingsToggleButton.height + 4f + CardSummaryHeight + 4f;
+            settingsContentPanel.relativePosition = new Vector3(CardPadding, nextY);
+            settingsContentPanel.width = innerWidth;
+            settingsContentPanel.isVisible = IsSectionExpanded(DashboardSection.Settings);
+            settingsPanel.relativePosition = Vector3.zero;
             settingsPanel.width = innerWidth;
+            settingsPanel.isVisible = IsSectionExpanded(DashboardSection.Settings);
 
-            settingsCard.height = settingsExpanded
+            settingsContentPanel.height = IsSectionExpanded(DashboardSection.Settings) ? settingsPanel.height : 0f;
+            settingsCard.height = IsSectionExpanded(DashboardSection.Settings)
                 ? nextY + settingsPanel.height + CardPadding
-                : nextY + CardPadding;
+                : Mathf.Max(CardMinHeight, nextY + CardPadding);
 
             return settingsCard.height;
         }
@@ -937,8 +931,10 @@ namespace RealTime.UI
             detailScrollbar.maxValue = Mathf.Max(0f, detailContentPanel.height - detailScroll.height);
             detailScrollbar.isVisible = !collapsed && detailScrollbar.maxValue > 0.1f;
             float clamped = Mathf.Clamp(preservedScroll, detailScrollbar.minValue, detailScrollbar.maxValue);
+            suppressScrollbarEvent = true;
             detailScrollbar.value = clamped;
             detailScroll.scrollPosition = new Vector2(0f, clamped);
+            suppressScrollbarEvent = false;
         }
 
         private void OnStartRestartClicked()
@@ -976,7 +972,7 @@ namespace RealTime.UI
             PandemicSuperspreaderCitizenSnapshot entry = currentSnapshot.TopSpreaders[index];
             if (entry != null && entry.CanFocus)
             {
-                FocusOnLocation(0, entry.FocusPosition);
+                FocusCitizen(entry);
             }
         }
 
@@ -990,30 +986,78 @@ namespace RealTime.UI
             PandemicSuperspreaderLocationSnapshot entry = currentSnapshot.TopOriginLocations[index];
             if (entry != null && entry.CanFocus)
             {
-                FocusOnLocation(entry.BuildingId, entry.FocusPosition);
+                FocusOnLocation(entry.BuildingId, entry.FocusPosition, showBuildingInfo: true);
             }
         }
 
-        private void FocusOnLocation(ushort buildingId, Vector3 position)
+        private void FocusCitizen(PandemicSuperspreaderCitizenSnapshot entry)
         {
-            CameraController cameraController = UnityEngine.Object.FindObjectOfType<CameraController>();
-            if (cameraController == null)
+            if (entry == null)
             {
                 return;
             }
 
+            var instance = new InstanceID();
+            if (entry.CitizenInstanceId != 0)
+            {
+                instance.CitizenInstance = entry.CitizenInstanceId;
+            }
+            else
+            {
+                instance.Citizen = entry.CitizenId;
+            }
+
+            CameraController cameraController = UnityEngine.Object.FindObjectOfType<CameraController>();
+            if (cameraController != null)
+            {
+                cameraController.SetTarget(instance, entry.FocusPosition, true);
+            }
+
+            try
+            {
+                WorldInfoPanel.Show<CitizenWorldInfoPanel>(entry.FocusPosition, instance);
+            }
+            catch
+            {
+            }
+        }
+
+        private void FocusOnLocation(ushort buildingId, Vector3 position, bool showBuildingInfo = false)
+        {
+            CameraController cameraController = UnityEngine.Object.FindObjectOfType<CameraController>();
             var instance = new InstanceID();
             if (buildingId != 0)
             {
                 instance.Building = buildingId;
             }
 
-            cameraController.SetTarget(instance, position, true);
+            if (cameraController != null)
+            {
+                cameraController.SetTarget(instance, position, true);
+            }
+
+            if (showBuildingInfo && buildingId != 0)
+            {
+                try
+                {
+                    WorldInfoPanel.Show<ZonedBuildingWorldInfoPanel>(position, instance);
+                }
+                catch
+                {
+                }
+            }
         }
 
         private void ToggleCollapse()
         {
             collapsed = !collapsed;
+            layoutDirty = true;
+            Refresh();
+        }
+
+        private void ToggleSection(DashboardSection section)
+        {
+            sectionExpanded[section] = !IsSectionExpanded(section);
             layoutDirty = true;
             Refresh();
         }
@@ -1180,18 +1224,44 @@ namespace RealTime.UI
             card.backgroundSprite = "MenuPanel2";
             card.opacity = 0.7f;
             card.clipChildren = true;
+            card.isInteractive = true;
+            AttachDetailMouseWheel(card);
             return card;
         }
 
-        private UILabel CreateCardHeader(UIComponent parent, string text)
+        private void CreateMetricCards()
         {
-            UILabel label = parent.AddUIComponent<UILabel>();
-            label.autoSize = false;
-            label.height = CardHeaderHeight;
-            label.textScale = 0.8f;
-            label.text = text;
-            label.textColor = new Color32(245, 245, 245, 255);
-            return label;
+            float width = (HeaderWidth - (MetricCardGap * 3f)) / 4f;
+            for (int i = 0; i < metricPanels.Length; i++)
+            {
+                UIPanel metricPanel = headerPanel.AddUIComponent<UIPanel>();
+                metricPanel.autoSize = false;
+                metricPanel.width = width;
+                metricPanel.height = MetricCardHeight;
+                metricPanel.relativePosition = new Vector3((width + MetricCardGap) * i, MetricsTop);
+                metricPanel.backgroundSprite = "MenuPanel2";
+                metricPanel.opacity = 0.68f;
+                metricPanel.clipChildren = true;
+                metricPanels[i] = metricPanel;
+
+                UILabel title = metricPanel.AddUIComponent<UILabel>();
+                title.autoSize = false;
+                title.width = width - 12f;
+                title.height = 14f;
+                title.relativePosition = new Vector3(6f, 6f);
+                title.textScale = 0.64f;
+                title.textColor = new Color32(220, 220, 220, 255);
+                metricTitles[i] = title;
+
+                UILabel value = metricPanel.AddUIComponent<UILabel>();
+                value.autoSize = false;
+                value.width = width - 12f;
+                value.height = MetricCardHeight - 24f;
+                value.relativePosition = new Vector3(6f, 20f);
+                value.textScale = 0.68f;
+                value.textColor = new Color32(245, 245, 245, 255);
+                metricValues[i] = value;
+            }
         }
 
         private UIButton CreateActionButton(UIComponent parent, string label, float x, float y, float width)
@@ -1208,6 +1278,7 @@ namespace RealTime.UI
             button.hoveredBgSprite = "ButtonMenuHovered";
             button.pressedBgSprite = "ButtonMenuPressed";
             button.textHorizontalAlignment = UIHorizontalAlignment.Center;
+            AttachDetailMouseWheel(button);
             return button;
         }
 
@@ -1223,7 +1294,57 @@ namespace RealTime.UI
             button.hoveredBgSprite = "ButtonMenuHovered";
             button.pressedBgSprite = "ButtonMenuPressed";
             button.textHorizontalAlignment = UIHorizontalAlignment.Left;
+            AttachDetailMouseWheel(button);
             return button;
+        }
+
+        private void UpdateCardHeaders()
+        {
+            ageToggleButton.text = BuildSectionHeader(DashboardSection.Age, "Infected by Age Group");
+            lockdownToggleButton.text = BuildSectionHeader(DashboardSection.Lockdown, "Lockdown Families");
+            spreaderToggleButton.text = BuildSectionHeader(DashboardSection.Spreaders, "Top Spreaders");
+            locationToggleButton.text = BuildSectionHeader(DashboardSection.Locations, "Top Origin Locations");
+            originToggleButton.text = BuildSectionHeader(DashboardSection.Origins, "Origin Distribution");
+            districtToggleButton.text = BuildSectionHeader(DashboardSection.Districts, "District Infection Rates");
+            settingsToggleButton.text = BuildSectionHeader(DashboardSection.Settings, "Pandemic Settings");
+
+            if (settingsSummaryLabel != null && string.IsNullOrEmpty(settingsSummaryLabel.text))
+            {
+                settingsSummaryLabel.text = "Live configuration in this save";
+            }
+        }
+
+        private string BuildSectionHeader(DashboardSection section, string title)
+        {
+            return (IsSectionExpanded(section) ? "\u25bc " : "\u25ba ") + title;
+        }
+
+        private bool IsSectionExpanded(DashboardSection section)
+        {
+            return sectionExpanded.TryGetValue(section, out bool expanded) && expanded;
+        }
+
+        private UILabel CreateCardSummary(UIComponent parent)
+        {
+            UILabel label = parent.AddUIComponent<UILabel>();
+            label.autoSize = false;
+            label.height = CardSummaryHeight;
+            label.textScale = 0.66f;
+            label.textColor = new Color32(216, 216, 216, 255);
+            label.isInteractive = true;
+            AttachDetailMouseWheel(label);
+            return label;
+        }
+
+        private UIPanel CreateCardContent(UIComponent parent)
+        {
+            UIPanel content = parent.AddUIComponent<UIPanel>();
+            content.autoLayout = false;
+            content.autoSize = false;
+            content.clipChildren = true;
+            content.isInteractive = true;
+            AttachDetailMouseWheel(content);
+            return content;
         }
 
         private UIButton CreateCardListButton(UIComponent parent)
@@ -1238,6 +1359,7 @@ namespace RealTime.UI
             button.pressedBgSprite = "ButtonMenuPressed";
             button.textHorizontalAlignment = UIHorizontalAlignment.Left;
             button.isVisible = false;
+            AttachDetailMouseWheel(button);
             return button;
         }
 
@@ -1249,6 +1371,8 @@ namespace RealTime.UI
             label.textScale = 0.72f;
             label.textAlignment = UIHorizontalAlignment.Left;
             label.isVisible = false;
+            label.isInteractive = true;
+            AttachDetailMouseWheel(label);
             return label;
         }
 
@@ -1261,6 +1385,8 @@ namespace RealTime.UI
             label.text = text;
             label.textScale = textScale;
             label.textColor = new Color32(230, 230, 230, 255);
+            label.isInteractive = true;
+            AttachDetailMouseWheel(label);
             return label;
         }
 
@@ -1278,6 +1404,7 @@ namespace RealTime.UI
             button.hoveredBgSprite = "ButtonMenuHovered";
             button.pressedBgSprite = "ButtonMenuPressed";
             button.textHorizontalAlignment = UIHorizontalAlignment.Center;
+            AttachDetailMouseWheel(button);
             return button;
         }
 
@@ -1291,6 +1418,7 @@ namespace RealTime.UI
             scrollbar.minValue = 0f;
             scrollbar.value = 0f;
             scrollbar.incrementAmount = 24f;
+            AttachDetailMouseWheel(scrollbar);
 
             UISlicedSprite track = scrollbar.AddUIComponent<UISlicedSprite>();
             track.relativePosition = Vector3.zero;
@@ -1299,6 +1427,7 @@ namespace RealTime.UI
             track.height = scrollbar.height;
             track.spriteName = "ScrollbarTrack";
             scrollbar.trackObject = track;
+            AttachDetailMouseWheel(track);
 
             UISlicedSprite thumb = track.AddUIComponent<UISlicedSprite>();
             thumb.relativePosition = Vector3.zero;
@@ -1307,19 +1436,35 @@ namespace RealTime.UI
             thumb.height = 24f;
             thumb.spriteName = "ScrollbarThumb";
             scrollbar.thumbObject = thumb;
+            AttachDetailMouseWheel(thumb);
 
             return scrollbar;
         }
 
+        private void AttachDetailMouseWheel(UIComponent component)
+        {
+            if (component == null)
+            {
+                return;
+            }
+
+            component.eventMouseWheel -= OnContentMouseWheel;
+            component.eventMouseWheel += OnContentMouseWheel;
+        }
+
         private void OnContentMouseWheel(UIComponent component, UIMouseEventParameter eventParam)
         {
-            if (detailScrollbar == null || collapsed)
+            if (detailScrollbar == null || detailScroll == null || collapsed)
             {
                 return;
             }
 
             float nextValue = detailScrollbar.value - (eventParam.wheelDelta * detailScroll.scrollWheelAmount);
-            detailScrollbar.value = Mathf.Clamp(nextValue, detailScrollbar.minValue, detailScrollbar.maxValue);
+            float clamped = Mathf.Clamp(nextValue, detailScrollbar.minValue, detailScrollbar.maxValue);
+            suppressScrollbarEvent = true;
+            detailScrollbar.value = clamped;
+            detailScroll.scrollPosition = new Vector2(0f, clamped);
+            suppressScrollbarEvent = false;
         }
 
         private void SetLabelRows(UIPanel parent, List<UILabel> rows, IList<string> texts, ref int visibleCount)
@@ -1348,73 +1493,6 @@ namespace RealTime.UI
                 {
                     row.isVisible = false;
                 }
-            }
-        }
-
-        private void ClearGraphCurves()
-        {
-            if (infectedGraph == null)
-            {
-                return;
-            }
-
-            while (infectedGraph.curveCount > 0)
-            {
-                var curve = infectedGraph.GetCurve(0);
-                if (curve == null || string.IsNullOrEmpty(curve.name))
-                {
-                    infectedGraph.Clear();
-                    break;
-                }
-
-                infectedGraph.RemoveCurve(curve.name);
-            }
-        }
-
-        private void EnsureMarkerWidgets(int count)
-        {
-            while (chartMarkerLines.Count < count)
-            {
-                UISprite line = chartOverlay.AddUIComponent<UISprite>();
-                line.spriteName = "ScrollbarTrack";
-                line.isVisible = false;
-                chartMarkerLines.Add(line);
-
-                UILabel label = chartOverlay.AddUIComponent<UILabel>();
-                label.autoSize = false;
-                label.width = 18f;
-                label.height = 12f;
-                label.textScale = 0.58f;
-                label.textAlignment = UIHorizontalAlignment.Center;
-                label.isVisible = false;
-                chartMarkerLabels.Add(label);
-            }
-        }
-
-        private void HideChartMarkers()
-        {
-            for (int i = 0; i < chartMarkerLines.Count; i++)
-            {
-                chartMarkerLines[i].isVisible = false;
-                chartMarkerLabels[i].isVisible = false;
-            }
-        }
-
-        private static Color32 GetMarkerColor(PandemicPolicyMarkerSnapshot marker)
-        {
-            if (marker == null)
-            {
-                return new Color32(180, 180, 180, 255);
-            }
-
-            switch (marker.Type)
-            {
-                case PandemicPolicyMarkerType.Masks:
-                    return marker.Enabled ? new Color32(48, 172, 212, 255) : new Color32(20, 118, 168, 255);
-                case PandemicPolicyMarkerType.Lockdown:
-                    return marker.Enabled ? new Color32(228, 124, 36, 255) : new Color32(186, 66, 32, 255);
-                default:
-                    return new Color32(180, 180, 180, 255);
             }
         }
 
@@ -1512,6 +1590,30 @@ namespace RealTime.UI
                 default:
                     return "Off";
             }
+        }
+
+        private static string GetPublicTransportStateLabel(PandemicPublicTransportShutdownState state)
+        {
+            switch (state)
+            {
+                case PandemicPublicTransportShutdownState.Draining:
+                    return "Draining";
+                case PandemicPublicTransportShutdownState.Closed:
+                    return "Closed";
+                default:
+                    return "Open";
+            }
+        }
+
+        private enum DashboardSection
+        {
+            Age,
+            Lockdown,
+            Spreaders,
+            Locations,
+            Origins,
+            Districts,
+            Settings,
         }
 
         private sealed class PandemicSettingControl

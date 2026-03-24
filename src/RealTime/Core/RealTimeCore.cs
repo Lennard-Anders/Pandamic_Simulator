@@ -338,6 +338,26 @@ namespace RealTime.Core
             AddPatchIfAvailable(patches, WeatherManagerPatch.SimulationStepImpl, nameof(WeatherManagerPatch.SimulationStepImpl));
             AddPatchIfAvailable(patches, ParkPatch.DistrictParkSimulation, nameof(ParkPatch.DistrictParkSimulation));
             AddPatchIfAvailable(patches, OutsideConnectionAIPatch.DummyTrafficProbability, nameof(OutsideConnectionAIPatch.DummyTrafficProbability));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.DepotCreateVehicle, nameof(PublicTransportAIPatch.DepotCreateVehicle));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.DepotStartTransfer, nameof(PublicTransportAIPatch.DepotStartTransfer));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.BusArriveAtTarget, nameof(PublicTransportAIPatch.BusArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.BusArriveAtSource, nameof(PublicTransportAIPatch.BusArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.TramArriveAtTarget, nameof(PublicTransportAIPatch.TramArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.TramArriveAtSource, nameof(PublicTransportAIPatch.TramArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.TrolleybusArriveAtTarget, nameof(PublicTransportAIPatch.TrolleybusArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.TrolleybusArriveAtSource, nameof(PublicTransportAIPatch.TrolleybusArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerTrainArriveAtTarget, nameof(PublicTransportAIPatch.PassengerTrainArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerTrainArriveAtSource, nameof(PublicTransportAIPatch.PassengerTrainArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerShipArriveAtTarget, nameof(PublicTransportAIPatch.PassengerShipArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerShipArriveAtSource, nameof(PublicTransportAIPatch.PassengerShipArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerPlaneArriveAtTarget, nameof(PublicTransportAIPatch.PassengerPlaneArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerPlaneArriveAtSource, nameof(PublicTransportAIPatch.PassengerPlaneArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerHelicopterArriveAtTarget, nameof(PublicTransportAIPatch.PassengerHelicopterArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.PassengerHelicopterArriveAtSource, nameof(PublicTransportAIPatch.PassengerHelicopterArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.CableCarArriveAtTarget, nameof(PublicTransportAIPatch.CableCarArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.CableCarArriveAtSource, nameof(PublicTransportAIPatch.CableCarArriveAtSource));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.TaxiArriveAtTarget, nameof(PublicTransportAIPatch.TaxiArriveAtTarget));
+            AddPatchIfAvailable(patches, PublicTransportAIPatch.TaxiArriveAtSource, nameof(PublicTransportAIPatch.TaxiArriveAtSource));
 
             if (compatibility.IsAnyModActive(WorkshopMods.CitizenLifecycleRebalance, WorkshopMods.LifecycleRebalanceRevisited))
             {

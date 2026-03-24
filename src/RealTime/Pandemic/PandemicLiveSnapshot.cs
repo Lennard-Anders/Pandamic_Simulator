@@ -21,6 +21,14 @@ namespace RealTime.Pandemic
 
         public PandemicXRayMode XRayMode { get; set; }
 
+        public PandemicPublicTransportShutdownState PublicTransportState { get; set; }
+
+        public int PublicTransportTrackedLines { get; set; }
+
+        public int PublicTransportReturningVehicles { get; set; }
+
+        public int PublicTransportClosedDepots { get; set; }
+
         public System.DateTime SimulationTime { get; set; }
 
         public int Healthy { get; set; }
@@ -116,6 +124,8 @@ namespace RealTime.Pandemic
     internal sealed class PandemicSuperspreaderCitizenSnapshot
     {
         public uint CitizenId { get; set; }
+
+        public ushort CitizenInstanceId { get; set; }
 
         public string Label { get; set; }
 

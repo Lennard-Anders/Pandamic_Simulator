@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using RealTime.CustomAI;
 using RealTime.GameConnection;
 using SkyTools.Tools;
@@ -82,10 +83,44 @@ namespace RealTime.Pandemic
         private bool startCompleted;
         private readonly Dictionary<PandemicLockdownFamily, PandemicFamilyExposure> lockdownFamilyExposure = new Dictionary<PandemicLockdownFamily, PandemicFamilyExposure>();
         private readonly List<PandemicPolicyTimelineEntry> policyTimeline = new List<PandemicPolicyTimelineEntry>();
+        private readonly Dictionary<ushort, PandemicPublicTransportLineState> publicTransportLineStates = new Dictionary<ushort, PandemicPublicTransportLineState>();
+        private readonly Dictionary<ushort, PandemicPublicTransportDepotState> publicTransportDepotStates = new Dictionary<ushort, PandemicPublicTransportDepotState>();
+        private readonly Dictionary<ushort, PandemicPublicTransportVehicleState> publicTransportVehicles = new Dictionary<ushort, PandemicPublicTransportVehicleState>();
+        private PandemicPublicTransportShutdownState publicTransportShutdownState = PandemicPublicTransportShutdownState.Open;
+        private bool publicTransportClosedLastTick;
 
         private readonly long CITIZENS_UPDATE_INTERVAL_MINUTES = 60 * 6;
         private readonly long UPDATE_INTERVAL_MINUTES = 5;
         private readonly long STORE_INTERVAL_MINUTES = 5;
+        private static readonly MethodInfo VehicleStartPathFindMethod = typeof(VehicleAI).GetMethod(
+            "StartPathFind",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(ushort), typeof(Vehicle).MakeByRefType() },
+            new ParameterModifier[0]);
+        private static readonly MethodInfo DepotManualActivationMethod = typeof(DepotAI).GetMethod(
+            "ManualActivation",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(ushort), typeof(Building).MakeByRefType() },
+            new ParameterModifier[0]);
+        private static readonly MethodInfo DepotManualDeactivationMethod = typeof(DepotAI).GetMethod(
+            "ManualDeactivation",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(ushort), typeof(Building).MakeByRefType() },
+            new ParameterModifier[0]);
+        private static readonly Dictionary<Type, MethodInfo> VehicleRemoveLineMethods = new Dictionary<Type, MethodInfo>
+        {
+            { typeof(BusAI), GetVehicleRefMethod(typeof(BusAI), "RemoveLine") },
+            { typeof(TramAI), GetVehicleRefMethod(typeof(TramAI), "RemoveLine") },
+            { typeof(TrolleybusAI), GetVehicleRefMethod(typeof(TrolleybusAI), "RemoveLine") },
+            { typeof(PassengerTrainAI), GetVehicleRefMethod(typeof(PassengerTrainAI), "RemoveLine") },
+            { typeof(PassengerShipAI), GetVehicleRefMethod(typeof(PassengerShipAI), "RemoveLine") },
+            { typeof(PassengerPlaneAI), GetVehicleRefMethod(typeof(PassengerPlaneAI), "RemoveLine") },
+            { typeof(PassengerHelicopterAI), GetVehicleRefMethod(typeof(PassengerHelicopterAI), "RemoveLine") },
+            { typeof(CableCarAI), GetVehicleRefMethod(typeof(CableCarAI), "RemoveLine") },
+        };
 
         private MaskManager Masks = new MaskManager();
 
@@ -108,6 +143,26 @@ namespace RealTime.Pandemic
             public DateTime SimulationTime;
             public PandemicPolicyMarkerType Type;
             public bool Enabled;
+        }
+
+        private sealed class PandemicPublicTransportLineState
+        {
+            public bool DayActive;
+            public bool NightActive;
+        }
+
+        private sealed class PandemicPublicTransportDepotState
+        {
+            public bool WasActive;
+            public bool IsClosed;
+        }
+
+        private sealed class PandemicPublicTransportVehicleState
+        {
+            public ushort SourceBuilding;
+            public ushort OriginalLine;
+            public bool RedirectPending;
+            public bool ReturningToSource;
         }
 
         public void Awake()
@@ -199,6 +254,7 @@ namespace RealTime.Pandemic
 
             try
             {
+                RestorePublicTransportService();
                 ResetRuntimeStateForBootstrap();
                 ResetPandemicServices(lockdownEnabled);
                 currentDateTime = simulation.m_currentGameTime;
@@ -305,6 +361,7 @@ namespace RealTime.Pandemic
                 hasStartedAtLeastOnce = true;
                 lifecycleState = PandemicLifecycleState.Running;
                 BuildPandemicBuildingSets();
+                UpdatePublicTransportShutdownState(forceRefresh: true);
             }
             catch (Exception ex)
             {
@@ -331,15 +388,25 @@ namespace RealTime.Pandemic
                 Observer = new PandemicObserver();
             }
 
-            var simulationObject = GameObject.Find("SimulationManager");
-            simulation = simulationObject?.GetComponent<SimulationManager>();
-            if (simulation == null)
+            if (!EnsureSimulationReference())
             {
                 Log.Warning("The 'Real Time' pandemic manager could not find the simulation manager.");
                 return false;
             }
 
             return true;
+        }
+
+        private bool EnsureSimulationReference()
+        {
+            if (simulation != null)
+            {
+                return true;
+            }
+
+            GameObject simulationObject = GameObject.Find("SimulationManager");
+            simulation = simulationObject?.GetComponent<SimulationManager>();
+            return simulation != null;
         }
 
         private void ResetPandemicServices(bool lockdownEnabled)
@@ -352,8 +419,550 @@ namespace RealTime.Pandemic
             QuarantineManager.Instance.InLockDown = lockdownEnabled;
         }
 
+        internal PandemicPublicTransportShutdownState GetPublicTransportShutdownState() => publicTransportShutdownState;
+
+        internal bool ShouldBlockPublicTransportDepotSpawn(ushort buildingId, VehicleInfo vehicleInfo)
+        {
+            if (publicTransportShutdownState == PandemicPublicTransportShutdownState.Open || vehicleInfo == null)
+            {
+                return false;
+            }
+
+            return IsPublicTransportDepotBuilding(buildingId)
+                && vehicleInfo.m_class != null
+                && vehicleInfo.m_class.m_service == ItemClass.Service.PublicTransport;
+        }
+
+        internal bool ShouldBlockPublicTransportDepotTransfer(ushort buildingId)
+        {
+            return publicTransportShutdownState != PandemicPublicTransportShutdownState.Open
+                && IsPublicTransportDepotBuilding(buildingId);
+        }
+
+        internal void NotifyPublicTransportVehicleArrivedAtTarget(ushort vehicleId, ref Vehicle vehicle)
+        {
+            if (publicTransportShutdownState != PandemicPublicTransportShutdownState.Draining
+                || !IsPublicTransportVehicle(vehicleId, ref vehicle))
+            {
+                return;
+            }
+
+            TrackPublicTransportVehicle(vehicleId, ref vehicle);
+            if (!publicTransportVehicles.TryGetValue(vehicleId, out PandemicPublicTransportVehicleState trackedVehicle)
+                || trackedVehicle.ReturningToSource
+                || !trackedVehicle.RedirectPending)
+            {
+                return;
+            }
+
+            if (trackedVehicle.SourceBuilding == 0)
+            {
+                publicTransportVehicles.Remove(vehicleId);
+                VehicleManager.instance?.ReleaseVehicle(vehicleId);
+                return;
+            }
+
+            if (!TrySendVehicleBackToSource(vehicleId, ref vehicle, trackedVehicle))
+            {
+                publicTransportVehicles.Remove(vehicleId);
+                VehicleManager.instance?.ReleaseVehicle(vehicleId);
+            }
+        }
+
+        internal void NotifyPublicTransportVehicleArrivedAtSource(ushort vehicleId, ref Vehicle vehicle)
+        {
+            if (publicTransportShutdownState == PandemicPublicTransportShutdownState.Open
+                || !IsPublicTransportVehicle(vehicleId, ref vehicle))
+            {
+                return;
+            }
+
+            if (publicTransportVehicles.TryGetValue(vehicleId, out PandemicPublicTransportVehicleState trackedVehicle)
+                && trackedVehicle.ReturningToSource)
+            {
+                MarkPublicTransportVehicleAtSource(vehicleId);
+            }
+        }
+
+        private bool CanUpdatePublicTransportShutdown()
+        {
+            return Config != null
+                && BuildingMgr != null
+                && EnsureSimulationReference();
+        }
+
+        private bool IsPublicTransportClosedEffective() => !IsLockdownFamilyOpen(PandemicLockdownFamily.PublicTransport);
+
+        private void UpdatePublicTransportShutdownState(bool forceRefresh = false)
+        {
+            if (!CanUpdatePublicTransportShutdown())
+            {
+                return;
+            }
+
+            bool shouldClose = IsPublicTransportClosedEffective();
+            if (forceRefresh || shouldClose != publicTransportClosedLastTick)
+            {
+                if (shouldClose)
+                {
+                    BeginPublicTransportShutdown();
+                }
+                else
+                {
+                    RestorePublicTransportService();
+                }
+
+                publicTransportClosedLastTick = shouldClose;
+            }
+
+            if (!shouldClose)
+            {
+                return;
+            }
+
+            CaptureTrackedPublicTransportVehicles();
+            RefreshTrackedPublicTransportVehicles();
+        }
+
+        private void BeginPublicTransportShutdown()
+        {
+            if (publicTransportShutdownState != PandemicPublicTransportShutdownState.Open)
+            {
+                return;
+            }
+
+            CapturePublicTransportLines();
+            CapturePublicTransportDepots();
+            CaptureTrackedPublicTransportVehicles();
+
+            publicTransportShutdownState = publicTransportVehicles.Count > 0
+                ? PandemicPublicTransportShutdownState.Draining
+                : PandemicPublicTransportShutdownState.Closed;
+
+            if (publicTransportShutdownState == PandemicPublicTransportShutdownState.Closed)
+            {
+                DeactivateTrackedPublicTransportDepots();
+            }
+        }
+
+        private void RestorePublicTransportService()
+        {
+            if (publicTransportShutdownState == PandemicPublicTransportShutdownState.Open
+                && publicTransportLineStates.Count == 0
+                && publicTransportDepotStates.Count == 0
+                && publicTransportVehicles.Count == 0)
+            {
+                return;
+            }
+
+            ActivateTrackedPublicTransportDepots();
+
+            TransportManager transportManager = TransportManager.instance;
+            TransportLine[] lines = transportManager?.m_lines.m_buffer;
+            if (lines != null)
+            {
+                foreach (KeyValuePair<ushort, PandemicPublicTransportLineState> entry in publicTransportLineStates)
+                {
+                    ushort lineId = entry.Key;
+                    if (lineId >= lines.Length)
+                    {
+                        continue;
+                    }
+
+                    ref TransportLine line = ref lines[lineId];
+                    if (!IsCreatedTransportLine(ref line))
+                    {
+                        continue;
+                    }
+
+                    TransportInfo lineInfo = line.Info;
+                    if (lineInfo?.m_class == null || lineInfo.m_class.m_service != ItemClass.Service.PublicTransport)
+                    {
+                        continue;
+                    }
+
+                    line.SetActive(entry.Value.DayActive, entry.Value.NightActive);
+                }
+            }
+
+            publicTransportVehicles.Clear();
+            publicTransportLineStates.Clear();
+            publicTransportDepotStates.Clear();
+            publicTransportShutdownState = PandemicPublicTransportShutdownState.Open;
+        }
+
+        private void CapturePublicTransportLines()
+        {
+            publicTransportLineStates.Clear();
+
+            TransportManager transportManager = TransportManager.instance;
+            TransportLine[] lines = transportManager?.m_lines.m_buffer;
+            if (lines == null)
+            {
+                return;
+            }
+
+            for (ushort lineId = 0; lineId < lines.Length; lineId++)
+            {
+                ref TransportLine line = ref lines[lineId];
+                if (!IsCreatedTransportLine(ref line))
+                {
+                    continue;
+                }
+
+                TransportInfo lineInfo = line.Info;
+                if (lineInfo?.m_class == null || lineInfo.m_class.m_service != ItemClass.Service.PublicTransport)
+                {
+                    continue;
+                }
+
+                bool dayActive;
+                bool nightActive;
+                line.GetActive(out dayActive, out nightActive);
+                publicTransportLineStates[lineId] = new PandemicPublicTransportLineState
+                {
+                    DayActive = dayActive,
+                    NightActive = nightActive,
+                };
+
+                line.SetActive(false, false);
+            }
+        }
+
+        private void CapturePublicTransportDepots()
+        {
+            publicTransportDepotStates.Clear();
+
+            BuildingManager buildingManager = BuildingManager.instance;
+            if (buildingManager == null)
+            {
+                return;
+            }
+
+            Building[] buildings = buildingManager.m_buildings.m_buffer;
+            if (buildings == null)
+            {
+                return;
+            }
+
+            for (ushort buildingId = 0; buildingId < buildings.Length; buildingId++)
+            {
+                ref Building building = ref buildings[buildingId];
+                if (!IsPublicTransportDepotBuilding(buildingId))
+                {
+                    continue;
+                }
+
+                publicTransportDepotStates[buildingId] = new PandemicPublicTransportDepotState
+                {
+                    WasActive = (building.m_flags & Building.Flags.Active) != 0,
+                    IsClosed = false,
+                };
+            }
+        }
+
+        private void CaptureTrackedPublicTransportVehicles()
+        {
+            VehicleManager vehicleManager = VehicleManager.instance;
+            Vehicle[] vehicles = vehicleManager?.m_vehicles.m_buffer;
+            if (vehicles == null)
+            {
+                return;
+            }
+
+            for (ushort vehicleId = 1; vehicleId < vehicles.Length; vehicleId++)
+            {
+                ref Vehicle vehicle = ref vehicles[vehicleId];
+                TrackPublicTransportVehicle(vehicleId, ref vehicle);
+            }
+        }
+
+        private void TrackPublicTransportVehicle(ushort vehicleId, ref Vehicle vehicle)
+        {
+            if (vehicleId == 0
+                || publicTransportVehicles.ContainsKey(vehicleId)
+                || !IsVehicleCreated(ref vehicle)
+                || (vehicle.m_flags & Vehicle.Flags.Spawned) == 0
+                || !IsPublicTransportVehicle(vehicleId, ref vehicle))
+            {
+                return;
+            }
+
+            ushort sourceBuilding = vehicle.m_sourceBuilding;
+            publicTransportVehicles[vehicleId] = new PandemicPublicTransportVehicleState
+            {
+                SourceBuilding = sourceBuilding,
+                OriginalLine = vehicle.m_transportLine,
+                RedirectPending = sourceBuilding != 0 || vehicle.m_transportLine != 0,
+                ReturningToSource = IsVehicleReturningToSource(ref vehicle, sourceBuilding),
+            };
+        }
+
+        private void RefreshTrackedPublicTransportVehicles()
+        {
+            if (publicTransportVehicles.Count == 0)
+            {
+                if (publicTransportShutdownState == PandemicPublicTransportShutdownState.Draining)
+                {
+                    publicTransportShutdownState = PandemicPublicTransportShutdownState.Closed;
+                    DeactivateTrackedPublicTransportDepots();
+                }
+
+                return;
+            }
+
+            VehicleManager vehicleManager = VehicleManager.instance;
+            Vehicle[] vehicles = vehicleManager?.m_vehicles.m_buffer;
+            if (vehicles == null)
+            {
+                return;
+            }
+
+            foreach (ushort vehicleId in publicTransportVehicles.Keys.ToList())
+            {
+                if (vehicleId >= vehicles.Length)
+                {
+                    publicTransportVehicles.Remove(vehicleId);
+                    continue;
+                }
+
+                ref Vehicle vehicle = ref vehicles[vehicleId];
+                if (!IsVehicleCreated(ref vehicle)
+                    || (vehicle.m_flags & Vehicle.Flags.Spawned) == 0
+                    || !IsPublicTransportVehicle(vehicleId, ref vehicle))
+                {
+                    publicTransportVehicles.Remove(vehicleId);
+                    continue;
+                }
+
+                PandemicPublicTransportVehicleState trackedVehicle = publicTransportVehicles[vehicleId];
+                trackedVehicle.ReturningToSource = IsVehicleReturningToSource(ref vehicle, trackedVehicle.SourceBuilding);
+                publicTransportVehicles[vehicleId] = trackedVehicle;
+            }
+
+            if (publicTransportVehicles.Count == 0 && publicTransportShutdownState == PandemicPublicTransportShutdownState.Draining)
+            {
+                publicTransportShutdownState = PandemicPublicTransportShutdownState.Closed;
+                DeactivateTrackedPublicTransportDepots();
+            }
+        }
+
+        private bool TrySendVehicleBackToSource(ushort vehicleId, ref Vehicle vehicle, PandemicPublicTransportVehicleState trackedVehicle)
+        {
+            VehicleAI vehicleAI = vehicle.Info?.m_vehicleAI;
+            if (vehicleAI == null || trackedVehicle.SourceBuilding == 0)
+            {
+                return false;
+            }
+
+            TryDetachVehicleFromTransportLine(vehicleId, ref vehicle, vehicleAI);
+
+            vehicleAI.SetTransportLine(vehicleId, ref vehicle, 0);
+            vehicleAI.SetSource(vehicleId, ref vehicle, trackedVehicle.SourceBuilding);
+            vehicleAI.SetTarget(vehicleId, ref vehicle, trackedVehicle.SourceBuilding);
+            vehicle.m_transportLine = 0;
+            vehicle.m_flags |= Vehicle.Flags.GoingBack | Vehicle.Flags.TransferToSource;
+            vehicle.m_flags &= ~Vehicle.Flags.TransferToTarget;
+
+            bool startedPath = InvokeStartPathFind(vehicleAI, vehicleId, ref vehicle);
+            if (startedPath)
+            {
+                trackedVehicle.RedirectPending = false;
+                trackedVehicle.ReturningToSource = true;
+                publicTransportVehicles[vehicleId] = trackedVehicle;
+            }
+
+            return startedPath;
+        }
+
+        private static void TryDetachVehicleFromTransportLine(ushort vehicleId, ref Vehicle vehicle, VehicleAI vehicleAI)
+        {
+            if (vehicle.m_transportLine == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<Type, MethodInfo> entry in VehicleRemoveLineMethods)
+            {
+                if (entry.Key.IsInstanceOfType(vehicleAI))
+                {
+                    InvokeVehicleRefMethod(entry.Value, vehicleAI, vehicleId, ref vehicle);
+                    break;
+                }
+            }
+        }
+
+        private void MarkPublicTransportVehicleAtSource(ushort vehicleId)
+        {
+            publicTransportVehicles.Remove(vehicleId);
+            if (publicTransportVehicles.Count == 0 && publicTransportShutdownState == PandemicPublicTransportShutdownState.Draining)
+            {
+                publicTransportShutdownState = PandemicPublicTransportShutdownState.Closed;
+                DeactivateTrackedPublicTransportDepots();
+            }
+        }
+
+        private void DeactivateTrackedPublicTransportDepots()
+        {
+            foreach (KeyValuePair<ushort, PandemicPublicTransportDepotState> entry in publicTransportDepotStates.ToList())
+            {
+                PandemicPublicTransportDepotState depotState = entry.Value;
+                if (depotState.IsClosed || !depotState.WasActive)
+                {
+                    continue;
+                }
+
+                if (TrySetDepotManualState(entry.Key, false))
+                {
+                    depotState.IsClosed = true;
+                    publicTransportDepotStates[entry.Key] = depotState;
+                }
+            }
+        }
+
+        private void ActivateTrackedPublicTransportDepots()
+        {
+            foreach (KeyValuePair<ushort, PandemicPublicTransportDepotState> entry in publicTransportDepotStates)
+            {
+                if (!entry.Value.WasActive)
+                {
+                    continue;
+                }
+
+                TrySetDepotManualState(entry.Key, true);
+            }
+        }
+
+        private bool TrySetDepotManualState(ushort buildingId, bool activeState)
+        {
+            BuildingManager buildingManager = BuildingManager.instance;
+            if (buildingId == 0 || buildingManager == null || buildingId >= buildingManager.m_buildings.m_buffer.Length)
+            {
+                return false;
+            }
+
+            ref Building building = ref buildingManager.m_buildings.m_buffer[buildingId];
+            DepotAI depotAI = building.Info?.m_buildingAI as DepotAI;
+            if (depotAI == null)
+            {
+                return false;
+            }
+
+            if (activeState)
+            {
+                InvokeBuildingRefMethod(DepotManualActivationMethod, depotAI, buildingId, ref building);
+            }
+            else
+            {
+                InvokeBuildingRefMethod(DepotManualDeactivationMethod, depotAI, buildingId, ref building);
+                BuildingMgr?.DeactivateVisually(buildingId);
+            }
+
+            BuildingMgr?.UpdateBuildingColors(buildingId);
+            return true;
+        }
+
+        private bool IsPublicTransportDepotBuilding(ushort buildingId)
+        {
+            BuildingManager buildingManager = BuildingManager.instance;
+            if (buildingId == 0 || buildingManager == null || buildingId >= buildingManager.m_buildings.m_buffer.Length)
+            {
+                return false;
+            }
+
+            ref Building building = ref buildingManager.m_buildings.m_buffer[buildingId];
+            return (building.m_flags & Building.Flags.Created) != 0
+                && (building.m_flags & Building.Flags.Deleted) == 0
+                && building.Info?.m_class != null
+                && building.Info.m_class.m_service == ItemClass.Service.PublicTransport
+                && building.Info.m_buildingAI is DepotAI;
+        }
+
+        private static bool IsCreatedTransportLine(ref TransportLine line)
+        {
+            return (line.m_flags & TransportLine.Flags.Created) != 0
+                && (line.m_flags & TransportLine.Flags.Deleted) == 0;
+        }
+
+        private static bool IsVehicleCreated(ref Vehicle vehicle)
+        {
+            return (vehicle.m_flags & Vehicle.Flags.Created) != 0
+                && (vehicle.m_flags & Vehicle.Flags.Deleted) == 0;
+        }
+
+        private bool IsPublicTransportVehicle(ushort vehicleId, ref Vehicle vehicle)
+        {
+            return vehicleId != 0
+                && vehicle.Info?.m_class != null
+                && vehicle.Info.m_class.m_service == ItemClass.Service.PublicTransport;
+        }
+
+        private static bool IsVehicleReturningToSource(ref Vehicle vehicle, ushort sourceBuilding)
+        {
+            return sourceBuilding != 0
+                && ((vehicle.m_flags & Vehicle.Flags.GoingBack) != 0
+                    || (vehicle.m_flags & Vehicle.Flags.TransferToSource) != 0
+                    || vehicle.m_targetBuilding == sourceBuilding);
+        }
+
+        private static MethodInfo GetVehicleRefMethod(Type type, string name)
+        {
+            return type.GetMethod(
+                name,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                new[] { typeof(ushort), typeof(Vehicle).MakeByRefType() },
+                new ParameterModifier[0]);
+        }
+
+        private static bool InvokeStartPathFind(VehicleAI vehicleAI, ushort vehicleId, ref Vehicle vehicle)
+        {
+            if (vehicleAI == null || VehicleStartPathFindMethod == null)
+            {
+                return false;
+            }
+
+            object[] args = { vehicleId, vehicle };
+            object result = VehicleStartPathFindMethod.Invoke(vehicleAI, args);
+            vehicle = (Vehicle)args[1];
+            return result is bool started && started;
+        }
+
+        private static void InvokeVehicleRefMethod(MethodInfo method, VehicleAI vehicleAI, ushort vehicleId, ref Vehicle vehicle)
+        {
+            if (method == null || vehicleAI == null)
+            {
+                return;
+            }
+
+            object[] args = { vehicleId, vehicle };
+            method.Invoke(vehicleAI, args);
+            vehicle = (Vehicle)args[1];
+        }
+
+        private static void InvokeBuildingRefMethod(MethodInfo method, DepotAI depotAI, ushort buildingId, ref Building building)
+        {
+            if (method == null || depotAI == null)
+            {
+                return;
+            }
+
+            object[] args = { buildingId, building };
+            method.Invoke(depotAI, args);
+            building = (Building)args[1];
+        }
+
         public void Update()
         {
+            try
+            {
+                UpdatePublicTransportShutdownState();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("The 'Real Time' pandemic manager failed to update public transport shutdown state: " + ex);
+            }
+
             if (!IsReadyForUpdate())
             {
                 return;
@@ -846,6 +1455,7 @@ namespace RealTime.Pandemic
             QuarantineManager.Instance.InLockDown = !QuarantineManager.Instance.InLockDown;
             bool enabled = QuarantineManager.Instance.InLockDown;
             RecordPolicyTimelineEntry(PandemicPolicyMarkerType.Lockdown, enabled);
+            UpdatePublicTransportShutdownState(forceRefresh: true);
             return enabled;
         }
 
@@ -991,6 +1601,10 @@ namespace RealTime.Pandemic
                 CanRestart = hasStartedAtLeastOnce,
                 WorldOverlaysEnabled = worldOverlaysEnabled,
                 XRayMode = xRayMode,
+                PublicTransportState = publicTransportShutdownState,
+                PublicTransportTrackedLines = publicTransportLineStates.Count,
+                PublicTransportReturningVehicles = publicTransportVehicles.Count,
+                PublicTransportClosedDepots = publicTransportDepotStates.Count(depot => depot.Value.IsClosed),
                 SimulationTime = simulation != null ? simulation.m_currentGameTime : currentDateTime,
                 Healthy = initialPopulationHealthy.Count,
                 Sick = initialPopulationSick.Count,
@@ -1172,11 +1786,19 @@ namespace RealTime.Pandemic
                 .Take(5))
             {
                 Vector3 focusPosition;
-                bool canFocus = TryGetCitizenFocusPosition(kvp.Key, out focusPosition);
+                ushort citizenInstanceId;
+                bool canFocus = TryGetCitizenFocusTarget(kvp.Key, out citizenInstanceId, out focusPosition);
+                string citizenLabel = CitizenManager.instance != null ? CitizenManager.instance.GetCitizenName(kvp.Key) : null;
+                if (string.IsNullOrEmpty(citizenLabel))
+                {
+                    citizenLabel = "Citizen #" + kvp.Key;
+                }
+
                 snapshot.TopSpreaders.Add(new PandemicSuperspreaderCitizenSnapshot
                 {
                     CitizenId = kvp.Key,
-                    Label = "Citizen #" + kvp.Key,
+                    CitizenInstanceId = citizenInstanceId,
+                    Label = citizenLabel,
                     InfectionCount = kvp.Value.Count,
                     IsSuperspreader = kvp.Value.Count >= Config.SuperspreaderCitizenThreshold,
                     CanFocus = canFocus,
@@ -1412,8 +2034,9 @@ namespace RealTime.Pandemic
             }
         }
 
-        private bool TryGetCitizenFocusPosition(uint citizenId, out Vector3 position)
+        private bool TryGetCitizenFocusTarget(uint citizenId, out ushort citizenInstanceId, out Vector3 position)
         {
+            citizenInstanceId = 0;
             position = Vector3.zero;
             if (CitizenMgr == null || CitizenProxy == null)
             {
@@ -1438,10 +2061,10 @@ namespace RealTime.Pandemic
                 return false;
             }
 
-            ushort instanceId = CitizenProxy.GetInstance(ref citizen);
-            if (instanceId != 0)
+            citizenInstanceId = CitizenProxy.GetInstance(ref citizen);
+            if (citizenInstanceId != 0)
             {
-                position = CitizenMgr.GetCitizenPosition(instanceId);
+                position = CitizenMgr.GetCitizenPosition(citizenInstanceId);
                 return position != Vector3.zero;
             }
 
@@ -1696,6 +2319,11 @@ namespace RealTime.Pandemic
             quarantineFatedToDie.Clear();
             infectionOrigins.Clear();
             policyTimeline.Clear();
+            publicTransportLineStates.Clear();
+            publicTransportDepotStates.Clear();
+            publicTransportVehicles.Clear();
+            publicTransportShutdownState = PandemicPublicTransportShutdownState.Open;
+            publicTransportClosedLastTick = false;
             ResetLockdownFamilyExposure();
             lastDateTime = default;
             lastDateTimeCitizensUpdate = default;

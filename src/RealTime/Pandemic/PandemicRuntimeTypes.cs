@@ -17,6 +17,13 @@ namespace RealTime.Pandemic
         HomeLocations,
     }
 
+    internal enum PandemicPublicTransportShutdownState
+    {
+        Open,
+        Draining,
+        Closed,
+    }
+
     internal enum PandemicInfectionOriginCategory
     {
         InitialSeed,
