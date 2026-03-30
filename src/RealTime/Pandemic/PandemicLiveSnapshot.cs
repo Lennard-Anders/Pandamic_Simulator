@@ -73,6 +73,10 @@ namespace RealTime.Pandemic
 
         public bool HasChartData { get; set; }
 
+        public int SnapshotVersion { get; set; }
+
+        public int ChartVersion { get; set; }
+
         public IList<PandemicAgeGroupSnapshot> AgeGroups { get; } = new List<PandemicAgeGroupSnapshot>();
 
         public IList<PandemicDistrictSnapshot> Districts { get; } = new List<PandemicDistrictSnapshot>();

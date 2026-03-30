@@ -86,6 +86,7 @@ namespace RealTime.UI
         private int lockdownVisibleRows;
         private int spreaderVisibleRows;
         private int locationVisibleRows;
+        private PandemicSettingControl activeEditingControl;
 
         private UIPanel panel;
         private UILabel titleLabel;
@@ -738,8 +739,17 @@ namespace RealTime.UI
                 object value = control.Property.GetValue(config, null);
                 if (control.Slider != null)
                 {
-                    control.ValueButton.text = FormatNumericValue(value, control.Slider);
-                    control.ValueButton.color = new Color32(70, 110, 170, 255);
+                    if (!control.IsEditing)
+                    {
+                        control.LastDisplayValue = FormatNumericValue(value, control.Slider);
+                        control.ValueButton.text = control.LastDisplayValue;
+                        control.ValueButton.color = new Color32(70, 110, 170, 255);
+                        control.ValueButton.isVisible = true;
+                        if (control.Editor != null)
+                        {
+                            control.Editor.isVisible = false;
+                        }
+                    }
                 }
                 else if (control.Property.PropertyType == typeof(bool))
                 {
@@ -1058,6 +1068,11 @@ namespace RealTime.UI
         private void ToggleSection(DashboardSection section)
         {
             sectionExpanded[section] = !IsSectionExpanded(section);
+            if (section == DashboardSection.Settings && !IsSectionExpanded(section))
+            {
+                CloseActiveNumericEditor(applyChanges: true);
+            }
+
             layoutDirty = true;
             Refresh();
         }
@@ -1067,6 +1082,11 @@ namespace RealTime.UI
             if (panel == null)
             {
                 return;
+            }
+
+            if (collapsed)
+            {
+                CloseActiveNumericEditor(applyChanges: true);
             }
 
             panel.height = collapsed ? CollapsedPanelHeight : ExpandedPanelHeight;
@@ -1097,6 +1117,201 @@ namespace RealTime.UI
             titleLabel.text = (collapsed ? "\u25ba" : "\u25bc") + " Real Time Pandemic Monitor";
         }
 
+        private void BeginNumericEdit(PandemicSettingControl control)
+        {
+            if (control?.Slider == null || control.Editor == null)
+            {
+                return;
+            }
+
+            if (activeEditingControl != null && activeEditingControl != control)
+            {
+                CloseActiveNumericEditor(applyChanges: true);
+            }
+
+            PandemicManager manager = PandemicManager.Instance;
+            RealTimeConfig config = manager?.RuntimeConfig;
+            if (config == null)
+            {
+                return;
+            }
+
+            object value = control.Property.GetValue(config, null);
+            control.IsEditing = true;
+            control.EditorText = FormatEditorValue(value, control.Slider);
+            control.LastDisplayValue = FormatNumericValue(value, control.Slider);
+            control.Editor.text = control.EditorText;
+            control.ValueButton.isVisible = false;
+            control.Editor.isVisible = true;
+            control.Editor.isEnabled = true;
+            activeEditingControl = control;
+            control.Editor.Focus();
+        }
+
+        private void CloseActiveNumericEditor(bool applyChanges)
+        {
+            if (activeEditingControl == null)
+            {
+                return;
+            }
+
+            CommitOrCancelNumericEdit(activeEditingControl, applyChanges);
+        }
+
+        private void CommitOrCancelNumericEdit(PandemicSettingControl control, bool applyChanges)
+        {
+            if (control?.Slider == null || control.Editor == null || !control.IsEditing)
+            {
+                return;
+            }
+
+            bool applied = false;
+            if (applyChanges)
+            {
+                applied = TryApplyNumericInput(control, control.Editor.text);
+            }
+
+            control.IsEditing = false;
+            control.EditorText = string.Empty;
+            control.Editor.isVisible = false;
+            control.ValueButton.isVisible = true;
+            activeEditingControl = activeEditingControl == control ? null : activeEditingControl;
+
+            if (!applied)
+            {
+                RefreshSettingsControls();
+                RefreshLayoutIfDirty();
+            }
+        }
+
+        private bool TryApplyNumericInput(PandemicSettingControl control, string rawText)
+        {
+            PandemicManager manager = PandemicManager.Instance;
+            RealTimeConfig config = manager?.RuntimeConfig;
+            if (config == null || control?.Slider == null)
+            {
+                return false;
+            }
+
+            if (!TryParseNumericValue(rawText, control, out object parsed))
+            {
+                return false;
+            }
+
+            control.Property.SetValue(config, parsed, null);
+            config.Validate();
+            Refresh();
+            return true;
+        }
+
+        private bool TryParseNumericValue(string rawText, PandemicSettingControl control, out object parsed)
+        {
+            parsed = null;
+            if (control?.Slider == null || rawText == null || rawText.Trim().Length == 0)
+            {
+                return false;
+            }
+
+            string normalized = rawText.Trim();
+            if (control.Slider.ValueType == SliderValueType.Percentage)
+            {
+                normalized = normalized.Replace("%", string.Empty).Trim();
+            }
+
+            Type propertyType = control.Property.PropertyType;
+            if (propertyType == typeof(int))
+            {
+                if (!TryParseDouble(normalized, out double parsedDouble))
+                {
+                    return false;
+                }
+
+                parsed = Mathf.Clamp(Mathf.RoundToInt((float)parsedDouble), Mathf.RoundToInt(control.Slider.Min), Mathf.RoundToInt(control.Slider.Max));
+                return true;
+            }
+
+            if (propertyType == typeof(uint))
+            {
+                if (!TryParseDouble(normalized, out double parsedDouble))
+                {
+                    return false;
+                }
+
+                int clamped = Mathf.Clamp(Mathf.RoundToInt((float)parsedDouble), Mathf.RoundToInt(control.Slider.Min), Mathf.RoundToInt(control.Slider.Max));
+                parsed = (uint)Mathf.Max(0, clamped);
+                return true;
+            }
+
+            if (propertyType == typeof(float))
+            {
+                if (!TryParseDouble(normalized, out double parsedDouble))
+                {
+                    return false;
+                }
+
+                parsed = Mathf.Clamp((float)parsedDouble, control.Slider.Min, control.Slider.Max);
+                return true;
+            }
+
+            if (propertyType == typeof(double))
+            {
+                if (!TryParseDouble(normalized, out double parsedDouble))
+                {
+                    return false;
+                }
+
+                parsed = Math.Min(control.Slider.Max, Math.Max(control.Slider.Min, parsedDouble));
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryParseDouble(string value, out double parsed)
+        {
+            return double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, cultureInfo, out parsed)
+                || double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out parsed);
+        }
+
+        private string FormatEditorValue(object value, ConfigItemSliderAttribute slider)
+        {
+            if (value == null)
+            {
+                return string.Empty;
+            }
+
+            if (value is float floatValue)
+            {
+                return slider != null && slider.Step < 1f
+                    ? floatValue.ToString("0.###", cultureInfo)
+                    : floatValue.ToString("0.#", cultureInfo);
+            }
+
+            if (value is double doubleValue)
+            {
+                return slider != null && slider.Step < 1f
+                    ? doubleValue.ToString("0.###", cultureInfo)
+                    : doubleValue.ToString("0.#", cultureInfo);
+            }
+
+            return Convert.ToString(value, cultureInfo);
+        }
+
+        private float GetNumericStep(PandemicSettingControl control)
+        {
+            if (control?.Slider == null)
+            {
+                return 1f;
+            }
+
+            if (control.Slider.ValueType == SliderValueType.Percentage)
+            {
+                return 5f;
+            }
+
+            return control.Slider.Step > 0f ? control.Slider.Step : 1f;
+        }
+
         private void AdjustNumericSetting(PandemicSettingControl control, int direction)
         {
             PandemicManager manager = PandemicManager.Instance;
@@ -1106,23 +1321,41 @@ namespace RealTime.UI
                 return;
             }
 
+            if (control.IsEditing)
+            {
+                CommitOrCancelNumericEdit(control, applyChanges: true);
+            }
+
             object currentValue = control.Property.GetValue(config, null);
+            float step = GetNumericStep(control);
             if (control.Property.PropertyType == typeof(int))
             {
-                int next = (int)currentValue + (int)(control.Slider.Step * direction);
+                int next = (int)currentValue + Mathf.RoundToInt(step * direction);
                 next = Mathf.Clamp(next, (int)control.Slider.Min, (int)control.Slider.Max);
                 control.Property.SetValue(config, next, null);
             }
             else if (control.Property.PropertyType == typeof(uint))
             {
-                int next = (int)(uint)currentValue + (int)(control.Slider.Step * direction);
+                int next = (int)(uint)currentValue + Mathf.RoundToInt(step * direction);
                 next = Mathf.Clamp(next, (int)control.Slider.Min, (int)control.Slider.Max);
                 control.Property.SetValue(config, (uint)next, null);
             }
             else if (control.Property.PropertyType == typeof(float))
             {
-                float next = (float)currentValue + (control.Slider.Step * direction);
+                float next = (float)currentValue + (step * direction);
+                next = control.Slider.ValueType == SliderValueType.Percentage ? Mathf.Round(next) : next;
                 next = Mathf.Clamp(next, control.Slider.Min, control.Slider.Max);
+                control.Property.SetValue(config, next, null);
+            }
+            else if (control.Property.PropertyType == typeof(double))
+            {
+                double next = (double)currentValue + (step * direction);
+                if (control.Slider.ValueType == SliderValueType.Percentage)
+                {
+                    next = Math.Round(next, 0, MidpointRounding.AwayFromZero);
+                }
+
+                next = Math.Min(control.Slider.Max, Math.Max(control.Slider.Min, next));
                 control.Property.SetValue(config, next, null);
             }
 
@@ -1207,8 +1440,25 @@ namespace RealTime.UI
                 control.MinusButton = CreateSettingButton(274f, y, 32f, "-");
                 control.ValueButton = CreateSettingButton(310f, y, 148f);
                 control.PlusButton = CreateSettingButton(462f, y, 32f, "+");
+                control.Editor = CreateSettingEditor(310f, y, 148f);
+                control.Editor.isVisible = false;
+                control.ValueButton.eventClicked += (c, e) => BeginNumericEdit(control);
                 control.MinusButton.eventClicked += (c, e) => AdjustNumericSetting(control, -1);
                 control.PlusButton.eventClicked += (c, e) => AdjustNumericSetting(control, 1);
+                control.Editor.eventLostFocus += (c, e) => CommitOrCancelNumericEdit(control, applyChanges: true);
+                control.Editor.eventKeyDown += (c, e) =>
+                {
+                    if (e.keycode == KeyCode.Return || e.keycode == KeyCode.KeypadEnter)
+                    {
+                        CommitOrCancelNumericEdit(control, applyChanges: true);
+                        e.Use();
+                    }
+                    else if (e.keycode == KeyCode.Escape)
+                    {
+                        CommitOrCancelNumericEdit(control, applyChanges: false);
+                        e.Use();
+                    }
+                };
                 return control;
             }
 
@@ -1408,6 +1658,29 @@ namespace RealTime.UI
             return button;
         }
 
+        private UITextField CreateSettingEditor(float x, float y, float width)
+        {
+            UITextField field = settingsPanel.AddUIComponent<UITextField>();
+            field.autoSize = false;
+            field.width = width;
+            field.height = 26f;
+            field.relativePosition = new Vector3(x, y);
+            field.textScale = 0.68f;
+            field.textColor = new Color32(255, 255, 255, 255);
+            field.color = new Color32(60, 92, 140, 255);
+            field.horizontalAlignment = UIHorizontalAlignment.Center;
+            field.verticalAlignment = UIVerticalAlignment.Middle;
+            field.padding = new RectOffset(6, 6, 4, 4);
+            field.normalBgSprite = "TextFieldPanel";
+            field.hoveredBgSprite = "TextFieldPanelHovered";
+            field.focusedBgSprite = "TextFieldPanelHovered";
+            field.selectionSprite = "EmptySprite";
+            field.builtinKeyNavigation = true;
+            field.isInteractive = true;
+            AttachDetailMouseWheel(field);
+            return field;
+        }
+
         private UIScrollbar CreateScrollbar()
         {
             UIScrollbar scrollbar = panel.AddUIComponent<UIScrollbar>();
@@ -1455,6 +1728,11 @@ namespace RealTime.UI
         private void OnContentMouseWheel(UIComponent component, UIMouseEventParameter eventParam)
         {
             if (detailScrollbar == null || detailScroll == null || collapsed)
+            {
+                return;
+            }
+
+            if (activeEditingControl != null && activeEditingControl.Editor != null && ReferenceEquals(component, activeEditingControl.Editor))
             {
                 return;
             }
@@ -1625,6 +1903,10 @@ namespace RealTime.UI
             public UIButton MinusButton;
             public UIButton ValueButton;
             public UIButton PlusButton;
+            public UITextField Editor;
+            public bool IsEditing;
+            public string EditorText;
+            public string LastDisplayValue;
             public float Height;
         }
 
@@ -1642,7 +1924,8 @@ namespace RealTime.UI
                     return;
                 }
 
-                nextRefreshTime = Time.unscaledTime + 1f;
+                PandemicManager manager = PandemicManager.Instance;
+                nextRefreshTime = Time.unscaledTime + (manager?.GetPanelRefreshIntervalSeconds() ?? 1f);
                 Owner?.Refresh();
             }
         }

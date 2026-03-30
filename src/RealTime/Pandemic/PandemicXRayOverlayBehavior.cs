@@ -15,7 +15,6 @@ namespace RealTime.Pandemic
         private const float MapSize = 17280f;
         private const float MapHalfSize = MapSize * 0.5f;
         private const float OverlayHeightOffset = 8f;
-        private const float RefreshInterval = 1f;
         private const float MinVisibleIntensity = 0.001f;
 
         private readonly float[] sourceGrid = new float[Resolution * Resolution];
@@ -68,7 +67,7 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            nextRefreshTime = Time.unscaledTime + RefreshInterval;
+            nextRefreshTime = Time.unscaledTime + manager.GetXRayRefreshIntervalSeconds();
 
             int writtenCells = manager.PopulateHeatmapGrid(sourceGrid, mode);
             if (writtenCells == 0)

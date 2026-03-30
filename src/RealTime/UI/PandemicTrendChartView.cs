@@ -49,6 +49,9 @@ namespace RealTime.UI
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
         private PandemicChartTimeRange selectedRange = PandemicChartTimeRange.All;
         private PandemicLiveSnapshot currentSnapshot;
+        private int lastRenderedChartVersion = -1;
+        private PandemicLifecycleState lastLifecycleState = PandemicLifecycleState.Dormant;
+        private string lastRenderedCultureName;
         private DateTime currentRangeStart;
         private DateTime currentRangeEnd;
         private float currentMinValue;
@@ -238,6 +241,16 @@ namespace RealTime.UI
             cultureInfo = culture ?? CultureInfo.CurrentCulture;
             currentSnapshot = snapshot;
             UpdateRangeButtons();
+            int chartVersion = snapshot?.ChartVersion ?? -1;
+            PandemicLifecycleState lifecycleState = snapshot?.LifecycleState ?? PandemicLifecycleState.Dormant;
+            string cultureName = cultureInfo.Name;
+            if (chartVersion == lastRenderedChartVersion
+                && lifecycleState == lastLifecycleState
+                && string.Equals(cultureName, lastRenderedCultureName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             Render(snapshot);
         }
 
@@ -311,9 +324,12 @@ namespace RealTime.UI
             RenderSeries(visiblePoints, rangeStart, rangeEnd, minValue, maxValue);
             RenderPolicyMarkers(visibleMarkers, rangeStart, rangeEnd);
             RenderSelectionOverlay();
-            UpdateGrowth();
-            emptyLabel.isVisible = false;
-        }
+              UpdateGrowth();
+              emptyLabel.isVisible = false;
+              lastRenderedChartVersion = snapshot.ChartVersion;
+              lastLifecycleState = snapshot.LifecycleState;
+              lastRenderedCultureName = cultureInfo.Name;
+          }
 
         private void RenderEmptyState(string text)
         {
@@ -321,6 +337,9 @@ namespace RealTime.UI
             emptyLabel.isVisible = true;
             growthLabel.text = "Growth: -";
             ClearSelectionOverlay();
+            lastRenderedChartVersion = currentSnapshot?.ChartVersion ?? -1;
+            lastLifecycleState = currentSnapshot?.LifecycleState ?? PandemicLifecycleState.Dormant;
+            lastRenderedCultureName = cultureInfo.Name;
         }
 
         private void BuildRenderedPoints(

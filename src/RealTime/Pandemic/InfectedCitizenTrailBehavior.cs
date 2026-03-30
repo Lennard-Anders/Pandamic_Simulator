@@ -6,29 +6,32 @@ namespace RealTime.Pandemic
     using UnityEngine;
 
     /// <summary>
-    /// A MonoBehaviour that draws a red movement trail behind each infected citizen instance
-    /// using Unity LineRenderer components, which are visible at all camera angles.
+    /// Draws red movement trails behind infected citizens with pooled renderers and adaptive sampling.
     /// </summary>
     internal sealed class InfectedCitizenTrailBehavior : MonoBehaviour
     {
         private const int MaxTrailPoints = 30;
-        private const float MinDistanceSq = 4f;    // record a new point every ~2 world units
         private const float TrailWidth = 1.2f;
-        private const float TrailElevation = 1.5f; // lift above ground so it isn't buried
+        private const float TrailElevation = 1.5f;
+        private const float MaxVisibleDistance = 1000f;
 
-        private class CitizenTrail
+        private sealed class CitizenTrail
         {
             public LineRenderer Renderer;
-            public readonly List<Vector3> Points = new List<Vector3>();
+
+            public readonly List<Vector3> Points = new List<Vector3>(MaxTrailPoints);
         }
 
         private readonly Dictionary<ushort, CitizenTrail> trails = new Dictionary<ushort, CitizenTrail>();
-        private readonly List<ushort> removalBuffer = new List<ushort>();
+        private readonly HashSet<ushort> activeIds = new HashSet<ushort>();
+        private readonly List<ushort> releaseBuffer = new List<ushort>();
+        private readonly Stack<LineRenderer> pooledRenderers = new Stack<LineRenderer>();
         private Material trailMaterial;
+        private float nextRefreshTime;
 
         private void Awake()
         {
-            var shader = Shader.Find("Particles/Additive") ?? Shader.Find("Legacy Shaders/Particles/Additive") ?? Shader.Find("Sprites/Default");
+            Shader shader = Shader.Find("Particles/Additive") ?? Shader.Find("Legacy Shaders/Particles/Additive") ?? Shader.Find("Sprites/Default");
             trailMaterial = new Material(shader ?? Shader.Find("Diffuse"));
             trailMaterial.color = new Color(1f, 0.1f, 0.05f, 0.85f);
             trailMaterial.hideFlags = HideFlags.HideAndDontSave;
@@ -36,23 +39,31 @@ namespace RealTime.Pandemic
 
         private void Update()
         {
-            var manager = PandemicManager.Instance;
+            PandemicManager manager = PandemicManager.Instance;
             if (manager == null || !manager.AreWorldOverlaysEnabled())
             {
-                ClearAllTrails();
+                ReleaseAllTrails();
                 return;
             }
 
-            var citizenManager = CitizenManager.instance;
+            if (Time.unscaledTime < nextRefreshTime)
+            {
+                return;
+            }
+
+            nextRefreshTime = Time.unscaledTime + manager.GetTrailRefreshIntervalSeconds();
+
+            CitizenManager citizenManager = CitizenManager.instance;
             if (citizenManager == null)
             {
                 return;
             }
 
-            var instances = citizenManager.m_instances.m_buffer;
+            Camera camera = Camera.main;
+            CitizenInstance[] instances = citizenManager.m_instances.m_buffer;
+            activeIds.Clear();
+            float minDistanceSq = GetMinDistanceSq(manager.GetPerformanceTier());
 
-            // Collect currently active infected instance IDs into a set for fast lookup
-            var activeIds = new HashSet<ushort>();
             foreach (ushort instanceId in manager.GetInfectedCitizenInstanceIds())
             {
                 if (instanceId == 0 || instanceId >= instances.Length)
@@ -66,84 +77,166 @@ namespace RealTime.Pandemic
                 }
 
                 activeIds.Add(instanceId);
+                Vector3 position = instances[instanceId].m_frame0.m_position;
+                position.y += TrailElevation;
 
-                Vector3 pos = instances[instanceId].m_frame0.m_position;
-                pos.y += TrailElevation;
-
-                if (!trails.TryGetValue(instanceId, out var trail))
+                if (!trails.TryGetValue(instanceId, out CitizenTrail trail))
                 {
-                    trail = CreateTrail(instanceId);
+                    trail = new CitizenTrail
+                    {
+                        Renderer = AcquireRenderer(instanceId),
+                    };
                     trails[instanceId] = trail;
                 }
 
-                var pts = trail.Points;
-                if (pts.Count == 0 || (pts[pts.Count - 1] - pos).sqrMagnitude > MinDistanceSq)
+                List<Vector3> points = trail.Points;
+                if (points.Count == 0 || (points[points.Count - 1] - position).sqrMagnitude >= minDistanceSq)
                 {
-                    pts.Add(pos);
-                    if (pts.Count > MaxTrailPoints)
+                    points.Add(position);
+                    if (points.Count > MaxTrailPoints)
                     {
-                        pts.RemoveAt(0);
+                        points.RemoveAt(0);
                     }
                 }
 
-                trail.Renderer.positionCount = pts.Count;
-                trail.Renderer.SetPositions(pts.ToArray());
-            }
-
-            // Remove trails for citizens who are no longer infected / visible
-            removalBuffer.Clear();
-            foreach (var kvp in trails)
-            {
-                if (!activeIds.Contains(kvp.Key))
+                LineRenderer renderer = trail.Renderer;
+                if (renderer == null)
                 {
-                    removalBuffer.Add(kvp.Key);
+                    renderer = AcquireRenderer(instanceId);
+                    trail.Renderer = renderer;
+                }
+
+                bool visible = IsVisible(camera, position);
+                renderer.gameObject.SetActive(visible);
+                if (!visible)
+                {
+                    continue;
+                }
+
+                renderer.positionCount = points.Count;
+                for (int i = 0; i < points.Count; i++)
+                {
+                    renderer.SetPosition(i, points[i]);
                 }
             }
 
-            foreach (ushort id in removalBuffer)
+            releaseBuffer.Clear();
+            foreach (ushort instanceId in trails.Keys)
             {
-                if (trails.TryGetValue(id, out var t) && t.Renderer != null)
+                if (!activeIds.Contains(instanceId))
                 {
-                    Destroy(t.Renderer.gameObject);
+                    releaseBuffer.Add(instanceId);
                 }
+            }
 
-                trails.Remove(id);
+            for (int i = 0; i < releaseBuffer.Count; i++)
+            {
+                ReleaseTrail(releaseBuffer[i]);
             }
         }
 
-        private CitizenTrail CreateTrail(ushort instanceId)
+        private LineRenderer AcquireRenderer(ushort instanceId)
         {
-            var go = new GameObject("InfectedTrail_" + instanceId);
-            go.hideFlags = HideFlags.HideAndDontSave;
-            var lr = go.AddComponent<LineRenderer>();
-            lr.material = trailMaterial;
-            lr.startWidth = TrailWidth;
-            lr.endWidth = TrailWidth * 0.3f;
-            lr.startColor = new Color(1f, 0.1f, 0.05f, 0.9f);
-            lr.endColor = new Color(1f, 0.4f, 0.1f, 0.1f);
-            lr.useWorldSpace = true;
-            lr.positionCount = 0;
-            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            lr.receiveShadows = false;
-            return new CitizenTrail { Renderer = lr };
+            LineRenderer renderer = pooledRenderers.Count > 0 ? pooledRenderers.Pop() : CreateRenderer();
+            renderer.gameObject.name = "InfectedTrail_" + instanceId;
+            renderer.positionCount = 0;
+            renderer.gameObject.SetActive(true);
+            return renderer;
         }
 
-        private void ClearAllTrails()
+        private LineRenderer CreateRenderer()
         {
-            foreach (var kvp in trails)
+            GameObject gameObject = new GameObject("InfectedTrail");
+            gameObject.hideFlags = HideFlags.HideAndDontSave;
+            LineRenderer renderer = gameObject.AddComponent<LineRenderer>();
+            renderer.material = trailMaterial;
+            renderer.startWidth = TrailWidth;
+            renderer.endWidth = TrailWidth * 0.3f;
+            renderer.startColor = new Color(1f, 0.1f, 0.05f, 0.9f);
+            renderer.endColor = new Color(1f, 0.4f, 0.1f, 0.1f);
+            renderer.useWorldSpace = true;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return renderer;
+        }
+
+        private void ReleaseTrail(ushort instanceId)
+        {
+            if (!trails.TryGetValue(instanceId, out CitizenTrail trail))
             {
-                if (kvp.Value.Renderer != null)
-                {
-                    Destroy(kvp.Value.Renderer.gameObject);
-                }
+                return;
             }
 
-            trails.Clear();
+            if (trail.Renderer != null)
+            {
+                trail.Renderer.positionCount = 0;
+                trail.Renderer.gameObject.SetActive(false);
+                pooledRenderers.Push(trail.Renderer);
+            }
+
+            trail.Points.Clear();
+            trails.Remove(instanceId);
+        }
+
+        private void ReleaseAllTrails()
+        {
+            releaseBuffer.Clear();
+            foreach (ushort instanceId in trails.Keys)
+            {
+                releaseBuffer.Add(instanceId);
+            }
+
+            for (int i = 0; i < releaseBuffer.Count; i++)
+            {
+                ReleaseTrail(releaseBuffer[i]);
+            }
+        }
+
+        private static float GetMinDistanceSq(PandemicPerformanceTier tier)
+        {
+            switch (tier)
+            {
+                case PandemicPerformanceTier.Heavy:
+                    return 16f;
+                case PandemicPerformanceTier.Extreme:
+                    return 36f;
+                default:
+                    return 4f;
+            }
+        }
+
+        private static bool IsVisible(Camera camera, Vector3 position)
+        {
+            if (camera == null)
+            {
+                return true;
+            }
+
+            if ((camera.transform.position - position).sqrMagnitude > MaxVisibleDistance * MaxVisibleDistance)
+            {
+                return false;
+            }
+
+            Vector3 viewportPoint = camera.WorldToViewportPoint(position);
+            return viewportPoint.z > 0f
+                && viewportPoint.x >= -0.25f
+                && viewportPoint.x <= 1.25f
+                && viewportPoint.y >= -0.25f
+                && viewportPoint.y <= 1.25f;
         }
 
         private void OnDestroy()
         {
-            ClearAllTrails();
+            ReleaseAllTrails();
+            while (pooledRenderers.Count > 0)
+            {
+                LineRenderer renderer = pooledRenderers.Pop();
+                if (renderer != null)
+                {
+                    Destroy(renderer.gameObject);
+                }
+            }
+
             if (trailMaterial != null)
             {
                 Destroy(trailMaterial);

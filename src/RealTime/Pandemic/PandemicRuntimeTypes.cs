@@ -24,6 +24,13 @@ namespace RealTime.Pandemic
         Closed,
     }
 
+    internal enum PandemicPerformanceTier
+    {
+        Light,
+        Heavy,
+        Extreme,
+    }
+
     internal enum PandemicInfectionOriginCategory
     {
         InitialSeed,

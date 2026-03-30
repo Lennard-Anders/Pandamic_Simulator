@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCopyrightAttribute("Copyright © 2018, dymanoid")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("Unit tests for the Real Time mods")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+75e51f54764f960e43593ee6e28178f786b3be91")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9f386bde9c01814debb95acfcd4933dea1f83d9e")]
 [assembly: System.Reflection.AssemblyProductAttribute("RealTime")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RealTimeTests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

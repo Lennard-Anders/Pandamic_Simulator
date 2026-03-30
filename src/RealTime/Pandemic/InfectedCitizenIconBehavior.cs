@@ -6,19 +6,22 @@ namespace RealTime.Pandemic
     using UnityEngine;
 
     /// <summary>
-    /// A MonoBehaviour that shows a floating biohazard icon above each infected citizen.
-    /// Uses a TextMesh billboard so it always faces the camera and is visible at all angles.
+    /// Shows floating biohazard icons above infected citizens with pooled world objects.
     /// </summary>
     internal sealed class InfectedCitizenIconBehavior : MonoBehaviour
     {
-        private const float HeadHeight = 7f;    // world units above ground
+        private const float HeadHeight = 7f;
         private const float IconCharSize = 0.5f;
         private const int IconFontSize = 60;
+        private const float MaxVisibleDistance = 900f;
 
         private readonly Dictionary<ushort, GameObject> iconObjects = new Dictionary<ushort, GameObject>();
-        private readonly List<ushort> removalBuffer = new List<ushort>();
+        private readonly HashSet<ushort> visibleIds = new HashSet<ushort>();
+        private readonly List<ushort> releaseBuffer = new List<ushort>();
+        private readonly Stack<GameObject> pooledIcons = new Stack<GameObject>();
 
         private Font iconFont;
+        private float nextRefreshTime;
 
         private void Awake()
         {
@@ -27,21 +30,29 @@ namespace RealTime.Pandemic
 
         private void LateUpdate()
         {
-            var manager = PandemicManager.Instance;
+            PandemicManager manager = PandemicManager.Instance;
             if (manager == null || !manager.AreWorldOverlaysEnabled())
             {
-                ClearAll();
+                ReleaseAll();
                 return;
             }
 
-            var citizenManager = CitizenManager.instance;
+            if (Time.unscaledTime < nextRefreshTime)
+            {
+                return;
+            }
+
+            nextRefreshTime = Time.unscaledTime + manager.GetOverlayRefreshIntervalSeconds();
+
+            CitizenManager citizenManager = CitizenManager.instance;
             if (citizenManager == null)
             {
                 return;
             }
 
-            var instances = citizenManager.m_instances.m_buffer;
-            var activeIds = new HashSet<ushort>();
+            Camera camera = Camera.main;
+            CitizenInstance[] instances = citizenManager.m_instances.m_buffer;
+            visibleIds.Clear();
 
             foreach (ushort instanceId in manager.GetInfectedCitizenInstanceIds())
             {
@@ -55,92 +66,152 @@ namespace RealTime.Pandemic
                     continue;
                 }
 
-                activeIds.Add(instanceId);
-
-                Vector3 pos = instances[instanceId].m_frame0.m_position;
-                pos.y += HeadHeight;
-
-                if (!iconObjects.TryGetValue(instanceId, out var go) || go == null)
+                Vector3 position = instances[instanceId].m_frame0.m_position;
+                position.y += HeadHeight;
+                if (!IsVisible(camera, position))
                 {
-                    go = CreateIcon(instanceId);
-                    iconObjects[instanceId] = go;
+                    continue;
                 }
 
-                go.transform.position = pos;
-
-                // Billboard: rotate to always face the camera
-                var cam = Camera.main;
-                if (cam != null)
+                visibleIds.Add(instanceId);
+                if (!iconObjects.TryGetValue(instanceId, out GameObject icon) || icon == null)
                 {
-                    go.transform.LookAt(cam.transform.position);
-                    go.transform.Rotate(0f, 180f, 0f);
+                    icon = AcquireIcon(instanceId);
+                    iconObjects[instanceId] = icon;
+                }
+
+                icon.transform.position = position;
+                icon.SetActive(true);
+                Billboard(icon.transform, camera);
+            }
+
+            releaseBuffer.Clear();
+            foreach (KeyValuePair<ushort, GameObject> entry in iconObjects)
+            {
+                if (!visibleIds.Contains(entry.Key))
+                {
+                    releaseBuffer.Add(entry.Key);
                 }
             }
 
-            removalBuffer.Clear();
-            foreach (var kvp in iconObjects)
+            for (int i = 0; i < releaseBuffer.Count; i++)
             {
-                if (!activeIds.Contains(kvp.Key))
-                {
-                    removalBuffer.Add(kvp.Key);
-                }
-            }
-
-            foreach (ushort id in removalBuffer)
-            {
-                if (iconObjects.TryGetValue(id, out var go) && go != null)
-                {
-                    Destroy(go);
-                }
-
-                iconObjects.Remove(id);
+                ReleaseIcon(releaseBuffer[i]);
             }
         }
 
-        private GameObject CreateIcon(ushort instanceId)
+        private GameObject AcquireIcon(ushort instanceId)
         {
-            var go = new GameObject("InfectedIcon_" + instanceId);
+            GameObject icon = pooledIcons.Count > 0 ? pooledIcons.Pop() : CreateIcon();
+            icon.name = "InfectedIcon_" + instanceId;
+            icon.SetActive(true);
+            return icon;
+        }
+
+        private GameObject CreateIcon()
+        {
+            var go = new GameObject("InfectedIcon");
             go.hideFlags = HideFlags.HideAndDontSave;
 
-            var tm = go.AddComponent<TextMesh>();
-            tm.text = "\u2623"; // ☣ biohazard
-            tm.fontSize = IconFontSize;
-            tm.characterSize = IconCharSize;
-            tm.color = new Color(1f, 0.9f, 0f, 1f); // bright yellow
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.alignment = TextAlignment.Center;
+            TextMesh textMesh = go.AddComponent<TextMesh>();
+            textMesh.text = "\u2623";
+            textMesh.fontSize = IconFontSize;
+            textMesh.characterSize = IconCharSize;
+            textMesh.color = new Color(1f, 0.9f, 0f, 1f);
+            textMesh.anchor = TextAnchor.MiddleCenter;
+            textMesh.alignment = TextAlignment.Center;
 
             if (iconFont != null)
             {
-                tm.font = iconFont;
+                textMesh.font = iconFont;
             }
 
-            var mr = go.GetComponent<MeshRenderer>();
-            if (mr != null)
+            MeshRenderer meshRenderer = go.GetComponent<MeshRenderer>();
+            if (meshRenderer != null)
             {
-                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                mr.receiveShadows = false;
+                meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                meshRenderer.receiveShadows = false;
             }
 
             return go;
         }
 
-        private void ClearAll()
+        private void ReleaseIcon(ushort instanceId)
         {
-            foreach (var kvp in iconObjects)
+            if (!iconObjects.TryGetValue(instanceId, out GameObject icon) || icon == null)
             {
-                if (kvp.Value != null)
-                {
-                    Destroy(kvp.Value);
-                }
+                iconObjects.Remove(instanceId);
+                return;
             }
 
-            iconObjects.Clear();
+            icon.SetActive(false);
+            pooledIcons.Push(icon);
+            iconObjects.Remove(instanceId);
+        }
+
+        private void ReleaseAll()
+        {
+            releaseBuffer.Clear();
+            foreach (ushort instanceId in iconObjects.Keys)
+            {
+                releaseBuffer.Add(instanceId);
+            }
+
+            for (int i = 0; i < releaseBuffer.Count; i++)
+            {
+                ReleaseIcon(releaseBuffer[i]);
+            }
+        }
+
+        private static bool IsVisible(Camera camera, Vector3 position)
+        {
+            if (camera == null)
+            {
+                return true;
+            }
+
+            if ((camera.transform.position - position).sqrMagnitude > MaxVisibleDistance * MaxVisibleDistance)
+            {
+                return false;
+            }
+
+            Vector3 viewportPoint = camera.WorldToViewportPoint(position);
+            return viewportPoint.z > 0f
+                && viewportPoint.x >= -0.15f
+                && viewportPoint.x <= 1.15f
+                && viewportPoint.y >= -0.15f
+                && viewportPoint.y <= 1.15f;
+        }
+
+        private static void Billboard(Transform transform, Camera camera)
+        {
+            if (camera == null)
+            {
+                return;
+            }
+
+            transform.LookAt(camera.transform.position);
+            transform.Rotate(0f, 180f, 0f);
         }
 
         private void OnDestroy()
         {
-            ClearAll();
+            foreach (GameObject icon in iconObjects.Values)
+            {
+                if (icon != null)
+                {
+                    Destroy(icon);
+                }
+            }
+
+            while (pooledIcons.Count > 0)
+            {
+                GameObject icon = pooledIcons.Pop();
+                if (icon != null)
+                {
+                    Destroy(icon);
+                }
+            }
         }
     }
 }

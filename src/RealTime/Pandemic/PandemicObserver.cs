@@ -284,6 +284,11 @@ namespace RealTime.Pandemic
             return new List<PandemicObservation>(observations);
         }
 
+        internal IList<PandemicObservation> GetObservationView()
+        {
+            return observations;
+        }
+
         public bool TryGetLatestObservation(out PandemicObservation observation)
         {
             if (observations.Count == 0)
