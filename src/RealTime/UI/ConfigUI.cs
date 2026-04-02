@@ -9,6 +9,7 @@ namespace RealTime.UI
     using System.Linq;
     using System.Reflection;
     using RealTime.Config;
+    using RealTime.Core;
     using SkyTools.Configuration;
     using SkyTools.Localization;
     using SkyTools.UI;
@@ -19,14 +20,31 @@ namespace RealTime.UI
         private const string ResetToDefaultsId = "ResetToDefaults";
         private const string UseForNewGamesId = "UseForNewGames";
         private const string ToolsId = "Tools";
+        private const string StaticBaselineTabId = "1StaticBaseline";
+        private const string StaticBaselineActionsId = "2Actions";
+        private const string StaticBaselineCompatibilityId = "3CompatibilityWarnings";
+        private const string StaticBaselineUseForNewGamesId = "StaticBaselineUseForNewGames";
+        private const string StaticBaselineBirthsCompatibilityWarningId = "StaticBaselineBirthsCompatibilityWarning";
+        private const string StaticBaselineConstructionCompatibilityWarningId = "StaticBaselineConstructionCompatibilityWarning";
 
         private readonly ConfigurationProvider<RealTimeConfig> configProvider;
         private readonly IEnumerable<IViewItem> viewItems;
+        private readonly bool isBirthControlCompatibilityLimited;
+        private readonly bool isConstructionCompatibilityLimited;
+        private StaticBaselineMode lastStaticBaselineMode;
+        private bool suppressStaticBaselineModeSync;
 
-        private ConfigUI(ConfigurationProvider<RealTimeConfig> configProvider, IEnumerable<IViewItem> viewItems)
+        private ConfigUI(
+            ConfigurationProvider<RealTimeConfig> configProvider,
+            IEnumerable<IViewItem> viewItems,
+            bool isBirthControlCompatibilityLimited,
+            bool isConstructionCompatibilityLimited)
         {
             this.configProvider = configProvider;
             this.viewItems = viewItems;
+            this.isBirthControlCompatibilityLimited = isBirthControlCompatibilityLimited;
+            this.isConstructionCompatibilityLimited = isConstructionCompatibilityLimited;
+            lastStaticBaselineMode = configProvider.Configuration.StaticBaselineMode;
             this.configProvider.Changed += ConfigProviderChanged;
         }
 
@@ -39,7 +57,7 @@ namespace RealTime.UI
         /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the specified <see cref="ConfigurationProvider{RealTimeConfig}"/>
         /// is not initialized yet.</exception>
-        public static ConfigUI Create(ConfigurationProvider<RealTimeConfig> configProvider, IViewItemFactory itemFactory)
+        public static ConfigUI Create(ConfigurationProvider<RealTimeConfig> configProvider, IViewItemFactory itemFactory, Compatibility compatibility = null)
         {
             if (configProvider == null)
             {
@@ -59,7 +77,40 @@ namespace RealTime.UI
             var viewItems = new List<IViewItem>();
             CreateViewItems(configProvider, itemFactory, viewItems);
 
-            var result = new ConfigUI(configProvider, viewItems);
+            bool birthsLimited = compatibility?.IsAnyModActive(WorkshopMods.CitizenLifecycleRebalance, WorkshopMods.LifecycleRebalanceRevisited) == true;
+            bool constructionLimited = compatibility?.IsAnyModActive(
+                WorkshopMods.BuildingThemes,
+                WorkshopMods.ForceLevelUp,
+                WorkshopMods.PloppableRico,
+                WorkshopMods.PloppableRicoHighDensityFix,
+                WorkshopMods.PloppableRicoRevisited,
+                WorkshopMods.PlopTheGrowables) == true;
+
+            var result = new ConfigUI(configProvider, viewItems, birthsLimited, constructionLimited);
+
+            var staticBaselineTab = viewItems.OfType<IContainerViewItem>().FirstOrDefault(i => i.Id == StaticBaselineTabId);
+            if (staticBaselineTab != null)
+            {
+                var actionsGroup = itemFactory.CreateGroup(staticBaselineTab, StaticBaselineActionsId);
+                viewItems.Add(actionsGroup);
+                var baselineDefaultsButton = itemFactory.CreateButton(actionsGroup, StaticBaselineUseForNewGamesId, result.UseStaticBaselineForNewGames);
+                viewItems.Add(baselineDefaultsButton);
+
+                if (birthsLimited || constructionLimited)
+                {
+                    var compatibilityGroup = itemFactory.CreateGroup(staticBaselineTab, StaticBaselineCompatibilityId);
+                    viewItems.Add(compatibilityGroup);
+                    if (birthsLimited)
+                    {
+                        viewItems.Add(itemFactory.CreateButton(compatibilityGroup, StaticBaselineBirthsCompatibilityWarningId, result.NoOperation));
+                    }
+
+                    if (constructionLimited)
+                    {
+                        viewItems.Add(itemFactory.CreateButton(compatibilityGroup, StaticBaselineConstructionCompatibilityWarningId, result.NoOperation));
+                    }
+                }
+            }
 
             var toolsTab = viewItems.OfType<IContainerViewItem>().FirstOrDefault(i => i.Id == ToolsId);
             if (toolsTab == null)
@@ -191,15 +242,61 @@ namespace RealTime.UI
             RefreshAllItems();
         }
 
+        private void UseStaticBaselineForNewGames()
+        {
+            configProvider.Configuration.StaticBaselineSaveAsDefault = true;
+            configProvider.SaveDefaultConfiguration();
+        }
+
         private void UseForNewGames() => configProvider.SaveDefaultConfiguration();
 
-        private void ConfigProviderChanged(object sender, EventArgs e) => RefreshAllItems();
+        private void NoOperation()
+        {
+        }
+
+        private void ConfigProviderChanged(object sender, EventArgs e)
+        {
+            SyncStaticBaselineMode();
+            RefreshAllItems();
+        }
 
         private void RefreshAllItems()
         {
             foreach (var item in viewItems.OfType<IValueViewItem>())
             {
                 item.Refresh();
+            }
+        }
+
+        private void SyncStaticBaselineMode()
+        {
+            if (suppressStaticBaselineModeSync)
+            {
+                return;
+            }
+
+            var config = configProvider.Configuration;
+            StaticBaselineMode currentMode = config.StaticBaselineMode;
+            if (lastStaticBaselineMode == currentMode)
+            {
+                return;
+            }
+
+            try
+            {
+                suppressStaticBaselineModeSync = true;
+                if (currentMode == StaticBaselineMode.Growth)
+                {
+                    config.StaticBaselineResidentialDemand = 100;
+                    config.StaticBaselineCommercialDemand = 100;
+                    config.StaticBaselineIndustrialDemand = 100;
+                    config.StaticBaselineOfficeDemand = 100;
+                }
+            }
+            finally
+            {
+                lastStaticBaselineMode = currentMode;
+                suppressStaticBaselineModeSync = false;
             }
         }
     }

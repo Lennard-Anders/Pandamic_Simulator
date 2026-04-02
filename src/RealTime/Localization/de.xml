@@ -47,6 +47,41 @@
   <translation id="SwitchOffLightsMaxHeightTooltip" value="Gebäude schalten nachts das Licht nicht aus, wenn ihre Höhe größer als dieser Wert ist" />
   <translation id="CanAbandonJourney" value="Besseres Verhalten im Stau und beim Warten von ÖPNV" />
   <translation id="CanAbandonJourneyTooltip" value="Wenn aktiviert, Einwohner können Fahrten abbrechen, wenn sie zu lang im Stau sind oder auf den öffentlichen Verkehr warten" />
+  <translation id="1StaticBaseline" value="Statische Baseline" />
+  <translation id="0Mode" value="Modus" />
+  <translation id="1DemandTargets" value="Bedarfsziele" />
+  <translation id="2OptionalControls" value="Optionale Steuerungen" />
+  <translation id="3CompatibilityWarnings" value="Kompatibilitaetshinweise" />
+  <translation id="2Actions" value="Aktionen" />
+  <translation id="StaticBaselineEnabled" value="Statische Baseline aktivieren" />
+  <translation id="StaticBaselineEnabledTooltip" value="Fixiert die Bedarfsbalken der Stadt auf feste Zielwerte, solange die Baseline aktiv ist. Die optionalen Steuerungen darunter bleiben davon getrennt." />
+  <translation id="StaticBaselineMode" value="Baseline-Modus" />
+  <translation id="StaticBaselineModeTooltip" value="Beim Wechsel auf Wachstum werden alle vier Bedarfsziele auf 100% gesetzt, koennen danach aber weiter bearbeitet werden. Stabilisierung behaelt die konfigurierten Zielwerte ohne versteckte Freeze-Effekte." />
+  <translation id="StaticBaselineMode.Growth" value="Wachstum" />
+  <translation id="StaticBaselineMode.Stabilization" value="Stabilisierung" />
+  <translation id="StaticBaselineResidentialDemand" value="Wohnbedarfsziel" />
+  <translation id="StaticBaselineResidentialDemandTooltip" value="Zielwert fuer den Wohnbedarf." />
+  <translation id="StaticBaselineCommercialDemand" value="Gewerbebedarfsziel" />
+  <translation id="StaticBaselineCommercialDemandTooltip" value="Zielwert fuer den Gewerbebedarf." />
+  <translation id="StaticBaselineIndustrialDemand" value="Industriebedarfsziel" />
+  <translation id="StaticBaselineIndustrialDemandTooltip" value="Zielwert fuer den Industriebedarf." />
+  <translation id="StaticBaselineOfficeDemand" value="Buerobedarf" />
+  <translation id="StaticBaselineOfficeDemandTooltip" value="Zielwert fuer den Buerobedarf. Intern wird er auf die kombinierte Vanilla-Arbeitsplatznachfrage abgebildet." />
+  <translation id="StaticBaselineFreezeConstructionAndUpgrades" value="Bauten und Upgrades einfrieren" />
+  <translation id="StaticBaselineFreezeConstructionAndUpgradesTooltip" value="Blockiert neue Wohn-, Gewerbe-, Industrie- und Buerobauten sowie Upgrades." />
+  <translation id="StaticBaselineFreezeDemandProblemTimers" value="Bedarfs-Problem-Timer einfrieren" />
+  <translation id="StaticBaselineFreezeDemandProblemTimersTooltip" value="Laesst Outgoing- und Worker-Problem-Timer bei nachfragegesteuerten Gebaeuden unveraendert." />
+  <translation id="StaticBaselineDisableBirths" value="Geburten deaktivieren" />
+  <translation id="StaticBaselineDisableBirthsTooltip" value="Stoppt neue Geburten ueber den Real-Time-Geburtenpfad. Zuzug bleibt unberuehrt." />
+  <translation id="StaticBaselineDisableRealTimeEvents" value="Real-Time-Events deaktivieren" />
+  <translation id="StaticBaselineDisableRealTimeEventsTooltip" value="Verhindert neue Real-Time-Stadtevents und beendet aktive benutzerdefinierte Real-Time-Events." />
+  <translation id="StaticBaselineDisableTouristLeisure" value="Touristische Freizeit deaktivieren" />
+  <translation id="StaticBaselineDisableTouristLeisureTooltip" value="Unterdrueckt touristische Freizeit-, Shopping- und Event-Impulse aus Real Time, sodass Touristen eher ins Hotel gehen oder die Stadt verlassen." />
+  <translation id="StaticBaselineUseForNewGames" value="Baseline fuer neue Spiele verwenden" />
+  <translation id="StaticBaselineBirthsCompatibilityWarning" value="Geburten-Schalter durch Lifecycle Rebalance eingeschraenkt" />
+  <translation id="StaticBaselineBirthsCompatibilityWarningTooltip" value="Eine Lifecycle-Rebalance-Mod deaktiviert den Real-Time-Geburtenhook. Der Geburten-Schalter der Baseline hat waehrenddessen keine Wirkung." />
+  <translation id="StaticBaselineConstructionCompatibilityWarning" value="Bau-Schalter durch Gebaeudemods eingeschraenkt" />
+  <translation id="StaticBaselineConstructionCompatibilityWarningTooltip" value="Eine aktive Gebaeudemod deaktiviert die Real-Time-Hooks fuer Bau und Upgrade. Der Bau-Schalter der Baseline hat waehrenddessen keine Wirkung." />
 
   <translation id="2Quotas" value="Wahrscheinlichkeit" />
   <translation id="SecondShiftQuota" value="Zweite Schicht" />

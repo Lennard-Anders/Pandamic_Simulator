@@ -110,7 +110,8 @@ namespace RealTime.Core
 
             IViewItemFactory itemFactory = new CitiesViewItemFactory(helper);
             CloseConfigUI();
-            configUI = ConfigUI.Create(configProvider, itemFactory);
+            Compatibility compatibility = localizationProvider == null ? null : Compatibility.Create(localizationProvider);
+            configUI = ConfigUI.Create(configProvider, itemFactory, compatibility);
             ApplyLanguage();
             CompactSettingsTabs(helper);
         }

@@ -140,6 +140,12 @@ namespace RealTime.CustomAI
         /// </returns>
         public bool CanBuildOrUpgrade(ItemClass.Service buildingZone, ushort buildingId = 0)
         {
+            StaticBaselineController baseline = StaticBaselineController.Instance;
+            if (baseline != null && !baseline.CanBuildOrUpgrade(buildingZone))
+            {
+                return false;
+            }
+
             int index;
             switch (buildingZone)
             {
@@ -209,6 +215,12 @@ namespace RealTime.CustomAI
         /// <param name="outgoingProblemTimer">The previous value of the outgoing problem timer.</param>
         public void ProcessBuildingProblems(ushort buildingId, byte outgoingProblemTimer)
         {
+            if (StaticBaselineController.Instance?.ShouldFreezeBuildingProblemTimers(buildingId) == true)
+            {
+                buildingManager.SetOutgoingProblemTimer(buildingId, outgoingProblemTimer);
+                return;
+            }
+
             // We have only few customers at night - that's an intended behavior.
             // To avoid commercial buildings from collapsing due to lack of customers,
             // we force the problem timer to pause at night time.
@@ -226,6 +238,12 @@ namespace RealTime.CustomAI
         /// <param name="oldValue">The old value of the worker problem timer.</param>
         public void ProcessWorkerProblems(ushort buildingId, byte oldValue)
         {
+            if (StaticBaselineController.Instance?.ShouldFreezeBuildingProblemTimers(buildingId) == true)
+            {
+                buildingManager.SetWorkersProblemTimer(buildingId, oldValue);
+                return;
+            }
+
             // We force the problem timer to pause at night time.
             // In the daytime, the timer is running slower.
             if (timeInfo.IsNightTime || timeInfo.Now.Minute % ProblemTimersInterval != 0 || freezeProblemTimers)

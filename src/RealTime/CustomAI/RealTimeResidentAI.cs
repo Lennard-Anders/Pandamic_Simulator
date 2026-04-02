@@ -7,6 +7,7 @@ namespace RealTime.CustomAI
     using RealTime.Events;
     using RealTime.GameConnection;
     using RealTime.Pandemic;
+    using RealTime.Simulation;
     using SkyTools.Storage;
     using SkyTools.Tools;
 
@@ -249,6 +250,12 @@ namespace RealTime.CustomAI
         /// </returns>
         public bool CanMakeBabies(uint citizenId, ref TCitizen citizen)
         {
+            StaticBaselineController baseline = StaticBaselineController.Instance;
+            if (baseline?.AreBirthsDisabled == true)
+            {
+                return false;
+            }
+
             uint idFlag = citizenId % 3;
             uint timeFlag = (uint)TimeInfo.CurrentHour % 3;
             if (!Config.UseSlowAging)

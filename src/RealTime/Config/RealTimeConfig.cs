@@ -17,7 +17,7 @@ namespace RealTime.Config
         /// <summary>The storage ID for the configuration objects.</summary>
         public const string StorageId = "PandemicConfiguration";
 
-        private const int LatestVersion = 4;
+        private const int LatestVersion = 6;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeConfig"/> class.</summary>
         public RealTimeConfig()
@@ -118,6 +118,64 @@ namespace RealTime.Config
         [ConfigItem("1General", "1Other", 5)]
         [ConfigItemCheckBox]
         public bool CanAbandonJourney { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether the static baseline is enabled.</summary>
+        [ConfigItem("1StaticBaseline", "0Mode", 0)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineEnabled { get; set; }
+
+        /// <summary>Gets or sets the static baseline operating mode.</summary>
+        [ConfigItem("1StaticBaseline", "0Mode", 1)]
+        [ConfigItemComboBox]
+        public StaticBaselineMode StaticBaselineMode { get; set; }
+
+        /// <summary>Gets or sets the residential demand target for the static baseline.</summary>
+        [ConfigItem("1StaticBaseline", "1DemandTargets", 0)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public int StaticBaselineResidentialDemand { get; set; }
+
+        /// <summary>Gets or sets the commercial demand target for the static baseline.</summary>
+        [ConfigItem("1StaticBaseline", "1DemandTargets", 1)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public int StaticBaselineCommercialDemand { get; set; }
+
+        /// <summary>Gets or sets the industrial demand target for the static baseline.</summary>
+        [ConfigItem("1StaticBaseline", "1DemandTargets", 2)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public int StaticBaselineIndustrialDemand { get; set; }
+
+        /// <summary>Gets or sets the office demand target for the static baseline.</summary>
+        [ConfigItem("1StaticBaseline", "1DemandTargets", 3)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public int StaticBaselineOfficeDemand { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether demand-zone construction and upgrades are frozen.</summary>
+        [ConfigItem("1StaticBaseline", "2OptionalControls", 0)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineFreezeConstructionAndUpgrades { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether demand-related building problem timers are frozen.</summary>
+        [ConfigItem("1StaticBaseline", "2OptionalControls", 1)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineFreezeDemandProblemTimers { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether births should be disabled.</summary>
+        [ConfigItem("1StaticBaseline", "2OptionalControls", 2)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineDisableBirths { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether Real Time events should be disabled.</summary>
+        [ConfigItem("1StaticBaseline", "2OptionalControls", 3)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineDisableRealTimeEvents { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether tourist leisure traffic should be disabled.</summary>
+        [ConfigItem("1StaticBaseline", "2OptionalControls", 4)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineDisableTouristLeisure { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether the current baseline should be stored as the default for new games.</summary>
+        public bool StaticBaselineSaveAsDefault { get; set; }
 
         /// <summary>Gets or sets the quarantine behavior of citizens.</summary>
         [ConfigItem("Quarantine", "CitizenBehavior", 0)]
@@ -555,6 +613,27 @@ namespace RealTime.Config
                 NightShiftQuota = (uint)(NightShiftQuota * 3.125f);
             }
 
+            if (Version < 5)
+            {
+                StaticBaselineEnabled = false;
+                StaticBaselineMode = StaticBaselineMode.Stabilization;
+                StaticBaselineResidentialDemand = 70;
+                StaticBaselineCommercialDemand = 70;
+                StaticBaselineIndustrialDemand = 70;
+                StaticBaselineOfficeDemand = 70;
+                StaticBaselineSaveAsDefault = false;
+            }
+
+            if (Version < 6)
+            {
+                bool preserveLegacyStabilization = StaticBaselineEnabled && StaticBaselineMode == StaticBaselineMode.Stabilization;
+                StaticBaselineFreezeConstructionAndUpgrades = preserveLegacyStabilization;
+                StaticBaselineFreezeDemandProblemTimers = preserveLegacyStabilization;
+                StaticBaselineDisableBirths = preserveLegacyStabilization;
+                StaticBaselineDisableRealTimeEvents = false;
+                StaticBaselineDisableTouristLeisure = false;
+            }
+
             Version = LatestVersion;
         }
 
@@ -571,6 +650,11 @@ namespace RealTime.Config
             ConstructionSpeed = FastMath.Clamp(ConstructionSpeed, 1u, 100u);
 
             SwitchOffLightsMaxHeight = FastMath.Clamp(SwitchOffLightsMaxHeight, 0f, 100f);
+            StaticBaselineResidentialDemand = FastMath.Clamp(StaticBaselineResidentialDemand, 0, 100);
+            StaticBaselineCommercialDemand = FastMath.Clamp(StaticBaselineCommercialDemand, 0, 100);
+            StaticBaselineIndustrialDemand = FastMath.Clamp(StaticBaselineIndustrialDemand, 0, 100);
+            StaticBaselineOfficeDemand = FastMath.Clamp(StaticBaselineOfficeDemand, 0, 100);
+            StaticBaselineMode = (Config.StaticBaselineMode)FastMath.Clamp((int)StaticBaselineMode, (int)Config.StaticBaselineMode.Growth, (int)Config.StaticBaselineMode.Stabilization);
 
             SecondShiftQuota = FastMath.Clamp(SecondShiftQuota, 1u, 25u);
             NightShiftQuota = FastMath.Clamp(NightShiftQuota, 1u, 25u);
@@ -665,6 +749,18 @@ namespace RealTime.Config
             SwitchOffLightsAtNight = true;
             SwitchOffLightsMaxHeight = 40f;
             CanAbandonJourney = true;
+            StaticBaselineEnabled = false;
+            StaticBaselineMode = StaticBaselineMode.Stabilization;
+            StaticBaselineResidentialDemand = 70;
+            StaticBaselineCommercialDemand = 70;
+            StaticBaselineIndustrialDemand = 70;
+            StaticBaselineOfficeDemand = 70;
+            StaticBaselineFreezeConstructionAndUpgrades = false;
+            StaticBaselineFreezeDemandProblemTimers = false;
+            StaticBaselineDisableBirths = false;
+            StaticBaselineDisableRealTimeEvents = false;
+            StaticBaselineDisableTouristLeisure = false;
+            StaticBaselineSaveAsDefault = false;
 
             SecondShiftQuota = 13;
             NightShiftQuota = 6;

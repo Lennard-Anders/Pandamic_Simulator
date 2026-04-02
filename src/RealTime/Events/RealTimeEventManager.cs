@@ -227,7 +227,7 @@ namespace RealTime.Events
             lastProcessed = timeInfo.Now;
 
             Update();
-            if (upcomingEvents.Count >= MaximumEventsCount || !config.AreEventsEnabled)
+            if (upcomingEvents.Count >= MaximumEventsCount || !config.AreEventsEnabled || StaticBaselineController.Instance?.AreRealTimeEventsDisabled == true)
             {
                 return;
             }
@@ -552,7 +552,7 @@ namespace RealTime.Events
 
         private bool MustCancelEvent(ICityEvent cityEvent)
         {
-            if (!config.AreEventsEnabled && cityEvent is RealTimeCityEvent)
+            if ((!config.AreEventsEnabled || StaticBaselineController.Instance?.AreRealTimeEventsDisabled == true) && cityEvent is RealTimeCityEvent)
             {
                 return true;
             }

@@ -8,6 +8,7 @@ namespace RealTime.CustomAI
     using RealTime.Config;
     using RealTime.Events;
     using RealTime.GameConnection;
+    using RealTime.Simulation;
     using SkyTools.Tools;
     using static Constants;
 
@@ -181,6 +182,12 @@ namespace RealTime.CustomAI
                 return;
             }
 
+            if (StaticBaselineController.Instance?.IsTouristLeisureDisabled == true)
+            {
+                RedirectTouristToHotelOrExit(instance, citizenId, ref citizen, targetBuildingId);
+                return;
+            }
+
             ushort hotel = FindHotel(targetBuildingId);
             if (hotel != 0)
             {
@@ -227,6 +234,12 @@ namespace RealTime.CustomAI
                     return;
             }
 
+            if (StaticBaselineController.Instance?.IsTouristLeisureDisabled == true)
+            {
+                RedirectTouristToHotelOrExit(instance, citizenId, ref citizen, visitBuilding);
+                return;
+            }
+
             var currentEvent = EventMgr.GetCityEvent(visitBuilding);
             if (currentEvent != null && currentEvent.StartTime < TimeInfo.Now)
             {
@@ -255,6 +268,11 @@ namespace RealTime.CustomAI
         private void FindRandomVisitPlace(TAI instance, uint citizenId, ref TCitizen citizen, int doNothingProbability, ushort currentBuilding)
         {
             var target = (TouristTarget)touristAI.GetRandomTargetType(instance, doNothingProbability);
+            if (StaticBaselineController.Instance?.IsTouristLeisureDisabled == true)
+            {
+                target = TouristTarget.Hotel;
+            }
+
             target = AdjustTargetToTimeAndWeather(ref citizen, target);
 
             switch (target)
@@ -329,6 +347,12 @@ namespace RealTime.CustomAI
 
         private uint GetTouristGoingOutChance(ref TCitizen citizen, TouristTarget target)
         {
+            if (StaticBaselineController.Instance?.IsTouristLeisureDisabled == true
+                && (target == TouristTarget.Shopping || target == TouristTarget.Relaxing || target == TouristTarget.Party))
+            {
+                return 0u;
+            }
+
             var age = CitizenProxy.GetAge(ref citizen);
             switch (target)
             {
@@ -380,5 +404,32 @@ namespace RealTime.CustomAI
         }
 
         private uint GetHotelLeaveChance() => TimeInfo.IsNightTime ? 0u : (uint)((TimeInfo.CurrentHour - Config.WakeUpHour) / 0.03f);
+
+        private void RedirectTouristToHotelOrExit(TAI instance, uint citizenId, ref TCitizen citizen, ushort currentBuilding)
+        {
+            ushort visitBuilding = CitizenProxy.GetVisitBuilding(ref citizen);
+            if (visitBuilding != 0 && BuildingMgr.GetBuildingSubService(visitBuilding) == ItemClass.SubService.CommercialTourist)
+            {
+                if (!Random.ShouldOccur(GetHotelLeaveChance()))
+                {
+                    return;
+                }
+
+                touristAI.FindVisitPlace(instance, citizenId, currentBuilding, touristAI.GetLeavingReason(instance, citizenId, ref citizen));
+                return;
+            }
+
+            ushort hotel = FindHotel(currentBuilding);
+            if (hotel != 0)
+            {
+                Log.Debug(LogCategory.Movement, TimeInfo.Now, $"Tourist {GetCitizenDesc(citizenId, ref citizen)} is redirected to hotel {hotel} because tourist leisure is disabled.");
+                StartMovingToVisitBuilding(instance, citizenId, ref citizen, currentBuilding, hotel);
+            }
+            else
+            {
+                Log.Debug(LogCategory.Movement, TimeInfo.Now, $"Tourist {GetCitizenDesc(citizenId, ref citizen)} leaves the city because tourist leisure is disabled.");
+                touristAI.FindVisitPlace(instance, citizenId, currentBuilding, touristAI.GetLeavingReason(instance, citizenId, ref citizen));
+            }
+        }
     }
 }

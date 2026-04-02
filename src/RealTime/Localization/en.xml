@@ -47,6 +47,41 @@
   <translation id="SwitchOffLightsMaxHeightTooltip" value="Residential, commercial, and office buildings taller than this value will not switch off lights at night" />
   <translation id="CanAbandonJourney" value="Better traffic jam and public transport waiting behavior" />
   <translation id="CanAbandonJourneyTooltip" value="If enabled, citizens can abandon their journeys when stuck in a traffic jam or waiting for public transport for too long" />
+  <translation id="1StaticBaseline" value="Static Baseline" />
+  <translation id="0Mode" value="Mode" />
+  <translation id="1DemandTargets" value="Demand targets" />
+  <translation id="2OptionalControls" value="Optional controls" />
+  <translation id="3CompatibilityWarnings" value="Compatibility notes" />
+  <translation id="2Actions" value="Actions" />
+  <translation id="StaticBaselineEnabled" value="Enable static baseline" />
+  <translation id="StaticBaselineEnabledTooltip" value="Locks the city demand bars to fixed target values while enabled. Optional controls below stay separate." />
+  <translation id="StaticBaselineMode" value="Baseline mode" />
+  <translation id="StaticBaselineModeTooltip" value="Switching to Growth resets all four demand targets to 100%, but you can still edit them afterwards. Stabilization keeps your configured targets without hidden freeze side effects." />
+  <translation id="StaticBaselineMode.Growth" value="Growth" />
+  <translation id="StaticBaselineMode.Stabilization" value="Stabilization" />
+  <translation id="StaticBaselineResidentialDemand" value="Residential demand" />
+  <translation id="StaticBaselineResidentialDemandTooltip" value="Target baseline for residential demand." />
+  <translation id="StaticBaselineCommercialDemand" value="Commercial demand" />
+  <translation id="StaticBaselineCommercialDemandTooltip" value="Target baseline for commercial demand." />
+  <translation id="StaticBaselineIndustrialDemand" value="Industrial demand" />
+  <translation id="StaticBaselineIndustrialDemandTooltip" value="Target baseline for industrial demand." />
+  <translation id="StaticBaselineOfficeDemand" value="Office demand" />
+  <translation id="StaticBaselineOfficeDemandTooltip" value="Target baseline for office demand. Internally mapped into the combined vanilla workplace demand." />
+  <translation id="StaticBaselineFreezeConstructionAndUpgrades" value="Freeze construction and upgrades" />
+  <translation id="StaticBaselineFreezeConstructionAndUpgradesTooltip" value="Blocks new residential, commercial, industrial and office growables and upgrades." />
+  <translation id="StaticBaselineFreezeDemandProblemTimers" value="Freeze demand problem timers" />
+  <translation id="StaticBaselineFreezeDemandProblemTimersTooltip" value="Keeps outgoing and worker problem timers unchanged for demand-managed buildings." />
+  <translation id="StaticBaselineDisableBirths" value="Disable births" />
+  <translation id="StaticBaselineDisableBirthsTooltip" value="Stops new births through the Real Time birth hook. Migration is not affected." />
+  <translation id="StaticBaselineDisableRealTimeEvents" value="Disable Real Time events" />
+  <translation id="StaticBaselineDisableRealTimeEventsTooltip" value="Prevents new Real Time city events and cancels active custom Real Time events." />
+  <translation id="StaticBaselineDisableTouristLeisure" value="Disable tourist leisure" />
+  <translation id="StaticBaselineDisableTouristLeisureTooltip" value="Suppresses Real Time tourist leisure, shopping and event impulses so tourists prefer hotels or leave the city." />
+  <translation id="StaticBaselineUseForNewGames" value="Use baseline values for new games" />
+  <translation id="StaticBaselineBirthsCompatibilityWarning" value="Birth toggle limited by Lifecycle Rebalance" />
+  <translation id="StaticBaselineBirthsCompatibilityWarningTooltip" value="A lifecycle rebalance mod disables the Real Time birth hook, so the baseline birth toggle has no effect while that mod is active." />
+  <translation id="StaticBaselineConstructionCompatibilityWarning" value="Construction toggle limited by building mods" />
+  <translation id="StaticBaselineConstructionCompatibilityWarningTooltip" value="An active building mod disables the Real Time construction and upgrade hooks, so the baseline construction toggle has no effect while that mod is active." />
 
   <translation id="Pandemic" value="Measures" />
   <translation id="CitizenBehavior" value="Citizen Behavior" />

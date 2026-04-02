@@ -52,6 +52,20 @@ namespace RealTime.GameConnection.Patches
 
             [System.Diagnostics.CodeAnalysis.SuppressMessage("Redundancy", "RCS1213", Justification = "Harmony patch")]
             [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming Rules", "SA1313", Justification = "Harmony patch")]
+            private static bool Prefix(ref uint citizen, ref bool __result)
+            {
+                if (NewCitizenBehavior != null && !NewCitizenBehavior.CanCreateCitizen())
+                {
+                    citizen = 0;
+                    __result = false;
+                    return false;
+                }
+
+                return true;
+            }
+
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Redundancy", "RCS1213", Justification = "Harmony patch")]
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming Rules", "SA1313", Justification = "Harmony patch")]
             private static void Postfix(ref uint citizen, bool __result)
             {
                 if (__result)
@@ -73,6 +87,20 @@ namespace RealTime.GameConnection.Patches
                     null,
                     new[] { typeof(uint).MakeByRefType(), typeof(int), typeof(int), typeof(Randomizer).MakeByRefType(), typeof(Citizen.Gender) },
                     new ParameterModifier[0]);
+
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Redundancy", "RCS1213", Justification = "Harmony patch")]
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming Rules", "SA1313", Justification = "Harmony patch")]
+            private static bool Prefix(ref uint citizen, ref bool __result)
+            {
+                if (NewCitizenBehavior != null && !NewCitizenBehavior.CanCreateCitizen())
+                {
+                    citizen = 0;
+                    __result = false;
+                    return false;
+                }
+
+                return true;
+            }
 
             [System.Diagnostics.CodeAnalysis.SuppressMessage("Redundancy", "RCS1213", Justification = "Harmony patch")]
             [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming Rules", "SA1313", Justification = "Harmony patch")]

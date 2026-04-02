@@ -10,6 +10,12 @@ namespace RealTime.CustomAI
     internal interface INewCitizenBehavior
     {
         /// <summary>
+        /// Determines whether creating a new citizen is currently allowed.
+        /// </summary>
+        /// <returns><c>true</c> if a new citizen can be created; otherwise, <c>false</c>.</returns>
+        bool CanCreateCitizen();
+
+        /// <summary>
         /// Gets the education level of the new citizen based on their <paramref name="age"/>.
         /// </summary>
         ///

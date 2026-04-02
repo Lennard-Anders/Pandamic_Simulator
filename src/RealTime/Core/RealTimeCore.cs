@@ -39,6 +39,7 @@ namespace RealTime.Core
         private readonly TimeAdjustment timeAdjustment;
         private readonly CustomTimeBar timeBar;
         private readonly PandemicLivePanel pandemicLivePanel;
+        private readonly StaticBaselineController staticBaselineController;
         private readonly RealTimeEventManager eventManager;
         private readonly MethodPatcher patcher;
         private readonly VanillaEvents vanillaEvents;
@@ -49,6 +50,7 @@ namespace RealTime.Core
             TimeAdjustment timeAdjustment,
             CustomTimeBar timeBar,
             PandemicLivePanel pandemicLivePanel,
+            StaticBaselineController staticBaselineController,
             RealTimeEventManager eventManager,
             MethodPatcher patcher,
             VanillaEvents vanillaEvents)
@@ -56,6 +58,7 @@ namespace RealTime.Core
             this.timeAdjustment = timeAdjustment;
             this.timeBar = timeBar;
             this.pandemicLivePanel = pandemicLivePanel;
+            this.staticBaselineController = staticBaselineController;
             this.eventManager = eventManager;
             this.patcher = patcher;
             this.vanillaEvents = vanillaEvents;
@@ -172,9 +175,18 @@ namespace RealTime.Core
             pandemicLivePanel.Enable();
             pandemicLivePanel.Translate(localizationProvider.CurrentCulture);
 
+            if (GameObject.Find("StaticBaselineController") != null)
+            {
+                GameObject.Destroy(GameObject.Find("StaticBaselineController"));
+            }
+
+            var staticBaselineObject = new GameObject("StaticBaselineController");
+            var staticBaselineController = staticBaselineObject.AddComponent<StaticBaselineController>();
+            staticBaselineController.Init(configProvider.Configuration);
+
             var vanillaEvents = VanillaEvents.Customize();
 
-            var result = new RealTimeCore(timeAdjustment, customTimeBar, pandemicLivePanel, eventManager, patcher, vanillaEvents);
+            var result = new RealTimeCore(timeAdjustment, customTimeBar, pandemicLivePanel, staticBaselineController, eventManager, patcher, vanillaEvents);
             eventManager.EventsChanged += result.CityEventsChanged;
 
             var statistics = new Statistics(timeInfo, localizationProvider);
@@ -272,6 +284,10 @@ namespace RealTime.Core
             timeBar.CityEventClick -= CustomTimeBarCityEventClick;
             timeBar.Disable();
             pandemicLivePanel?.Disable();
+            if (staticBaselineController != null)
+            {
+                GameObject.Destroy(staticBaselineController.gameObject);
+            }
             eventManager.EventsChanged -= CityEventsChanged;
             SimulationHandler.NewDay -= CityEventsChanged;
 

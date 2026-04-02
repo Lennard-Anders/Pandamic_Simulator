@@ -29,6 +29,13 @@ namespace RealTime.CustomAI
         }
 
         /// <summary>
+        /// Determines whether creating a new citizen is currently allowed.
+        /// </summary>
+        /// <returns><c>true</c> if citizen creation is allowed; otherwise, <c>false</c>.</returns>
+        public bool CanCreateCitizen()
+            => true;
+
+        /// <summary>
         /// Gets the education level of the new citizen based on their <paramref name="age" />.
         /// </summary>
         /// <param name="age">The citizen's age as raw value (0-255).</param>
