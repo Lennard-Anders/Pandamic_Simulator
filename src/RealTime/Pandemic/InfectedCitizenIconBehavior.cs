@@ -11,9 +11,12 @@ namespace RealTime.Pandemic
     internal sealed class InfectedCitizenIconBehavior : MonoBehaviour
     {
         private const float HeadHeight = 7f;
-        private const float IconCharSize = 0.5f;
+        private const float IconCharSize = 0.56f;
         private const int IconFontSize = 60;
         private const float MaxVisibleDistance = 900f;
+        private static readonly Color ForegroundColor = new Color(1f, 0.82f, 0.18f, 1f);
+        private static readonly Color OutlineColor = new Color(0.16f, 0.12f, 0.06f, 0.96f);
+        private static readonly Color ShadowColor = new Color(0f, 0f, 0f, 0.48f);
 
         private readonly Dictionary<ushort, GameObject> iconObjects = new Dictionary<ushort, GameObject>();
         private readonly HashSet<ushort> visibleIds = new HashSet<ushort>();
@@ -21,11 +24,13 @@ namespace RealTime.Pandemic
         private readonly Stack<GameObject> pooledIcons = new Stack<GameObject>();
 
         private Font iconFont;
+        private Material iconMaterial;
         private float nextRefreshTime;
 
         private void Awake()
         {
             iconFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            iconMaterial = WorldGlyphIconFactory.CreateUnlitTextMaterial(iconFont);
         }
 
         private void LateUpdate()
@@ -110,30 +115,14 @@ namespace RealTime.Pandemic
 
         private GameObject CreateIcon()
         {
-            var go = new GameObject("InfectedIcon");
-            go.hideFlags = HideFlags.HideAndDontSave;
-
-            TextMesh textMesh = go.AddComponent<TextMesh>();
-            textMesh.text = "\u2623";
-            textMesh.fontSize = IconFontSize;
-            textMesh.characterSize = IconCharSize;
-            textMesh.color = new Color(1f, 0.9f, 0f, 1f);
-            textMesh.anchor = TextAnchor.MiddleCenter;
-            textMesh.alignment = TextAlignment.Center;
-
-            if (iconFont != null)
+            GameObject icon = WorldGlyphIconFactory.CreateIconRoot("InfectedIcon", iconFont, iconMaterial, IconFontSize);
+            WorldGlyphIcon glyphIcon = icon.GetComponent<WorldGlyphIcon>();
+            if (glyphIcon != null)
             {
-                textMesh.font = iconFont;
+                WorldGlyphIconFactory.ApplyStyle(glyphIcon, "\u2623", IconCharSize, ForegroundColor, OutlineColor, ShadowColor);
             }
 
-            MeshRenderer meshRenderer = go.GetComponent<MeshRenderer>();
-            if (meshRenderer != null)
-            {
-                meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                meshRenderer.receiveShadows = false;
-            }
-
-            return go;
+            return icon;
         }
 
         private void ReleaseIcon(ushort instanceId)
@@ -211,6 +200,11 @@ namespace RealTime.Pandemic
                 {
                     Destroy(icon);
                 }
+            }
+
+            if (iconMaterial != null)
+            {
+                Destroy(iconMaterial);
             }
         }
     }

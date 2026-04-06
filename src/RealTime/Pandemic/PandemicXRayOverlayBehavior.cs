@@ -47,8 +47,7 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            PandemicXRayMode mode = manager.GetXRayMode();
-            if (mode == PandemicXRayMode.Off)
+            if (!manager.IsXRayEnabled())
             {
                 loggedEmptyHeatmapWarning = false;
                 SetVisible(false);
@@ -69,16 +68,18 @@ namespace RealTime.Pandemic
 
             nextRefreshTime = Time.unscaledTime + manager.GetXRayRefreshIntervalSeconds();
 
-            int writtenCells = manager.PopulateHeatmapGrid(sourceGrid, mode);
+            PandemicXRayMetric metric = manager.GetXRayMetric();
+            PandemicXRayLocationMode locationMode = manager.GetXRayLocationMode();
+            int writtenCells = manager.PopulateHeatmapGrid(sourceGrid, metric, locationMode);
             if (writtenCells == 0)
             {
-                LogEmptyHeatmapWarningOnce(mode);
+                LogEmptyHeatmapWarningOnce(metric, locationMode);
                 SetVisible(false);
                 return;
             }
 
             loggedEmptyHeatmapWarning = false;
-            if (!UpdateVertexColors())
+            if (!UpdateVertexColors(metric))
             {
                 SetVisible(false);
                 return;
@@ -199,7 +200,7 @@ namespace RealTime.Pandemic
             }
         }
 
-        private bool UpdateVertexColors()
+        private bool UpdateVertexColors(PandemicXRayMetric metric)
         {
             float maxValue = SmoothSourceGrid();
             if (maxValue <= 0f)
@@ -213,7 +214,7 @@ namespace RealTime.Pandemic
                 {
                     float average = GetVertexIntensity(x, z);
                     float normalized = average > 0f ? Mathf.Clamp01(average / maxValue) : 0f;
-                    vertexColors[(z * VertexResolution) + x] = EvaluateColor(normalized);
+                    vertexColors[(z * VertexResolution) + x] = EvaluateColor(metric, normalized);
                 }
             }
 
@@ -305,7 +306,7 @@ namespace RealTime.Pandemic
             return terrainManager.SampleRawHeightSmooth(new Vector3(worldX, 0f, worldZ)) + OverlayHeightOffset;
         }
 
-        private static Color32 EvaluateColor(float normalizedValue)
+        private static Color32 EvaluateColor(PandemicXRayMetric metric, float normalizedValue)
         {
             float value = Mathf.Clamp01(normalizedValue);
             if (value <= MinVisibleIntensity)
@@ -313,11 +314,31 @@ namespace RealTime.Pandemic
                 return new Color32(0, 0, 0, 0);
             }
 
-            float green = value < 0.5f
-                ? Mathf.Lerp(0.95f, 1f, value / 0.5f)
-                : Mathf.Lerp(1f, 0.15f, (value - 0.5f) / 0.5f);
             float alpha = Mathf.Lerp(0.08f, 0.82f, Mathf.Pow(value, 0.65f));
-            return new Color(1f, green, 0.05f, alpha);
+            switch (metric)
+            {
+                case PandemicXRayMetric.Recovered:
+                {
+                    float green = Mathf.Lerp(0.78f, 0.96f, value);
+                    float blue = Mathf.Lerp(0.78f, 0.22f, value);
+                    return new Color(0.18f, green, blue, alpha);
+                }
+
+                case PandemicXRayMetric.Dead:
+                {
+                    float red = Mathf.Lerp(0.42f, 0.84f, value);
+                    float blue = Mathf.Lerp(0.58f, 0.42f, value);
+                    return new Color(red, 0.12f, blue, alpha);
+                }
+
+                default:
+                {
+                    float green = value < 0.5f
+                        ? Mathf.Lerp(0.95f, 1f, value / 0.5f)
+                        : Mathf.Lerp(1f, 0.15f, (value - 0.5f) / 0.5f);
+                    return new Color(1f, green, 0.05f, alpha);
+                }
+            }
         }
 
         private void SetVisible(bool visible)
@@ -339,7 +360,7 @@ namespace RealTime.Pandemic
             Debug.LogWarning("[RealTime] X-Ray overlay is enabled, but the heatmap mesh renderer is not available.");
         }
 
-        private void LogEmptyHeatmapWarningOnce(PandemicXRayMode mode)
+        private void LogEmptyHeatmapWarningOnce(PandemicXRayMetric metric, PandemicXRayLocationMode locationMode)
         {
             if (loggedEmptyHeatmapWarning)
             {
@@ -347,7 +368,7 @@ namespace RealTime.Pandemic
             }
 
             loggedEmptyHeatmapWarning = true;
-            Debug.LogWarning("[RealTime] X-Ray mode '" + mode + "' is enabled, but no heatmap cells were populated.");
+            Debug.LogWarning("[RealTime] X-Ray '" + metric + "' / '" + locationMode + "' is enabled, but no heatmap cells were populated.");
         }
 
         private void LogTerrainFallbackWarningOnce()

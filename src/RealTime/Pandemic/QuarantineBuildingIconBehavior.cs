@@ -14,6 +14,11 @@ namespace RealTime.Pandemic
         private const float BaseIconCharSize = 1.2f;
         private const int IconFontSize = 80;
         private const float MaxVisibleDistance = 1800f;
+        private static readonly Color InfectedForegroundColor = new Color(1f, 0.84f, 0.18f, 1f);
+        private static readonly Color InfectedOutlineColor = new Color(0.18f, 0.12f, 0.06f, 0.96f);
+        private static readonly Color HubForegroundColor = new Color(1f, 0.34f, 0.16f, 1f);
+        private static readonly Color HubOutlineColor = new Color(0.18f, 0.08f, 0.08f, 0.96f);
+        private static readonly Color ShadowColor = new Color(0f, 0f, 0f, 0.52f);
 
         private readonly Dictionary<ushort, GameObject> iconObjects = new Dictionary<ushort, GameObject>();
         private readonly HashSet<ushort> visibleBuildings = new HashSet<ushort>();
@@ -21,11 +26,13 @@ namespace RealTime.Pandemic
         private readonly Stack<GameObject> pooledIcons = new Stack<GameObject>();
 
         private Font iconFont;
+        private Material iconMaterial;
         private float nextRefreshTime;
 
         private void Awake()
         {
             iconFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            iconMaterial = WorldGlyphIconFactory.CreateUnlitTextMaterial(iconFont);
         }
 
         private void LateUpdate()
@@ -106,13 +113,17 @@ namespace RealTime.Pandemic
                     iconObjects[buildingId] = icon;
                 }
 
-                TextMesh textMesh = icon.GetComponent<TextMesh>();
-                if (textMesh != null)
+                WorldGlyphIcon glyphIcon = icon.GetComponent<WorldGlyphIcon>();
+                if (glyphIcon != null)
                 {
                     float scale = Mathf.Clamp(1f + ((infectedCount - 1) * 0.25f), 1f, 2.5f);
-                    textMesh.text = isHub ? "\u26A0" : "\u2623";
-                    textMesh.characterSize = BaseIconCharSize * scale;
-                    textMesh.color = isHub ? new Color(1f, 0.2f, 0.2f, 1f) : new Color(1f, 0.9f, 0f, 1f);
+                    WorldGlyphIconFactory.ApplyStyle(
+                        glyphIcon,
+                        isHub ? "\u26A0" : "\u2623",
+                        BaseIconCharSize * scale,
+                        isHub ? HubForegroundColor : InfectedForegroundColor,
+                        isHub ? HubOutlineColor : InfectedOutlineColor,
+                        ShadowColor);
                 }
 
                 icon.transform.position = position;
@@ -131,30 +142,14 @@ namespace RealTime.Pandemic
 
         private GameObject CreateIcon()
         {
-            var go = new GameObject("PandemicBuildingIcon");
-            go.hideFlags = HideFlags.HideAndDontSave;
-
-            TextMesh textMesh = go.AddComponent<TextMesh>();
-            textMesh.text = "\u2623";
-            textMesh.fontSize = IconFontSize;
-            textMesh.characterSize = BaseIconCharSize;
-            textMesh.color = new Color(1f, 0.9f, 0f, 1f);
-            textMesh.anchor = TextAnchor.MiddleCenter;
-            textMesh.alignment = TextAlignment.Center;
-
-            if (iconFont != null)
+            GameObject icon = WorldGlyphIconFactory.CreateIconRoot("PandemicBuildingIcon", iconFont, iconMaterial, IconFontSize);
+            WorldGlyphIcon glyphIcon = icon.GetComponent<WorldGlyphIcon>();
+            if (glyphIcon != null)
             {
-                textMesh.font = iconFont;
+                WorldGlyphIconFactory.ApplyStyle(glyphIcon, "\u2623", BaseIconCharSize, InfectedForegroundColor, InfectedOutlineColor, ShadowColor);
             }
 
-            MeshRenderer meshRenderer = go.GetComponent<MeshRenderer>();
-            if (meshRenderer != null)
-            {
-                meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                meshRenderer.receiveShadows = false;
-            }
-
-            return go;
+            return icon;
         }
 
         private void ReleaseIcon(ushort buildingId)
@@ -232,6 +227,11 @@ namespace RealTime.Pandemic
                 {
                     Destroy(icon);
                 }
+            }
+
+            if (iconMaterial != null)
+            {
+                Destroy(iconMaterial);
             }
         }
     }

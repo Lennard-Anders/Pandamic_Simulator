@@ -19,7 +19,11 @@ namespace RealTime.Pandemic
 
         public bool WorldOverlaysEnabled { get; set; }
 
-        public PandemicXRayMode XRayMode { get; set; }
+        public bool XRayEnabled { get; set; }
+
+        public PandemicXRayMetric XRayMetric { get; set; }
+
+        public PandemicXRayLocationMode XRayLocationMode { get; set; }
 
         public PandemicPublicTransportShutdownState PublicTransportState { get; set; }
 
@@ -30,6 +34,8 @@ namespace RealTime.Pandemic
         public int PublicTransportClosedDepots { get; set; }
 
         public System.DateTime SimulationTime { get; set; }
+
+        public int PandemicDay { get; set; }
 
         public int Healthy { get; set; }
 
@@ -70,6 +76,14 @@ namespace RealTime.Pandemic
         public int HotspotBuildings { get; set; }
 
         public int HubBuildings { get; set; }
+
+        public float HospitalUsagePercent { get; set; }
+
+        public float HospitalUsageDeltaPercent { get; set; }
+
+        public float AmbulanceUsagePercent { get; set; }
+
+        public float AmbulanceUsageDeltaPercent { get; set; }
 
         public bool HasChartData { get; set; }
 

@@ -6,12 +6,31 @@ namespace RealTime.Simulation
     using RealTime.Config;
     using UnityEngine;
 
+    internal enum RealTimeSpeedOverrideMode
+    {
+        Auto = 0,
+        Speed1 = 1,
+        Speed2 = 2,
+        Speed3 = 3,
+        Speed4 = 4,
+        Speed5 = 5,
+        Speed6 = 6,
+        Speed7 = 7,
+        Speed8 = 8,
+        Speed9 = 9,
+        Speed10 = 10,
+        Speed11 = 11,
+        Speed12 = 12,
+    }
+
     /// <summary>
     /// Manages the customized time adjustment. This class depends on the <see cref="SimulationManager"/> class.
     /// </summary>
     internal sealed class TimeAdjustment
     {
         private const int RealtimeSpeed = 23;
+        private const uint ManualOverrideBaseSpeed = 4u;
+        private const uint ManualOverrideBaseFramesPerDay = 1u << (RealtimeSpeed - (int)ManualOverrideBaseSpeed);
         private readonly uint vanillaFramesPerDay;
         private readonly TimeSpan vanillaTimePerFrame;
         private readonly RealTimeConfig config;
@@ -22,6 +41,7 @@ namespace RealTime.Simulation
         private bool isNightEnabled;
         private TimeSpan originalTimePerFrame;
         private long originalTimeOffsetTicks;
+        private RealTimeSpeedOverrideMode runtimeSpeedOverride = RealTimeSpeedOverrideMode.Auto;
 
         /// <summary>Initializes a new instance of the <see cref="TimeAdjustment"/> class.</summary>
         /// <param name="config">The configuration to run with.</param>
@@ -39,8 +59,8 @@ namespace RealTime.Simulation
         /// <returns>The current game date and time.</returns>
         public DateTime Enable(bool setDefaultTime)
         {
-            dayTimeSpeed = config.DayTimeSpeed;
-            nightTimeSpeed = config.NightTimeSpeed;
+            dayTimeSpeed = GetEffectiveDayTimeSpeed();
+            nightTimeSpeed = GetEffectiveNightTimeSpeed();
             isNightEnabled = SimulationManager.instance.m_enableDayNight;
 
             var now = SimulationManager.instance.m_ThreadingWrapper.simulationTime;
@@ -67,15 +87,17 @@ namespace RealTime.Simulation
                 isNightEnabled = SimulationManager.instance.m_enableDayNight;
             }
             else if (!sm.m_enableDayNight
-                || sm.m_isNightTime == isNightTime && dayTimeSpeed == config.DayTimeSpeed && nightTimeSpeed == config.NightTimeSpeed)
+                || sm.m_isNightTime == isNightTime
+                    && dayTimeSpeed == GetEffectiveDayTimeSpeed()
+                    && nightTimeSpeed == GetEffectiveNightTimeSpeed())
             {
                 return false;
             }
 
             float currentHour = SimulationManager.instance.m_currentGameTime.TimeOfDay.Hours;
             isNightTime = currentHour < config.WakeUpHour || currentHour >= config.GoToSleepHour;
-            dayTimeSpeed = config.DayTimeSpeed;
-            nightTimeSpeed = config.NightTimeSpeed;
+            dayTimeSpeed = GetEffectiveDayTimeSpeed();
+            nightTimeSpeed = GetEffectiveNightTimeSpeed();
 
             uint currentFramesPerDay = SimulationManager.DAYTIME_FRAMES;
             uint newFramesPerDay = CalculateFramesPerDay();
@@ -85,6 +107,23 @@ namespace RealTime.Simulation
 
         /// <summary>Disables the customized time adjustment restoring the default vanilla values.</summary>
         public void Disable() => UpdateTimeSimulationValues(vanillaFramesPerDay, useCustomTimePerFrame: false);
+
+        internal RealTimeSpeedOverrideMode GetRuntimeSpeedOverrideMode() => runtimeSpeedOverride;
+
+        internal RealTimeSpeedOverrideMode CycleRuntimeSpeedOverride()
+        {
+            int nextValue = ((int)runtimeSpeedOverride + 1) % ((int)RealTimeSpeedOverrideMode.Speed12 + 1);
+            runtimeSpeedOverride = (RealTimeSpeedOverrideMode)nextValue;
+
+            return runtimeSpeedOverride;
+        }
+
+        internal string GetRuntimeSpeedOverrideLabel()
+        {
+            return runtimeSpeedOverride == RealTimeSpeedOverrideMode.Auto
+                ? "Auto"
+                : ((int)runtimeSpeedOverride).ToString() + "x";
+        }
 
         /// <summary>Gets the original time represented by the frame index.
         /// This method can be used to convert frame-based times after time adjustments.</summary>
@@ -160,8 +199,38 @@ namespace RealTime.Simulation
 
         private uint CalculateFramesPerDay()
         {
+            if (runtimeSpeedOverride != RealTimeSpeedOverrideMode.Auto)
+            {
+                return CalculateManualOverrideFramesPerDay((uint)runtimeSpeedOverride);
+            }
+
             uint offset = isNightTime ? nightTimeSpeed : dayTimeSpeed;
             return 1u << (int)(RealtimeSpeed - offset);
+        }
+
+        private uint CalculateManualOverrideFramesPerDay(uint multiplier)
+        {
+            if (multiplier <= 1u)
+            {
+                return ManualOverrideBaseFramesPerDay;
+            }
+
+            uint scaledFramesPerDay = (uint)Mathf.RoundToInt(ManualOverrideBaseFramesPerDay / (float)multiplier);
+            return Math.Max(vanillaFramesPerDay, scaledFramesPerDay);
+        }
+
+        private uint GetEffectiveDayTimeSpeed()
+        {
+            return runtimeSpeedOverride == RealTimeSpeedOverrideMode.Auto
+                ? config.DayTimeSpeed
+                : (uint)runtimeSpeedOverride;
+        }
+
+        private uint GetEffectiveNightTimeSpeed()
+        {
+            return runtimeSpeedOverride == RealTimeSpeedOverrideMode.Auto
+                ? config.NightTimeSpeed
+                : (uint)runtimeSpeedOverride;
         }
     }
 }

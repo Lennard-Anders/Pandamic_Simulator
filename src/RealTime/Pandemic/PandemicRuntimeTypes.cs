@@ -10,9 +10,15 @@ namespace RealTime.Pandemic
         Finished,
     }
 
-    internal enum PandemicXRayMode
+    internal enum PandemicXRayMetric
     {
-        Off,
+        Infected,
+        Recovered,
+        Dead,
+    }
+
+    internal enum PandemicXRayLocationMode
+    {
         LivePositions,
         HomeLocations,
     }
@@ -86,6 +92,17 @@ namespace RealTime.Pandemic
         public ItemClass.SubService BuildingSubService { get; set; }
 
         public Vector3 Position { get; set; }
+    }
+
+    internal sealed class PandemicDeathRecord
+    {
+        public uint CitizenId { get; set; }
+
+        public DateTime SimulationTime { get; set; }
+
+        public Vector3 DeathPosition { get; set; }
+
+        public ushort HomeBuildingId { get; set; }
     }
 
     internal static class PandemicTaxonomy

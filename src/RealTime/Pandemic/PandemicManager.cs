@@ -1,6 +1,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using RealTime.CustomAI;
@@ -21,12 +22,16 @@ namespace RealTime.Pandemic
         private bool hasStartedAtLeastOnce;
         private bool worldOverlaysEnabled = true;
         private PandemicLifecycleState lifecycleState = PandemicLifecycleState.Dormant;
-        private PandemicXRayMode xRayMode = PandemicXRayMode.Off;
+        private bool xRayEnabled;
+        private PandemicXRayMetric xRayMetric = PandemicXRayMetric.Infected;
+        private PandemicXRayLocationMode xRayLocationMode = PandemicXRayLocationMode.LivePositions;
         private float spreadDistance = 10;
         private DateTime lastDateTime;
         private DateTime lastDateTimeCitizensUpdate;
         private DateTime lastStoreTime;
         private DateTime currentDateTime;
+        private DateTime pandemicRunStartedAt;
+        private DateTime pandemicRunFinishedAt;
         private bool hadAnySickCitizens;
 
         private List<uint> initialPopulation = new List<uint>();
@@ -58,6 +63,8 @@ namespace RealTime.Pandemic
         private HashSet<uint> quarantineFatedToDie = new HashSet<uint>();
         private const int QuarantineFateDays = 14;
         private Dictionary<uint, PandemicInfectionOriginInfo> infectionOrigins = new Dictionary<uint, PandemicInfectionOriginInfo>();
+        private readonly List<PandemicDeathRecord> deathRecords = new List<PandemicDeathRecord>();
+        private readonly List<PandemicHealthcareUsageSample> healthcareUsageSamples = new List<PandemicHealthcareUsageSample>();
         private static readonly Citizen.AgeGroup[] LiveSnapshotAgeGroups =
         {
             Citizen.AgeGroup.Child,
@@ -175,6 +182,13 @@ namespace RealTime.Pandemic
             public bool Enabled;
         }
 
+        private sealed class PandemicHealthcareUsageSample
+        {
+            public DateTime SimulationTime;
+            public float HospitalUsagePercent;
+            public float AmbulanceUsagePercent;
+        }
+
         private sealed class PandemicPublicTransportLineState
         {
             public bool DayActive;
@@ -246,6 +260,8 @@ namespace RealTime.Pandemic
             bool initialized = CitizenMgr != null && CitizenProxy != null && BuildingMgr != null;
             active = false;
             lifecycleState = PandemicLifecycleState.Dormant;
+            pandemicRunStartedAt = default(DateTime);
+            pandemicRunFinishedAt = default(DateTime);
             if (!initialized)
             {
                 Log.Warning("The 'Real Time' pandemic manager could not be activated because one or more game connections are missing.");
@@ -311,6 +327,8 @@ namespace RealTime.Pandemic
                 ResetRuntimeStateForBootstrap();
                 ResetPandemicServices(lockdownEnabled);
                 currentDateTime = simulation.m_currentGameTime;
+                pandemicRunStartedAt = currentDateTime;
+                pandemicRunFinishedAt = default(DateTime);
                 SeedPolicyTimeline();
 
                 Citizen[] citizens = CitizenMgr.GetCitizensArray();
@@ -396,6 +414,7 @@ namespace RealTime.Pandemic
                 Observer.AddRecoveredCitizens(currentDateTime, initialPopulationRecovered.Count);
                 Observer.AddDeadCitizens(currentDateTime, initialPopulationDead.Count);
                 Observer.FinishObservations(currentDateTime);
+                CaptureHealthcareUsageSample(currentDateTime, citizens);
 
                 try
                 {
@@ -1136,6 +1155,15 @@ namespace RealTime.Pandemic
 
                 try
                 {
+                    CaptureHealthcareUsageSample(currentDateTime, citizens);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning("The 'Real Time' pandemic manager failed to capture healthcare usage data: " + ex);
+                }
+
+                try
+                {
                     Observer.AddSickCitizens(currentDateTime, initialPopulationSick.Count);
                     Observer.AddHealthyCitizens(currentDateTime, initialPopulationHealthy.Count);
                     Observer.AddRecoveredCitizens(currentDateTime, initialPopulationRecovered.Count);
@@ -1180,6 +1208,7 @@ namespace RealTime.Pandemic
                     // No active infections left. Stop pandemic processing, but never pause the whole simulation.
                     active = false;
                     lifecycleState = PandemicLifecycleState.Finished;
+                    pandemicRunFinishedAt = currentDateTime;
                 }
             }
             catch (Exception ex)
@@ -1708,7 +1737,7 @@ namespace RealTime.Pandemic
 
         internal bool IsVisualizationDataAvailable()
         {
-            return lifecycleState == PandemicLifecycleState.Running
+            return lifecycleState != PandemicLifecycleState.Dormant
                 && startCompleted
                 && CitizenMgr != null
                 && CitizenProxy != null
@@ -1814,7 +1843,11 @@ namespace RealTime.Pandemic
 
         public bool AreWorldOverlaysEnabled() => worldOverlaysEnabled;
 
-        internal PandemicXRayMode GetXRayMode() => xRayMode;
+        internal bool IsXRayEnabled() => xRayEnabled;
+
+        internal PandemicXRayMetric GetXRayMetric() => xRayMetric;
+
+        internal PandemicXRayLocationMode GetXRayLocationMode() => xRayLocationMode;
 
         internal Config.RealTimeConfig RuntimeConfig => Config;
 
@@ -1881,24 +1914,39 @@ namespace RealTime.Pandemic
             return worldOverlaysEnabled;
         }
 
-        internal PandemicXRayMode CycleXRayMode()
+        internal bool ToggleXRayEnabled()
         {
-            switch (xRayMode)
+            xRayEnabled = !xRayEnabled;
+            return xRayEnabled;
+        }
+
+        internal PandemicXRayMetric CycleXRayMetric()
+        {
+            switch (xRayMetric)
             {
-                case PandemicXRayMode.Off:
-                    xRayMode = PandemicXRayMode.LivePositions;
+                case PandemicXRayMetric.Infected:
+                    xRayMetric = PandemicXRayMetric.Recovered;
                     break;
 
-                case PandemicXRayMode.LivePositions:
-                    xRayMode = PandemicXRayMode.HomeLocations;
+                case PandemicXRayMetric.Recovered:
+                    xRayMetric = PandemicXRayMetric.Dead;
                     break;
 
                 default:
-                    xRayMode = PandemicXRayMode.Off;
+                    xRayMetric = PandemicXRayMetric.Infected;
                     break;
             }
 
-            return xRayMode;
+            return xRayMetric;
+        }
+
+        internal PandemicXRayLocationMode CycleXRayLocationMode()
+        {
+            xRayLocationMode = xRayLocationMode == PandemicXRayLocationMode.LivePositions
+                ? PandemicXRayLocationMode.HomeLocations
+                : PandemicXRayLocationMode.LivePositions;
+
+            return xRayLocationMode;
         }
 
         private void SeedPolicyTimeline()
@@ -2057,12 +2105,15 @@ namespace RealTime.Pandemic
             snapshot.CanStart = lifecycleState == PandemicLifecycleState.Dormant;
             snapshot.CanRestart = hasStartedAtLeastOnce;
             snapshot.WorldOverlaysEnabled = worldOverlaysEnabled;
-            snapshot.XRayMode = xRayMode;
+            snapshot.XRayEnabled = xRayEnabled;
+            snapshot.XRayMetric = xRayMetric;
+            snapshot.XRayLocationMode = xRayLocationMode;
             snapshot.PublicTransportState = publicTransportShutdownState;
             snapshot.PublicTransportTrackedLines = publicTransportLineStates.Count;
             snapshot.PublicTransportReturningVehicles = publicTransportVehicles.Count;
             snapshot.PublicTransportClosedDepots = publicTransportDepotStates.Count(depot => depot.Value.IsClosed);
             snapshot.SimulationTime = simulation != null ? simulation.m_currentGameTime : currentDateTime;
+            snapshot.PandemicDay = GetPandemicDayNumber();
             snapshot.Healthy = initialPopulationHealthy.Count;
             snapshot.Sick = initialPopulationSick.Count;
             snapshot.Recovered = initialPopulationRecovered.Count;
@@ -2083,6 +2134,7 @@ namespace RealTime.Pandemic
             snapshot.TransmissionsVehicle = Observer?.GetVehicleInfections() ?? 0;
             snapshot.HotspotBuildings = hotspotBuildingIds.Count;
             snapshot.HubBuildings = hubBuildingIds.Count;
+            PopulateHealthcareUsageSnapshot(snapshot);
 
             if (Observer != null)
             {
@@ -2101,6 +2153,213 @@ namespace RealTime.Pandemic
                     snapshot.DeltaDead = (int)latest.DeadCitizens - (int)previous.DeadCitizens;
                 }
             }
+        }
+
+        internal int GetPandemicDayNumber()
+        {
+            if (!hasStartedAtLeastOnce || lifecycleState == PandemicLifecycleState.Dormant || pandemicRunStartedAt == default(DateTime))
+            {
+                return 0;
+            }
+
+            DateTime referenceTime = GetPandemicReferenceTime();
+            if (referenceTime <= pandemicRunStartedAt)
+            {
+                return 1;
+            }
+
+            return Math.Max(1, (int)Math.Floor((referenceTime - pandemicRunStartedAt).TotalDays) + 1);
+        }
+
+        internal string GetTimeBarPandemicStatusText()
+        {
+            if (!hasStartedAtLeastOnce || lifecycleState == PandemicLifecycleState.Dormant)
+            {
+                return string.Empty;
+            }
+
+            int pandemicDay = GetPandemicDayNumber();
+            if (lifecycleState == PandemicLifecycleState.Finished)
+            {
+                return "Finished \u00b7 " + pandemicDay.ToString(CultureInfo.InvariantCulture) + "d";
+            }
+
+            return "Pandemic day " + pandemicDay.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private DateTime GetPandemicReferenceTime()
+        {
+            if (lifecycleState == PandemicLifecycleState.Finished && pandemicRunFinishedAt != default(DateTime))
+            {
+                return pandemicRunFinishedAt;
+            }
+
+            if (simulation != null)
+            {
+                return simulation.m_currentGameTime;
+            }
+
+            return currentDateTime;
+        }
+
+        private void PopulateHealthcareUsageSnapshot(PandemicLiveSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            DateTime referenceTime = lifecycleState == PandemicLifecycleState.Finished
+                ? GetPandemicReferenceTime()
+                : snapshot.SimulationTime != default(DateTime)
+                    ? snapshot.SimulationTime
+                    : GetPandemicReferenceTime();
+
+            PandemicHealthcareUsageSample currentSample = GetCurrentHealthcareUsageSample(referenceTime);
+            snapshot.HospitalUsagePercent = currentSample.HospitalUsagePercent;
+            snapshot.AmbulanceUsagePercent = currentSample.AmbulanceUsagePercent;
+
+            PandemicHealthcareUsageSample previousSample = GetHealthcareUsageSampleForDelta(referenceTime);
+            snapshot.HospitalUsageDeltaPercent = currentSample.HospitalUsagePercent - previousSample.HospitalUsagePercent;
+            snapshot.AmbulanceUsageDeltaPercent = currentSample.AmbulanceUsagePercent - previousSample.AmbulanceUsagePercent;
+        }
+
+        private PandemicHealthcareUsageSample GetCurrentHealthcareUsageSample(DateTime referenceTime)
+        {
+            if (healthcareUsageSamples.Count > 0)
+            {
+                PandemicHealthcareUsageSample latestSample = healthcareUsageSamples[healthcareUsageSamples.Count - 1];
+                if (latestSample != null)
+                {
+                    return latestSample;
+                }
+            }
+
+            return CalculateHealthcareUsageSample(referenceTime, CitizenMgr?.GetCitizensArray());
+        }
+
+        private PandemicHealthcareUsageSample GetHealthcareUsageSampleForDelta(DateTime referenceTime)
+        {
+            if (healthcareUsageSamples.Count == 0)
+            {
+                return GetCurrentHealthcareUsageSample(referenceTime);
+            }
+
+            DateTime targetTime = referenceTime.AddDays(-1);
+            PandemicHealthcareUsageSample bestSample = healthcareUsageSamples[0];
+            for (int i = healthcareUsageSamples.Count - 1; i >= 0; i--)
+            {
+                PandemicHealthcareUsageSample sample = healthcareUsageSamples[i];
+                if (sample.SimulationTime <= targetTime)
+                {
+                    return sample;
+                }
+
+                bestSample = sample;
+            }
+
+            return bestSample ?? GetCurrentHealthcareUsageSample(referenceTime);
+        }
+
+        private void CaptureHealthcareUsageSample(DateTime simulationTime, Citizen[] citizens)
+        {
+            PandemicHealthcareUsageSample sample = CalculateHealthcareUsageSample(simulationTime, citizens);
+            healthcareUsageSamples.Add(sample);
+
+            DateTime cutoff = simulationTime.AddDays(-7);
+            healthcareUsageSamples.RemoveAll(entry => entry == null || entry.SimulationTime < cutoff);
+        }
+
+        private PandemicHealthcareUsageSample CalculateHealthcareUsageSample(DateTime simulationTime, Citizen[] citizens)
+        {
+            int hospitalCapacity = 0;
+            int ambulanceCapacity = 0;
+            int currentHospitalUsage = 0;
+            int currentAmbulanceUsage = 0;
+
+            BuildingManager buildingManager = BuildingManager.instance;
+            if (buildingManager != null)
+            {
+                Building[] buildings = buildingManager.m_buildings.m_buffer;
+                for (ushort buildingId = 1; buildingId < buildings.Length; buildingId++)
+                {
+                    ref Building building = ref buildings[buildingId];
+                    if ((building.m_flags & (Building.Flags.Created | Building.Flags.Deleted)) != Building.Flags.Created || building.Info == null)
+                    {
+                        continue;
+                    }
+
+                    if (building.Info.GetService() != ItemClass.Service.HealthCare)
+                    {
+                        continue;
+                    }
+
+                    if (building.Info.m_buildingAI is HospitalAI hospitalAI)
+                    {
+                        hospitalCapacity += Math.Max(0, hospitalAI.PatientCapacity);
+                        ambulanceCapacity += Math.Max(0, hospitalAI.AmbulanceCount);
+                    }
+                }
+            }
+
+            if (citizens != null && initialPopulation.Count > 0)
+            {
+                for (int i = 0; i < initialPopulation.Count; i++)
+                {
+                    uint citizenId = initialPopulation[i];
+                    uint realId = retrieveID(citizenId);
+                    if (realId >= citizens.Length)
+                    {
+                        continue;
+                    }
+
+                    ref Citizen citizen = ref citizens[realId];
+                    if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen))
+                    {
+                        continue;
+                    }
+
+                    ushort currentBuilding = CitizenProxy.GetCurrentBuilding(ref citizen);
+                    ushort visitBuilding = CitizenProxy.GetVisitBuilding(ref citizen);
+                    ushort workBuilding = CitizenProxy.GetWorkBuilding(ref citizen);
+                    bool visitingHealthcare = visitBuilding != 0 && BuildingMgr.GetBuildingService(visitBuilding) == ItemClass.Service.HealthCare;
+                    bool insideHealthcareAsPatient = currentBuilding != 0
+                        && BuildingMgr.GetBuildingService(currentBuilding) == ItemClass.Service.HealthCare
+                        && currentBuilding != workBuilding;
+
+                    if (visitingHealthcare || insideHealthcareAsPatient)
+                    {
+                        currentHospitalUsage++;
+                    }
+                }
+            }
+
+            VehicleManager vehicleManager = VehicleManager.instance;
+            if (vehicleManager != null)
+            {
+                Vehicle[] vehicles = vehicleManager.m_vehicles.m_buffer;
+                for (ushort vehicleId = 1; vehicleId < vehicles.Length; vehicleId++)
+                {
+                    ref Vehicle vehicle = ref vehicles[vehicleId];
+                    if ((vehicle.m_flags & (Vehicle.Flags.Created | Vehicle.Flags.Deleted)) != Vehicle.Flags.Created || vehicle.Info == null)
+                    {
+                        continue;
+                    }
+
+                    VehicleAI vehicleAI = vehicle.Info.m_vehicleAI;
+                    if (vehicleAI is AmbulanceAI || vehicleAI is AmbulanceCopterAI)
+                    {
+                        currentAmbulanceUsage++;
+                    }
+                }
+            }
+
+            return new PandemicHealthcareUsageSample
+            {
+                SimulationTime = simulationTime,
+                HospitalUsagePercent = hospitalCapacity > 0 ? Mathf.Clamp((currentHospitalUsage * 100f) / hospitalCapacity, 0f, 100f) : 0f,
+                AmbulanceUsagePercent = ambulanceCapacity > 0 ? Mathf.Clamp((currentAmbulanceUsage * 100f) / ambulanceCapacity, 0f, 100f) : 0f,
+            };
         }
 
         private bool ShouldRefreshAnalyticsSnapshot(float now, int totalInfections)
@@ -2690,7 +2949,7 @@ namespace RealTime.Pandemic
             return IsLockdownFamilyOpen(family);
         }
 
-        internal int PopulateHeatmapGrid(float[] target, PandemicXRayMode mode)
+        internal int PopulateHeatmapGrid(float[] target, PandemicXRayMetric metric, PandemicXRayLocationMode locationMode)
         {
             if (target == null)
             {
@@ -2698,7 +2957,7 @@ namespace RealTime.Pandemic
             }
 
             Array.Clear(target, 0, target.Length);
-            if (mode == PandemicXRayMode.Off || !IsVisualizationDataAvailable())
+            if (!xRayEnabled || !IsVisualizationDataAvailable())
             {
                 return 0;
             }
@@ -2717,38 +2976,96 @@ namespace RealTime.Pandemic
             }
 
             int written = 0;
-            foreach (uint citizenId in activeInfections.Keys)
+            switch (metric)
             {
-                uint realId = retrieveID(citizenId);
-                if (realId >= citizens.Length)
-                {
-                    continue;
-                }
+                case PandemicXRayMetric.Recovered:
+                    foreach (uint citizenId in initialPopulationRecovered)
+                    {
+                        uint realId = retrieveID(citizenId);
+                        if (realId >= citizens.Length)
+                        {
+                            continue;
+                        }
 
-                ref Citizen citizen = ref citizens[realId];
-                if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen))
-                {
-                    continue;
-                }
+                        ref Citizen citizen = ref citizens[realId];
+                        if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen))
+                        {
+                            continue;
+                        }
 
-                Vector3 position = GetHeatmapPosition(ref citizen, mode);
-                if (position == Vector3.zero)
-                {
-                    continue;
-                }
+                        written += AddHeatmapPosition(target, resolution, mapHalfSize, GetHeatmapPosition(ref citizen, locationMode));
+                    }
 
-                int x = Mathf.Clamp((int)(((position.x + mapHalfSize) / (2f * mapHalfSize)) * resolution), 0, resolution - 1);
-                int z = Mathf.Clamp((int)(((position.z + mapHalfSize) / (2f * mapHalfSize)) * resolution), 0, resolution - 1);
-                target[(z * resolution) + x] += 1f;
-                written++;
+                    break;
+
+                case PandemicXRayMetric.Dead:
+                    foreach (PandemicDeathRecord deathRecord in deathRecords)
+                    {
+                        if (deathRecord == null)
+                        {
+                            continue;
+                        }
+
+                        written += AddHeatmapPosition(target, resolution, mapHalfSize, GetDeathHeatmapPosition(deathRecord, locationMode));
+                    }
+
+                    break;
+
+                default:
+                    foreach (uint citizenId in activeInfections.Keys)
+                    {
+                        uint realId = retrieveID(citizenId);
+                        if (realId >= citizens.Length)
+                        {
+                            continue;
+                        }
+
+                        ref Citizen citizen = ref citizens[realId];
+                        if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen))
+                        {
+                            continue;
+                        }
+
+                        written += AddHeatmapPosition(target, resolution, mapHalfSize, GetHeatmapPosition(ref citizen, locationMode));
+                    }
+
+                    break;
             }
 
             return written;
         }
 
-        private Vector3 GetHeatmapPosition(ref Citizen citizen, PandemicXRayMode mode)
+        private int AddHeatmapPosition(float[] target, int resolution, float mapHalfSize, Vector3 position)
         {
-            if (mode == PandemicXRayMode.HomeLocations)
+            if (position == Vector3.zero)
+            {
+                return 0;
+            }
+
+            int x = Mathf.Clamp((int)(((position.x + mapHalfSize) / (2f * mapHalfSize)) * resolution), 0, resolution - 1);
+            int z = Mathf.Clamp((int)(((position.z + mapHalfSize) / (2f * mapHalfSize)) * resolution), 0, resolution - 1);
+            target[(z * resolution) + x] += 1f;
+            return 1;
+        }
+
+        private Vector3 GetDeathHeatmapPosition(PandemicDeathRecord deathRecord, PandemicXRayLocationMode locationMode)
+        {
+            if (deathRecord == null)
+            {
+                return Vector3.zero;
+            }
+
+            if (locationMode == PandemicXRayLocationMode.HomeLocations)
+            {
+                return deathRecord.HomeBuildingId != 0 ? BuildingMgr.GetBuildingPosition(deathRecord.HomeBuildingId) : Vector3.zero;
+            }
+
+            return deathRecord.DeathPosition;
+        }
+
+        private Vector3 GetHeatmapPosition(ref Citizen citizen, PandemicXRayLocationMode locationMode)
+        {
+            if (locationMode == PandemicXRayLocationMode.HomeLocations)
             {
                 ushort homeBuilding = CitizenProxy.GetHomeBuilding(ref citizen);
                 return homeBuilding != 0 ? BuildingMgr.GetBuildingPosition(homeBuilding) : Vector3.zero;
@@ -2871,6 +3188,8 @@ namespace RealTime.Pandemic
               lastObservedBuildingByCitizen.Clear();
               buildingEntryTimestampMsByCitizen.Clear();
               homeDepartureIntentTimestampMsByCitizen.Clear();
+              deathRecords.Clear();
+              healthcareUsageSamples.Clear();
               pendingTransmissionIds.Clear();
               recentUpdateDurationsMs.Clear();
               averageUpdateDurationMs = 0d;
@@ -3077,6 +3396,7 @@ namespace RealTime.Pandemic
                 return;
             }
 
+            RecordDeath(infectedCitizenID, ref infectedCitizen);
             CitizenProxy.SetDead(ref infectedCitizen, true);
             CitizenProxy.SetSick(ref infectedCitizen, false);
             activeInfections.Remove(infectedCitizenID);
@@ -3086,6 +3406,17 @@ namespace RealTime.Pandemic
 
             initialPopulationDead.Add(infectedCitizenID);
             initialPopulationSick.Remove(infectedCitizenID);
+        }
+
+        private void RecordDeath(uint citizenId, ref Citizen citizen)
+        {
+            deathRecords.Add(new PandemicDeathRecord
+            {
+                CitizenId = citizenId,
+                SimulationTime = currentDateTime,
+                DeathPosition = GetHeatmapPosition(ref citizen, PandemicXRayLocationMode.LivePositions),
+                HomeBuildingId = CitizenProxy.GetHomeBuilding(ref citizen),
+            });
         }
 
         internal bool ShouldSeekHospital(uint citizenId)

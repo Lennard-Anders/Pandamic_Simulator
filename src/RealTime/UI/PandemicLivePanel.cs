@@ -31,7 +31,7 @@ namespace RealTime.UI
         private const float TopOffset = 105f;
         private const float HorizontalPadding = 12f;
         private const float HeaderTop = 36f;
-        private const float HeaderHeight = 318f;
+        private const float HeaderHeight = 334f;
         private const float HeaderWidth = PanelWidth - (HorizontalPadding * 2f);
         private const float ButtonHeight = 28f;
         private const float ButtonSpacing = 8f;
@@ -39,7 +39,10 @@ namespace RealTime.UI
         private const float MetricCardHeight = 56f;
         private const float MetricCardGap = 8f;
         private const float ChartTop = MetricsTop + MetricCardHeight + 12f;
-        private const float ChartHeight = 182f;
+        private const float ChartHeight = 186f;
+        private const float ChartGap = 8f;
+        private const float SidrChartWidth = 212f;
+        private const float TrendChartWidth = HeaderWidth - SidrChartWidth - ChartGap;
         private const float DetailTop = HeaderTop + HeaderHeight + 8f;
         private const float DetailScrollHeight = ExpandedPanelHeight - DetailTop - 10f;
         private const float ScrollbarWidth = 10f;
@@ -71,9 +74,9 @@ namespace RealTime.UI
             { DashboardSection.Districts, false },
             { DashboardSection.Settings, false },
         };
-        private readonly UIPanel[] metricPanels = new UIPanel[4];
-        private readonly UILabel[] metricTitles = new UILabel[4];
-        private readonly UILabel[] metricValues = new UILabel[4];
+        private readonly UIPanel[] metricPanels = new UIPanel[5];
+        private readonly UILabel[] metricTitles = new UILabel[5];
+        private readonly UILabel[] metricValues = new UILabel[5];
 
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
         private bool collapsed;
@@ -96,8 +99,11 @@ namespace RealTime.UI
         private UIButton quarantineButton;
         private UIButton lockdownButton;
         private UIButton overlayButton;
-        private UIButton xrayButton;
+        private UIButton xrayToggleButton;
+        private UIButton xrayTypeButton;
+        private UIButton xrayBasisButton;
         private PandemicTrendChartView trendChart;
+        private PandemicSidrBarView sidrBarView;
         private UIScrollablePanel detailScroll;
         private UIPanel detailContentPanel;
         private UIScrollbar detailScrollbar;
@@ -200,6 +206,7 @@ namespace RealTime.UI
             detailContentPanel = null;
             detailScrollbar = null;
             trendChart = null;
+            sidrBarView = null;
             currentSnapshot = null;
             settingsBuilt = false;
             layoutDirty = true;
@@ -263,7 +270,7 @@ namespace RealTime.UI
             headerPanel.relativePosition = new Vector3(HorizontalPadding, HeaderTop);
             headerPanel.autoLayout = false;
 
-            float buttonWidth = (HeaderWidth - (ButtonSpacing * 2f)) / 3f;
+            float buttonWidth = (HeaderWidth - (ButtonSpacing * 3f)) / 4f;
             float secondRowY = ButtonHeight + ButtonSpacing;
 
             startRestartButton = CreateActionButton(headerPanel, "Start", 0f, 0f, buttonWidth);
@@ -275,20 +282,30 @@ namespace RealTime.UI
             quarantineButton = CreateActionButton(headerPanel, "Quarantine", (buttonWidth * 2f) + (ButtonSpacing * 2f), 0f, buttonWidth);
             quarantineButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleQuarantine(); Refresh(); };
 
-            lockdownButton = CreateActionButton(headerPanel, "Lockdown", 0f, secondRowY, buttonWidth);
+            lockdownButton = CreateActionButton(headerPanel, "Lockdown", (buttonWidth * 3f) + (ButtonSpacing * 3f), 0f, buttonWidth);
             lockdownButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleLockdown(); Refresh(); };
 
-            overlayButton = CreateActionButton(headerPanel, "Overlays", buttonWidth + ButtonSpacing, secondRowY, buttonWidth);
+            overlayButton = CreateActionButton(headerPanel, "Overlays", 0f, secondRowY, buttonWidth);
             overlayButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleWorldOverlays(); Refresh(); };
 
-            xrayButton = CreateActionButton(headerPanel, "X-Ray", (buttonWidth * 2f) + (ButtonSpacing * 2f), secondRowY, buttonWidth);
-            xrayButton.eventClicked += (c, e) => { PandemicManager.Instance?.CycleXRayMode(); Refresh(); };
+            xrayToggleButton = CreateActionButton(headerPanel, "X-Ray", buttonWidth + ButtonSpacing, secondRowY, buttonWidth);
+            xrayToggleButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleXRayEnabled(); Refresh(); };
+
+            xrayTypeButton = CreateActionButton(headerPanel, "Type", (buttonWidth * 2f) + (ButtonSpacing * 2f), secondRowY, buttonWidth);
+            xrayTypeButton.eventClicked += (c, e) => { PandemicManager.Instance?.CycleXRayMetric(); Refresh(); };
+
+            xrayBasisButton = CreateActionButton(headerPanel, "Basis", (buttonWidth * 3f) + (ButtonSpacing * 3f), secondRowY, buttonWidth);
+            xrayBasisButton.eventClicked += (c, e) => { PandemicManager.Instance?.CycleXRayLocationMode(); Refresh(); };
 
             CreateMetricCards();
 
             trendChart = new PandemicTrendChartView();
-            trendChart.Initialize(headerPanel, HeaderWidth, ChartHeight);
+            trendChart.Initialize(headerPanel, TrendChartWidth, ChartHeight);
             trendChart.Component.relativePosition = new Vector3(0f, ChartTop);
+
+            sidrBarView = new PandemicSidrBarView();
+            sidrBarView.Initialize(headerPanel, SidrChartWidth, ChartHeight);
+            sidrBarView.Component.relativePosition = new Vector3(TrendChartWidth + ChartGap, ChartTop);
         }
 
         private void CreateDetailScroll()
@@ -457,7 +474,11 @@ namespace RealTime.UI
                 quarantineButton.text = "Quarantine";
                 lockdownButton.text = "Lockdown";
                 overlayButton.text = "Overlays";
-                xrayButton.text = "X-Ray: Off";
+                xrayToggleButton.text = "X-Ray: OFF";
+                xrayTypeButton.text = "Type: Infected";
+                xrayBasisButton.text = "Basis: Live";
+                xrayTypeButton.isEnabled = false;
+                xrayBasisButton.isEnabled = false;
                 return;
             }
 
@@ -481,10 +502,16 @@ namespace RealTime.UI
             overlayButton.text = "Overlays: " + (overlaysOn ? "ON" : "OFF");
             overlayButton.color = overlaysOn ? new Color32(30, 160, 30, 255) : new Color32(160, 30, 30, 255);
 
-            xrayButton.text = "X-Ray: " + GetXRayModeLabel(snapshot.XRayMode);
-            xrayButton.color = snapshot.XRayMode == PandemicXRayMode.Off
-                ? new Color32(100, 100, 100, 255)
-                : new Color32(180, 80, 40, 255);
+            xrayToggleButton.text = "X-Ray: " + (snapshot.XRayEnabled ? "ON" : "OFF");
+            xrayToggleButton.color = snapshot.XRayEnabled ? new Color32(180, 80, 40, 255) : new Color32(100, 100, 100, 255);
+
+            xrayTypeButton.text = "Type: " + GetXRayMetricLabel(snapshot.XRayMetric);
+            xrayTypeButton.color = snapshot.XRayEnabled ? GetXRayMetricColor(snapshot.XRayMetric) : new Color32(84, 84, 84, 255);
+            xrayTypeButton.isEnabled = true;
+
+            xrayBasisButton.text = "Basis: " + GetXRayLocationLabel(snapshot.XRayLocationMode);
+            xrayBasisButton.color = snapshot.XRayEnabled ? new Color32(70, 110, 170, 255) : new Color32(84, 84, 84, 255);
+            xrayBasisButton.isEnabled = true;
         }
 
         private void RefreshSummary(PandemicLiveSnapshot snapshot)
@@ -502,8 +529,10 @@ namespace RealTime.UI
                 metricValues[1].text = "-";
                 metricTitles[2].text = "Change";
                 metricValues[2].text = "-";
-                metricTitles[3].text = "Operations";
+                metricTitles[3].text = "Healthcare";
                 metricValues[3].text = "-";
+                metricTitles[4].text = "Operations";
+                metricValues[4].text = "-";
                 for (int i = 0; i < metricPanels.Length; i++)
                 {
                     if (metricPanels[i] != null)
@@ -520,7 +549,7 @@ namespace RealTime.UI
                 : snapshot.SimulationTime.ToString("g", cultureInfo);
 
             metricTitles[0].text = "Lifecycle";
-            metricValues[0].text = snapshot.LifecycleState + "\n" + timeValue;
+            metricValues[0].text = FormatLifecycleMetricValue(snapshot) + "\n" + timeValue;
             metricPanels[0].color = snapshot.LifecycleState == PandemicLifecycleState.Running
                 ? new Color32(34, 120, 74, 255)
                 : snapshot.LifecycleState == PandemicLifecycleState.Finished
@@ -539,13 +568,39 @@ namespace RealTime.UI
                 + "dD " + FormatSigned(snapshot.DeltaDead) + " | Obs " + snapshot.ObservationCount.ToString("N0", cultureInfo);
             metricPanels[2].color = new Color32(82, 82, 82, 255);
 
-            metricTitles[3].text = "Operations";
+            metricTitles[3].text = "Healthcare";
             metricValues[3].text =
+                "Hosp " + FormatPercent(snapshot.HospitalUsagePercent)
+                + " " + FormatUsageDelta(snapshot.HospitalUsageDeltaPercent) + "\n"
+                + "Amb " + FormatPercent(snapshot.AmbulanceUsagePercent)
+                + " " + FormatUsageDelta(snapshot.AmbulanceUsageDeltaPercent);
+            metricPanels[3].color = GetHealthcareMetricColor(snapshot.HospitalUsagePercent, snapshot.AmbulanceUsagePercent);
+
+            metricTitles[4].text = "Operations";
+            metricValues[4].text =
                 "Q " + snapshot.QuarantineCitizens.ToString("N0", cultureInfo)
                 + " | T+ " + snapshot.PositiveTests.ToString("N0", cultureInfo) + "\n"
                 + "PT " + GetPublicTransportStateLabel(snapshot.PublicTransportState)
                 + " | Trx " + snapshot.TransmissionsTotal.ToString("N0", cultureInfo);
-            metricPanels[3].color = new Color32(82, 82, 82, 255);
+            metricPanels[4].color = new Color32(82, 82, 82, 255);
+        }
+
+        private static string FormatLifecycleMetricValue(PandemicLiveSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return "Manager unavailable";
+            }
+
+            switch (snapshot.LifecycleState)
+            {
+                case PandemicLifecycleState.Running:
+                    return "Running · Day " + Math.Max(1, snapshot.PandemicDay);
+                case PandemicLifecycleState.Finished:
+                    return "Finished · " + Math.Max(1, snapshot.PandemicDay) + "d";
+                default:
+                    return "Dormant";
+            }
         }
 
         private void RefreshAnalytics(PandemicLiveSnapshot snapshot)
@@ -722,6 +777,11 @@ namespace RealTime.UI
             if (trendChart != null)
             {
                 trendChart.Refresh(currentSnapshot, cultureInfo);
+            }
+
+            if (sidrBarView != null)
+            {
+                sidrBarView.Refresh(currentSnapshot, cultureInfo);
             }
         }
 
@@ -1481,7 +1541,7 @@ namespace RealTime.UI
 
         private void CreateMetricCards()
         {
-            float width = (HeaderWidth - (MetricCardGap * 3f)) / 4f;
+            float width = (HeaderWidth - (MetricCardGap * 4f)) / 5f;
             for (int i = 0; i < metricPanels.Length; i++)
             {
                 UIPanel metricPanel = headerPanel.AddUIComponent<UIPanel>();
@@ -1857,17 +1917,62 @@ namespace RealTime.UI
             return builder.ToString();
         }
 
-        private static string GetXRayModeLabel(PandemicXRayMode mode)
+        private static string GetXRayMetricLabel(PandemicXRayMetric metric)
         {
-            switch (mode)
+            switch (metric)
             {
-                case PandemicXRayMode.LivePositions:
-                    return "Live positions";
-                case PandemicXRayMode.HomeLocations:
-                    return "Home locations";
+                case PandemicXRayMetric.Recovered:
+                    return "Recovered";
+                case PandemicXRayMetric.Dead:
+                    return "Dead";
                 default:
-                    return "Off";
+                    return "Infected";
             }
+        }
+
+        private static string GetXRayLocationLabel(PandemicXRayLocationMode locationMode)
+        {
+            return locationMode == PandemicXRayLocationMode.HomeLocations ? "Home" : "Live";
+        }
+
+        private static Color32 GetXRayMetricColor(PandemicXRayMetric metric)
+        {
+            switch (metric)
+            {
+                case PandemicXRayMetric.Recovered:
+                    return new Color32(42, 160, 118, 255);
+                case PandemicXRayMetric.Dead:
+                    return new Color32(124, 66, 142, 255);
+                default:
+                    return new Color32(196, 106, 34, 255);
+            }
+        }
+
+        private static Color32 GetHealthcareMetricColor(float hospitalPercent, float ambulancePercent)
+        {
+            float peak = Mathf.Max(hospitalPercent, ambulancePercent);
+            if (peak >= 85f)
+            {
+                return new Color32(142, 58, 42, 255);
+            }
+
+            if (peak >= 60f)
+            {
+                return new Color32(148, 104, 44, 255);
+            }
+
+            return new Color32(54, 110, 92, 255);
+        }
+
+        private string FormatUsageDelta(float value)
+        {
+            if (Mathf.Abs(value) < 0.05f)
+            {
+                return "\u2192 0";
+            }
+
+            string arrow = value > 0f ? "\u2191" : "\u2193";
+            return arrow + Mathf.Abs(value).ToString("0", cultureInfo);
         }
 
         private static string GetPublicTransportStateLabel(PandemicPublicTransportShutdownState state)
