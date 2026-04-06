@@ -971,11 +971,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
+      "projectUniqueName": "c:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
       "projectName": "RealTimeTests",
-      "projectPath": "C:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
+      "projectPath": "c:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
       "packagesPath": "C:\\Users\\mail\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\obj\\",
+      "outputPath": "c:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\mail\\AppData\\Roaming\\NuGet\\NuGet.Config",

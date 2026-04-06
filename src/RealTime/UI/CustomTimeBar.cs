@@ -11,7 +11,6 @@ namespace RealTime.UI
     using System.Reflection;
     using ColossalFramework.UI;
     using RealTime.Events;
-    using RealTime.Simulation;
     using SkyTools.Tools;
     using UnityEngine;
 
@@ -40,8 +39,6 @@ namespace RealTime.UI
         private RealTimeUIDateTimeWrapper customDateTimeWrapper;
         private UIDateTimeWrapper originalWrapper;
         private UISprite progressSprite;
-        private UIButton speedButton;
-
         /// <summary>Occurs when a city event bar is clicked by mouse.</summary>
         public event EventHandler<CustomTimeBarClickEventArgs> CityEventClick;
 
@@ -79,7 +76,6 @@ namespace RealTime.UI
             originalWrapper = null;
             progressSprite = null;
             customDateTimeWrapper = null;
-            speedButton = null;
         }
 
         /// <summary>Translates the time bar using the specified culture information.</summary>
@@ -102,8 +98,6 @@ namespace RealTime.UI
             {
                 SetEventTooltip(item, todayStart, todayEnd);
             }
-
-            UpdatePandemicStatusDisplay();
         }
 
         /// <summary>Updates the events bars on this time bar.</summary>
@@ -295,82 +289,9 @@ namespace RealTime.UI
             {
                 SetCustomTooltip(progressSprite, currentCulture, enableWrapper);
                 SetCustomTimePanelLayout(progressSprite, enableWrapper);
-                EnsurePandemicStatusControls(enableWrapper);
             }
 
             return ReplaceUIDateTimeWrapperInPanel(infoPanel, wrapper);
-        }
-
-        private void EnsurePandemicStatusControls(bool enableControls)
-        {
-            if (progressSprite == null)
-            {
-                return;
-            }
-
-            if (!enableControls)
-            {
-                if (speedButton != null)
-                {
-                    speedButton.eventClicked -= SpeedButtonClicked;
-                    UnityEngine.Object.Destroy(speedButton.gameObject);
-                    speedButton = null;
-                }
-
-                return;
-            }
-
-            if (speedButton == null)
-            {
-                speedButton = progressSprite.AddUIComponent<UIButton>();
-                speedButton.autoSize = false;
-                speedButton.width = 58f;
-                speedButton.height = Mathf.Max(16f, progressSprite.height);
-                speedButton.relativePosition = new Vector3(Mathf.Max(0f, progressSprite.width - speedButton.width), 0f);
-                speedButton.textScale = 0.54f;
-                speedButton.textColor = new Color32(255, 255, 255, 255);
-                speedButton.normalBgSprite = "ButtonMenu";
-                speedButton.hoveredBgSprite = "ButtonMenuHovered";
-                speedButton.pressedBgSprite = "ButtonMenuPressed";
-                speedButton.textHorizontalAlignment = UIHorizontalAlignment.Center;
-                speedButton.tooltip = "Cycle RealTime speed override";
-                speedButton.eventClicked += SpeedButtonClicked;
-            }
-
-            UpdatePandemicStatusDisplay();
-        }
-
-        private void UpdatePandemicStatusDisplay()
-        {
-            if (speedButton == null)
-            {
-                return;
-            }
-
-            TimeAdjustment adjustment = SimulationHandler.TimeAdjustment;
-            string speedLabel = adjustment?.GetRuntimeSpeedOverrideLabel() ?? "Auto";
-            speedButton.text = "RT " + speedLabel;
-        }
-
-        private void SpeedButtonClicked(UIComponent component, UIMouseEventParameter eventParam)
-        {
-            TimeAdjustment adjustment = SimulationHandler.TimeAdjustment;
-            if (adjustment == null)
-            {
-                return;
-            }
-
-            adjustment.CycleRuntimeSpeedOverride();
-            bool speedChanged = adjustment.Update(force: true);
-            if (speedChanged)
-            {
-                SimulationHandler.CitizenProcessor?.UpdateFrameDuration();
-                SimulationHandler.Buildings?.UpdateFrameDuration();
-                SimulationHandler.Statistics?.RefreshUnits();
-                VanillaEvents.ProcessUpdatedTimeSpeed(adjustment.GetOriginalTime);
-            }
-
-            UpdatePandemicStatusDisplay();
         }
 
         private void DisplayCityEvent(ICityEvent cityEvent, DateTime todayStart, DateTime todayEnd)
@@ -473,7 +394,6 @@ namespace RealTime.UI
             public void Update()
             {
                 TimeBar?.UpdateEventsColors();
-                TimeBar?.UpdatePandemicStatusDisplay();
             }
         }
     }

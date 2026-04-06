@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "HaYExwa8QkI=",
+  "dgSpecHash": "vWHqYn8sq/g=",
   "success": true,
-  "projectFilePath": "C:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
+  "projectFilePath": "c:\\Users\\mail\\pandemic-skylines\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\mail\\.nuget\\packages\\gitversiontask\\5.2.4\\gitversiontask.5.2.4.nupkg.sha512",
     "C:\\Users\\mail\\.nuget\\packages\\microsoft.codeanalysis.fxcopanalyzers\\2.9.8\\microsoft.codeanalysis.fxcopanalyzers.2.9.8.nupkg.sha512",
