@@ -314,6 +314,38 @@ namespace RealTime.Pandemic
             return lifecycleState == PandemicLifecycleState.Running;
         }
 
+        public void StopPandemic()
+        {
+            if (lifecycleState == PandemicLifecycleState.Dormant)
+            {
+                return;
+            }
+
+            try
+            {
+                RestorePublicTransportService();
+
+                // Heal all currently sick citizens.
+                Citizen[] citizens = CitizenMgr.GetCitizensArray();
+                foreach (uint citizenId in initialPopulationSick)
+                {
+                    uint realId = retrieveID(citizenId);
+                    if (realId < citizens.Length && !CitizenProxy.IsEmpty(ref citizens[realId]))
+                    {
+                        CitizenProxy.SetSick(ref citizens[realId], false);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Log.Warning("The 'Real Time' pandemic manager encountered an error while stopping: " + ex);
+            }
+
+            active = false;
+            startCompleted = false;
+            lifecycleState = PandemicLifecycleState.Dormant;
+        }
+
         private void BootstrapSimulation(bool lockdownEnabled)
         {
             if (!TryPrepareSimulationForBootstrap())
@@ -2104,6 +2136,7 @@ namespace RealTime.Pandemic
             snapshot.HasStartedAtLeastOnce = hasStartedAtLeastOnce;
             snapshot.CanStart = lifecycleState == PandemicLifecycleState.Dormant;
             snapshot.CanRestart = hasStartedAtLeastOnce;
+            snapshot.CanStop = lifecycleState != PandemicLifecycleState.Dormant;
             snapshot.WorldOverlaysEnabled = worldOverlaysEnabled;
             snapshot.XRayEnabled = xRayEnabled;
             snapshot.XRayMetric = xRayMetric;

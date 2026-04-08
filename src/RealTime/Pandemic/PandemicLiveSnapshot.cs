@@ -17,6 +17,8 @@ namespace RealTime.Pandemic
 
         public bool CanRestart { get; set; }
 
+        public bool CanStop { get; set; }
+
         public bool WorldOverlaysEnabled { get; set; }
 
         public bool XRayEnabled { get; set; }

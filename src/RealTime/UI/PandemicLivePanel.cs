@@ -95,6 +95,7 @@ namespace RealTime.UI
         private UILabel titleLabel;
         private UIPanel headerPanel;
         private UIButton startRestartButton;
+        private UIButton stopButton;
         private UIButton maskButton;
         private UIButton quarantineButton;
         private UIButton lockdownButton;
@@ -270,19 +271,22 @@ namespace RealTime.UI
             headerPanel.relativePosition = new Vector3(HorizontalPadding, HeaderTop);
             headerPanel.autoLayout = false;
 
-            float buttonWidth = (HeaderWidth - (ButtonSpacing * 3f)) / 4f;
+            float buttonWidth = (HeaderWidth - (ButtonSpacing * 4f)) / 5f;
             float secondRowY = ButtonHeight + ButtonSpacing;
 
             startRestartButton = CreateActionButton(headerPanel, "Start", 0f, 0f, buttonWidth);
             startRestartButton.eventClicked += (c, e) => OnStartRestartClicked();
 
-            maskButton = CreateActionButton(headerPanel, "Masks", buttonWidth + ButtonSpacing, 0f, buttonWidth);
+            stopButton = CreateActionButton(headerPanel, "Stop", buttonWidth + ButtonSpacing, 0f, buttonWidth);
+            stopButton.eventClicked += (c, e) => OnStopClicked();
+
+            maskButton = CreateActionButton(headerPanel, "Masks", (buttonWidth * 2f) + (ButtonSpacing * 2f), 0f, buttonWidth);
             maskButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleMasks(); Refresh(); };
 
-            quarantineButton = CreateActionButton(headerPanel, "Quarantine", (buttonWidth * 2f) + (ButtonSpacing * 2f), 0f, buttonWidth);
+            quarantineButton = CreateActionButton(headerPanel, "Quarantine", (buttonWidth * 3f) + (ButtonSpacing * 3f), 0f, buttonWidth);
             quarantineButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleQuarantine(); Refresh(); };
 
-            lockdownButton = CreateActionButton(headerPanel, "Lockdown", (buttonWidth * 3f) + (ButtonSpacing * 3f), 0f, buttonWidth);
+            lockdownButton = CreateActionButton(headerPanel, "Lockdown", (buttonWidth * 4f) + (ButtonSpacing * 4f), 0f, buttonWidth);
             lockdownButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleLockdown(); Refresh(); };
 
             overlayButton = CreateActionButton(headerPanel, "Overlays", 0f, secondRowY, buttonWidth);
@@ -470,6 +474,8 @@ namespace RealTime.UI
             if (manager == null || snapshot == null)
             {
                 startRestartButton.text = "Start";
+                stopButton.text = "Stop";
+                stopButton.isEnabled = false;
                 maskButton.text = "Masks";
                 quarantineButton.text = "Quarantine";
                 lockdownButton.text = "Lockdown";
@@ -484,6 +490,10 @@ namespace RealTime.UI
 
             startRestartButton.text = snapshot.CanStart ? "Start" : "Restart";
             startRestartButton.color = snapshot.CanStart ? new Color32(30, 140, 200, 255) : new Color32(70, 110, 170, 255);
+
+            stopButton.text = "Stop";
+            stopButton.isEnabled = snapshot.CanStop;
+            stopButton.color = snapshot.CanStop ? new Color32(180, 40, 40, 255) : new Color32(84, 84, 84, 255);
 
             bool masksOn = manager.IsMasksEnabled();
             bool quarantineOn = manager.IsQuarantineEnabled();
@@ -1005,6 +1015,24 @@ namespace RealTime.UI
             detailScrollbar.value = clamped;
             detailScroll.scrollPosition = new Vector2(0f, clamped);
             suppressScrollbarEvent = false;
+        }
+
+        private void OnStopClicked()
+        {
+            PandemicManager manager = PandemicManager.Instance;
+            if (manager == null)
+            {
+                return;
+            }
+
+            ConfirmPanel.ShowModal("Stop Pandemic", "Stop the pandemic simulation and heal all infected citizens?", (component, result) =>
+            {
+                if (result == 1)
+                {
+                    manager.StopPandemic();
+                    Refresh();
+                }
+            });
         }
 
         private void OnStartRestartClicked()
