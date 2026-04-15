@@ -48,6 +48,7 @@
   <translation id="CanAbandonJourney" value="Besseres Verhalten im Stau und beim Warten von ÖPNV" />
   <translation id="CanAbandonJourneyTooltip" value="Wenn aktiviert, Einwohner können Fahrten abbrechen, wenn sie zu lang im Stau sind oder auf den öffentlichen Verkehr warten" />
   <translation id="1StaticBaseline" value="Statische Baseline" />
+  <translation id="2StableCityOptions" value="Stabile Stadt" />
   <translation id="0Mode" value="Modus" />
   <translation id="1DemandTargets" value="Bedarfsziele" />
   <translation id="2OptionalControls" value="Optionale Steuerungen" />
@@ -77,6 +78,19 @@
   <translation id="StaticBaselineDisableRealTimeEventsTooltip" value="Verhindert neue Real-Time-Stadtevents und beendet aktive benutzerdefinierte Real-Time-Events." />
   <translation id="StaticBaselineDisableTouristLeisure" value="Touristische Freizeit deaktivieren" />
   <translation id="StaticBaselineDisableTouristLeisureTooltip" value="Unterdrueckt touristische Freizeit-, Shopping- und Event-Impulse aus Real Time, sodass Touristen eher ins Hotel gehen oder die Stadt verlassen." />
+  <translation id="3StableCitySandbox" value="Stabile-Stadt-Sandbox" />
+  <translation id="StaticBaselineStableCityEnabled" value="Stabile-Stadt-Sandbox aktivieren" />
+  <translation id="StaticBaselineStableCityEnabledTooltip" value="Neutralisiert ausgewaehlte Cities-Skylines-Problemmechaniken fuer Gebaeude und Dienste, damit die Stadt in einem breiten Sandbox-Modus ohne dauernden Vanilla-Druck laufen kann." />
+  <translation id="StaticBaselineNeutralizeEconomyAndZoningProblems" value="Oekonomie- und Zonenprobleme neutralisieren" />
+  <translation id="StaticBaselineNeutralizeEconomyAndZoningProblemsTooltip" value="Entfernt typische oekonomische und zonenbezogene Probleme wie keine Kunden, keine Waren, keine Arbeiter, zu hohe Steuern und aehnliche Gebaeudeprobleme." />
+  <translation id="StaticBaselineNeutralizeServiceAndLogisticsProblems" value="Service- und Logistikprobleme neutralisieren" />
+  <translation id="StaticBaselineNeutralizeServiceAndLogisticsProblemsTooltip" value="Entfernt Muell-, Leichen-, Mail- und aehnliche Logistikprobleme einschliesslich servicepunktbezogener Lieferengpaesse." />
+  <translation id="StaticBaselineNeutralizeUtilitiesAndConnectivityProblems" value="Unendlicher Strom und kein Abwasser" />
+  <translation id="StaticBaselineNeutralizeUtilitiesAndConnectivityProblemsTooltip" value="Haelt Strom kuenstlich stabil und verhindert Abwasseraufbau. Wasser, Heizung und Verbindungen bleiben unveraendert." />
+  <translation id="StaticBaselineNeutralizeSafetyAndEnvironmentProblems" value="Sicherheits- und Umweltprobleme neutralisieren" />
+  <translation id="StaticBaselineNeutralizeSafetyAndEnvironmentProblemsTooltip" value="Entfernt Kriminalitaets-, Feuer-, Verschmutzungs-, Schmutzwasser-, Hochwasser- und aehnliche Sicherheits- oder Umweltprobleme." />
+  <translation id="StaticBaselineNeutralizeAreaAndDlcRestrictions" value="Gebiets- und DLC-Restriktionen neutralisieren" />
+  <translation id="StaticBaselineNeutralizeAreaAndDlcRestrictionsTooltip" value="Blendet auch spezielle Gebiets- und DLC-Layoutfehler wie Campus-, Industrie-, Flughafen- und Fussgaengerzonen-Anforderungen aus." />
   <translation id="StaticBaselineUseForNewGames" value="Baseline fuer neue Spiele verwenden" />
   <translation id="StaticBaselineBirthsCompatibilityWarning" value="Geburten-Schalter durch Lifecycle Rebalance eingeschraenkt" />
   <translation id="StaticBaselineBirthsCompatibilityWarningTooltip" value="Eine Lifecycle-Rebalance-Mod deaktiviert den Real-Time-Geburtenhook. Der Geburten-Schalter der Baseline hat waehrenddessen keine Wirkung." />

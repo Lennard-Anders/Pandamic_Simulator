@@ -48,6 +48,7 @@
   <translation id="CanAbandonJourney" value="Better traffic jam and public transport waiting behavior" />
   <translation id="CanAbandonJourneyTooltip" value="If enabled, citizens can abandon their journeys when stuck in a traffic jam or waiting for public transport for too long" />
   <translation id="1StaticBaseline" value="Static Baseline" />
+  <translation id="2StableCityOptions" value="Stable City" />
   <translation id="0Mode" value="Mode" />
   <translation id="1DemandTargets" value="Demand targets" />
   <translation id="2OptionalControls" value="Optional controls" />
@@ -77,6 +78,19 @@
   <translation id="StaticBaselineDisableRealTimeEventsTooltip" value="Prevents new Real Time city events and cancels active custom Real Time events." />
   <translation id="StaticBaselineDisableTouristLeisure" value="Disable tourist leisure" />
   <translation id="StaticBaselineDisableTouristLeisureTooltip" value="Suppresses Real Time tourist leisure, shopping and event impulses so tourists prefer hotels or leave the city." />
+  <translation id="3StableCitySandbox" value="Stable city sandbox" />
+  <translation id="StaticBaselineStableCityEnabled" value="Enable stable city sandbox" />
+  <translation id="StaticBaselineStableCityEnabledTooltip" value="Neutralizes selected Cities: Skylines building and service problem systems so the city can run in a broad sandbox mode without constant vanilla pressure." />
+  <translation id="StaticBaselineNeutralizeEconomyAndZoningProblems" value="Neutralize economy and zoning problems" />
+  <translation id="StaticBaselineNeutralizeEconomyAndZoningProblemsTooltip" value="Clears common economic and zoning pressure such as no customers, no goods, no workers, taxes too high and similar demand-side building problems." />
+  <translation id="StaticBaselineNeutralizeServiceAndLogisticsProblems" value="Neutralize service and logistics problems" />
+  <translation id="StaticBaselineNeutralizeServiceAndLogisticsProblemsTooltip" value="Clears garbage, deathcare, mail and related logistics bottlenecks, including service-point style delivery issues." />
+  <translation id="StaticBaselineNeutralizeUtilitiesAndConnectivityProblems" value="Infinite electricity and no sewage" />
+  <translation id="StaticBaselineNeutralizeUtilitiesAndConnectivityProblemsTooltip" value="Keeps electricity artificially stable and prevents sewage buildup. Water, heating and connectivity remain unchanged." />
+  <translation id="StaticBaselineNeutralizeSafetyAndEnvironmentProblems" value="Neutralize safety and environment problems" />
+  <translation id="StaticBaselineNeutralizeSafetyAndEnvironmentProblemsTooltip" value="Clears crime, fire, pollution, dirty water, flood and similar safety or environment driven building problems." />
+  <translation id="StaticBaselineNeutralizeAreaAndDlcRestrictions" value="Neutralize area and DLC restrictions" />
+  <translation id="StaticBaselineNeutralizeAreaAndDlcRestrictionsTooltip" value="Also hides special area and DLC layout restrictions such as campus, industry, airport and pedestrian zone requirement errors." />
   <translation id="StaticBaselineUseForNewGames" value="Use baseline values for new games" />
   <translation id="StaticBaselineBirthsCompatibilityWarning" value="Birth toggle limited by Lifecycle Rebalance" />
   <translation id="StaticBaselineBirthsCompatibilityWarningTooltip" value="A lifecycle rebalance mod disables the Real Time birth hook, so the baseline birth toggle has no effect while that mod is active." />

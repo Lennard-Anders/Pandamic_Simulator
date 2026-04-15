@@ -39,6 +39,8 @@ namespace RealTime.Pandemic
 
         public int PandemicDay { get; set; }
 
+        public int TrackedPopulation { get; set; }
+
         public int Healthy { get; set; }
 
         public int Sick { get; set; }

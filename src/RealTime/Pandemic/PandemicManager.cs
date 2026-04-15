@@ -2186,6 +2186,8 @@ namespace RealTime.Pandemic
                     snapshot.DeltaDead = (int)latest.DeadCitizens - (int)previous.DeadCitizens;
                 }
             }
+
+            snapshot.TrackedPopulation = Math.Max(0, snapshot.Healthy + snapshot.Sick + snapshot.Recovered + snapshot.Dead);
         }
 
         internal int GetPandemicDayNumber()

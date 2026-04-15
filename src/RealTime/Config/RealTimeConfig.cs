@@ -17,7 +17,7 @@ namespace RealTime.Config
         /// <summary>The storage ID for the configuration objects.</summary>
         public const string StorageId = "PandemicConfiguration";
 
-        private const int LatestVersion = 6;
+        private const int LatestVersion = 7;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeConfig"/> class.</summary>
         public RealTimeConfig()
@@ -150,29 +150,59 @@ namespace RealTime.Config
         public int StaticBaselineOfficeDemand { get; set; }
 
         /// <summary>Gets or sets a value indicating whether demand-zone construction and upgrades are frozen.</summary>
-        [ConfigItem("1StaticBaseline", "2OptionalControls", 0)]
+        [ConfigItem("2StableCityOptions", "2OptionalControls", 0)]
         [ConfigItemCheckBox]
         public bool StaticBaselineFreezeConstructionAndUpgrades { get; set; }
 
         /// <summary>Gets or sets a value indicating whether demand-related building problem timers are frozen.</summary>
-        [ConfigItem("1StaticBaseline", "2OptionalControls", 1)]
+        [ConfigItem("2StableCityOptions", "2OptionalControls", 1)]
         [ConfigItemCheckBox]
         public bool StaticBaselineFreezeDemandProblemTimers { get; set; }
 
         /// <summary>Gets or sets a value indicating whether births should be disabled.</summary>
-        [ConfigItem("1StaticBaseline", "2OptionalControls", 2)]
+        [ConfigItem("2StableCityOptions", "2OptionalControls", 2)]
         [ConfigItemCheckBox]
         public bool StaticBaselineDisableBirths { get; set; }
 
         /// <summary>Gets or sets a value indicating whether Real Time events should be disabled.</summary>
-        [ConfigItem("1StaticBaseline", "2OptionalControls", 3)]
+        [ConfigItem("2StableCityOptions", "2OptionalControls", 3)]
         [ConfigItemCheckBox]
         public bool StaticBaselineDisableRealTimeEvents { get; set; }
 
         /// <summary>Gets or sets a value indicating whether tourist leisure traffic should be disabled.</summary>
-        [ConfigItem("1StaticBaseline", "2OptionalControls", 4)]
+        [ConfigItem("2StableCityOptions", "2OptionalControls", 4)]
         [ConfigItemCheckBox]
         public bool StaticBaselineDisableTouristLeisure { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether the stable city sandbox is enabled.</summary>
+        [ConfigItem("2StableCityOptions", "3StableCitySandbox", 0)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineStableCityEnabled { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether economy and zoning problems should be neutralized.</summary>
+        [ConfigItem("2StableCityOptions", "3StableCitySandbox", 1)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineNeutralizeEconomyAndZoningProblems { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether service and logistics problems should be neutralized.</summary>
+        [ConfigItem("2StableCityOptions", "3StableCitySandbox", 2)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineNeutralizeServiceAndLogisticsProblems { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether utility and connectivity problems should be neutralized.</summary>
+        [ConfigItem("2StableCityOptions", "3StableCitySandbox", 3)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineNeutralizeUtilitiesAndConnectivityProblems { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether safety and environment problems should be neutralized.</summary>
+        [ConfigItem("2StableCityOptions", "3StableCitySandbox", 4)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineNeutralizeSafetyAndEnvironmentProblems { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether area and DLC restrictions should be neutralized.</summary>
+        [ConfigItem("2StableCityOptions", "3StableCitySandbox", 5)]
+        [ConfigItemCheckBox]
+        public bool StaticBaselineNeutralizeAreaAndDlcRestrictions { get; set; }
 
         /// <summary>Gets or sets a value indicating whether the current baseline should be stored as the default for new games.</summary>
         public bool StaticBaselineSaveAsDefault { get; set; }
@@ -634,6 +664,16 @@ namespace RealTime.Config
                 StaticBaselineDisableTouristLeisure = false;
             }
 
+            if (Version < 7)
+            {
+                StaticBaselineStableCityEnabled = false;
+                StaticBaselineNeutralizeEconomyAndZoningProblems = true;
+                StaticBaselineNeutralizeServiceAndLogisticsProblems = true;
+                StaticBaselineNeutralizeUtilitiesAndConnectivityProblems = true;
+                StaticBaselineNeutralizeSafetyAndEnvironmentProblems = true;
+                StaticBaselineNeutralizeAreaAndDlcRestrictions = true;
+            }
+
             Version = LatestVersion;
         }
 
@@ -760,6 +800,12 @@ namespace RealTime.Config
             StaticBaselineDisableBirths = false;
             StaticBaselineDisableRealTimeEvents = false;
             StaticBaselineDisableTouristLeisure = false;
+            StaticBaselineStableCityEnabled = false;
+            StaticBaselineNeutralizeEconomyAndZoningProblems = true;
+            StaticBaselineNeutralizeServiceAndLogisticsProblems = true;
+            StaticBaselineNeutralizeUtilitiesAndConnectivityProblems = true;
+            StaticBaselineNeutralizeSafetyAndEnvironmentProblems = true;
+            StaticBaselineNeutralizeAreaAndDlcRestrictions = true;
             StaticBaselineSaveAsDefault = false;
 
             SecondShiftQuota = 13;

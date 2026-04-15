@@ -21,6 +21,7 @@ namespace RealTime.UI
         private const string UseForNewGamesId = "UseForNewGames";
         private const string ToolsId = "Tools";
         private const string StaticBaselineTabId = "1StaticBaseline";
+        private const string StableCityOptionsTabId = "2StableCityOptions";
         private const string StaticBaselineActionsId = "2Actions";
         private const string StaticBaselineCompatibilityId = "3CompatibilityWarnings";
         private const string StaticBaselineUseForNewGamesId = "StaticBaselineUseForNewGames";
@@ -96,19 +97,21 @@ namespace RealTime.UI
                 var baselineDefaultsButton = itemFactory.CreateButton(actionsGroup, StaticBaselineUseForNewGamesId, result.UseStaticBaselineForNewGames);
                 viewItems.Add(baselineDefaultsButton);
 
-                if (birthsLimited || constructionLimited)
-                {
-                    var compatibilityGroup = itemFactory.CreateGroup(staticBaselineTab, StaticBaselineCompatibilityId);
-                    viewItems.Add(compatibilityGroup);
-                    if (birthsLimited)
-                    {
-                        viewItems.Add(itemFactory.CreateButton(compatibilityGroup, StaticBaselineBirthsCompatibilityWarningId, result.NoOperation));
-                    }
+            }
 
-                    if (constructionLimited)
-                    {
-                        viewItems.Add(itemFactory.CreateButton(compatibilityGroup, StaticBaselineConstructionCompatibilityWarningId, result.NoOperation));
-                    }
+            var stableCityOptionsTab = viewItems.OfType<IContainerViewItem>().FirstOrDefault(i => i.Id == StableCityOptionsTabId);
+            if (stableCityOptionsTab != null && (birthsLimited || constructionLimited))
+            {
+                var compatibilityGroup = itemFactory.CreateGroup(stableCityOptionsTab, StaticBaselineCompatibilityId);
+                viewItems.Add(compatibilityGroup);
+                if (birthsLimited)
+                {
+                    viewItems.Add(itemFactory.CreateButton(compatibilityGroup, StaticBaselineBirthsCompatibilityWarningId, result.NoOperation));
+                }
+
+                if (constructionLimited)
+                {
+                    viewItems.Add(itemFactory.CreateButton(compatibilityGroup, StaticBaselineConstructionCompatibilityWarningId, result.NoOperation));
                 }
             }
 

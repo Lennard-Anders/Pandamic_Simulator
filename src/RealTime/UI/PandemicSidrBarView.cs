@@ -52,7 +52,7 @@ namespace RealTime.UI
             titleLabel.width = width - 12f;
             titleLabel.height = 18f;
             titleLabel.relativePosition = new Vector3(6f, 4f);
-            titleLabel.text = "SIDR distribution";
+            titleLabel.text = "Tracked cohort SIDR";
             titleLabel.textScale = 0.72f;
             titleLabel.textColor = new Color32(245, 245, 245, 255);
 
@@ -69,7 +69,7 @@ namespace RealTime.UI
             stackedLabel.width = width - 12f;
             stackedLabel.height = 14f;
             stackedLabel.relativePosition = new Vector3(6f, 42f);
-            stackedLabel.text = "Population share";
+            stackedLabel.text = "Share of tracked cohort";
             stackedLabel.textScale = 0.6f;
             stackedLabel.textColor = new Color32(228, 228, 228, 255);
 
@@ -100,7 +100,7 @@ namespace RealTime.UI
             barTitleLabel.width = width - 12f;
             barTitleLabel.height = 14f;
             barTitleLabel.relativePosition = new Vector3(6f, 88f);
-            barTitleLabel.text = "Absolute shares";
+            barTitleLabel.text = "Tracked cohort shares";
             barTitleLabel.textScale = 0.6f;
             barTitleLabel.textColor = new Color32(228, 228, 228, 255);
 
@@ -163,12 +163,12 @@ namespace RealTime.UI
             int infected = snapshot?.Sick ?? 0;
             int recovered = snapshot?.Recovered ?? 0;
             int dead = snapshot?.Dead ?? 0;
-            int total = Math.Max(0, susceptible + infected + recovered + dead);
+            int total = Math.Max(0, snapshot?.TrackedPopulation ?? (susceptible + infected + recovered + dead));
             int[] counts = { susceptible, infected, recovered, dead };
 
             summaryLabel.text = total > 0
-                ? "Population " + total.ToString("N0", cultureInfo)
-                : "No population data";
+                ? "Tracked cohort " + total.ToString("N0", cultureInfo)
+                : "No tracked cohort data";
 
             float stackedX = 0f;
             for (int i = 0; i < counts.Length; i++)
@@ -197,7 +197,7 @@ namespace RealTime.UI
         {
             return label
                 + "\nCount: " + count.ToString("N0", cultureInfo)
-                + "\nShare: " + percent.ToString("0.0", cultureInfo) + "%";
+                + "\nShare of tracked cohort: " + percent.ToString("0.0", cultureInfo) + "%";
         }
     }
 }
