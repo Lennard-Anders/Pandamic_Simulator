@@ -7,12 +7,14 @@ namespace RealTime.UI
     using System;
     using System.Collections.Generic;
     using System.Globalization;
+    using System.IO;
     using System.Linq;
     using System.Reflection;
     using System.Text;
     using ColossalFramework;
     using ColossalFramework.UI;
     using RealTime.Config;
+    using RealTime.Core;
     using RealTime.Pandemic;
     using SkyTools.Configuration;
     using SkyTools.Tools;
@@ -79,6 +81,7 @@ namespace RealTime.UI
         private readonly UILabel[] metricValues = new UILabel[5];
 
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
+        private DateTime realWorldStartTime;
         private bool collapsed;
         private bool settingsBuilt;
         private bool layoutDirty = true;
@@ -1029,10 +1032,377 @@ namespace RealTime.UI
             {
                 if (result == 1)
                 {
+                    PandemicLiveSnapshot finalSnapshot = manager.GetLiveSnapshot();
+                    ExportSimulationDataToCsv(finalSnapshot);
                     manager.StopPandemic();
                     Refresh();
                 }
             });
+        }
+
+        private void ExportSimulationDataToCsv(PandemicLiveSnapshot snapshot)
+        {
+            try
+            {
+                string modRoot = ModPaths.GetModRoot();
+                if (string.IsNullOrEmpty(modRoot))
+                {
+                    Log.Warning("The 'Real Time' pandemic data export failed: mod root path could not be resolved.");
+                    return;
+                }
+
+                string pandemicDataDir = Path.Combine(modRoot, "Pandemic Data");
+                if (!Directory.Exists(pandemicDataDir))
+                {
+                    Directory.CreateDirectory(pandemicDataDir);
+                }
+
+                DateTime realEnd = DateTime.Now;
+                TimeSpan elapsed = realWorldStartTime == default(DateTime)
+                    ? TimeSpan.Zero
+                    : realEnd - realWorldStartTime;
+
+                string timestamp = realEnd.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+                string fileName = "pandemic_run_" + timestamp + ".csv";
+                string filePath = Path.Combine(pandemicDataDir, fileName);
+
+                var sb = new StringBuilder();
+
+                // --- Run Metadata ---
+                PandemicManager manager = PandemicManager.Instance;
+                DateTime gameStart = manager != null ? manager.GetPandemicRunStartedAt() : default(DateTime);
+                DateTime gameEnd = snapshot?.SimulationTime ?? default(DateTime);
+
+                sb.AppendLine("[RUN METADATA]");
+                sb.AppendLine("start_wall_time,end_wall_time,elapsed_wall_seconds,game_start_time,game_end_time,pandemic_day,lifecycle_state");
+                sb.AppendFormat(
+                    CultureInfo.InvariantCulture,
+                    "{0},{1},{2},{3},{4},{5},{6}",
+                    realWorldStartTime == default(DateTime) ? "unknown" : realWorldStartTime.ToString("o", CultureInfo.InvariantCulture),
+                    realEnd.ToString("o", CultureInfo.InvariantCulture),
+                    Math.Round(elapsed.TotalSeconds, 1).ToString(CultureInfo.InvariantCulture),
+                    gameStart == default(DateTime) ? "unknown" : gameStart.ToString("o", CultureInfo.InvariantCulture),
+                    gameEnd == default(DateTime) ? "unknown" : gameEnd.ToString("o", CultureInfo.InvariantCulture),
+                    snapshot?.PandemicDay.ToString(CultureInfo.InvariantCulture) ?? "0",
+                    snapshot?.LifecycleState.ToString() ?? "Unknown");
+                sb.AppendLine();
+                sb.AppendLine();
+
+                // --- Core Metrics ---
+                sb.AppendLine("[CORE METRICS]");
+                sb.AppendLine("tracked_population,healthy,sick,recovered,dead,delta_sick,delta_recovered,delta_dead,quarantine_citizens,positive_tests,tested_citizens,contacts_tracked_citizens,contacts_tracked_pairs,contacts_recorded_total,transmissions_total,transmissions_indoor,transmissions_outdoor,transmissions_vehicle,hotspot_buildings,hub_buildings,hospital_usage_pct,ambulance_usage_pct,observation_count");
+                if (snapshot != null)
+                {
+                    sb.AppendFormat(
+                        CultureInfo.InvariantCulture,
+                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22}",
+                        snapshot.TrackedPopulation,
+                        snapshot.Healthy,
+                        snapshot.Sick,
+                        snapshot.Recovered,
+                        snapshot.Dead,
+                        snapshot.DeltaSick,
+                        snapshot.DeltaRecovered,
+                        snapshot.DeltaDead,
+                        snapshot.QuarantineCitizens,
+                        snapshot.PositiveTests,
+                        snapshot.TestedCitizens,
+                        snapshot.ContactsTrackedCitizens,
+                        snapshot.ContactsTrackedPairs,
+                        snapshot.ContactsRecordedTotal,
+                        snapshot.TransmissionsTotal,
+                        snapshot.TransmissionsIndoor,
+                        snapshot.TransmissionsOutdoor,
+                        snapshot.TransmissionsVehicle,
+                        snapshot.HotspotBuildings,
+                        snapshot.HubBuildings,
+                        snapshot.HospitalUsagePercent.ToString("F2", CultureInfo.InvariantCulture),
+                        snapshot.AmbulanceUsagePercent.ToString("F2", CultureInfo.InvariantCulture),
+                        snapshot.ObservationCount);
+                    sb.AppendLine();
+                }
+                else
+                {
+                    sb.AppendLine("0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,0.00,0");
+                }
+
+                sb.AppendLine();
+
+                // --- Policy State ---
+                sb.AppendLine("[POLICY STATE]");
+                sb.AppendLine("policy,enabled");
+                if (manager != null)
+                {
+                    sb.AppendLine("Masks," + (manager.IsMasksEnabled() ? "1" : "0"));
+                    sb.AppendLine("Quarantine," + (manager.IsQuarantineEnabled() ? "1" : "0"));
+                    sb.AppendLine("Lockdown," + (manager.IsLockdownEnabled() ? "1" : "0"));
+                    sb.AppendLine("WorldOverlays," + (manager.AreWorldOverlaysEnabled() ? "1" : "0"));
+                }
+
+                sb.AppendLine();
+
+                // --- Age Groups ---
+                sb.AppendLine("[AGE GROUPS]");
+                sb.AppendLine("age_group,infected_count,infected_percent");
+                if (snapshot?.AgeGroups != null)
+                {
+                    foreach (var age in snapshot.AgeGroups)
+                    {
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2}",
+                            CsvEscape(age.Label),
+                            age.InfectedCount,
+                            age.InfectedPercent.ToString("F2", CultureInfo.InvariantCulture));
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Lockdown Families ---
+                sb.AppendLine("[LOCKDOWN FAMILIES]");
+                sb.AppendLine("family,is_closed,infected_pct,threshold_pct,manual_closed");
+                if (snapshot?.LockdownFamilies != null)
+                {
+                    foreach (var family in snapshot.LockdownFamilies)
+                    {
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3},{4}",
+                            CsvEscape(family.Label),
+                            family.IsClosed ? "1" : "0",
+                            family.CurrentInfectedPercent.ToString("F2", CultureInfo.InvariantCulture),
+                            family.AutoCloseThresholdPercent.ToString("F2", CultureInfo.InvariantCulture),
+                            family.ManualClosed ? "1" : "0");
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Infection Origins ---
+                sb.AppendLine("[INFECTION ORIGINS]");
+                sb.AppendLine("origin,count,percent");
+                if (snapshot?.Origins != null)
+                {
+                    foreach (var origin in snapshot.Origins.OrderByDescending(o => o.Count))
+                    {
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2}",
+                            CsvEscape(origin.Label),
+                            origin.Count,
+                            origin.Percent.ToString("F2", CultureInfo.InvariantCulture));
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- District Infection Rates ---
+                sb.AppendLine("[DISTRICT INFECTION RATES]");
+                sb.AppendLine("district_name,district_id,infected_residents,resident_count,infected_percent");
+                if (snapshot?.Districts != null)
+                {
+                    foreach (var district in snapshot.Districts)
+                    {
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3},{4}",
+                            CsvEscape(district.DistrictName),
+                            district.DistrictId,
+                            district.InfectedResidents,
+                            district.ResidentCount,
+                            district.InfectedPercent.ToString("F2", CultureInfo.InvariantCulture));
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Top Spreaders ---
+                sb.AppendLine("[TOP SPREADERS]");
+                sb.AppendLine("rank,label,infection_count,is_superspreader");
+                if (snapshot?.TopSpreaders != null)
+                {
+                    for (int i = 0; i < snapshot.TopSpreaders.Count; i++)
+                    {
+                        var spreader = snapshot.TopSpreaders[i];
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3}",
+                            i + 1,
+                            CsvEscape(spreader.Label),
+                            spreader.InfectionCount,
+                            spreader.IsSuperspreader ? "1" : "0");
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Top Origin Locations ---
+                sb.AppendLine("[TOP ORIGIN LOCATIONS]");
+                sb.AppendLine("rank,label,infection_count,is_superspreader");
+                if (snapshot?.TopOriginLocations != null)
+                {
+                    for (int i = 0; i < snapshot.TopOriginLocations.Count; i++)
+                    {
+                        var location = snapshot.TopOriginLocations[i];
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3}",
+                            i + 1,
+                            CsvEscape(location.Label),
+                            location.InfectionCount,
+                            location.IsSuperspreader ? "1" : "0");
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- SIRD Time Series ---
+                IList<PandemicObservation> sirdObs = manager?.GetAllObservations();
+                List<PandemicObservation> sortedSird = sirdObs != null && sirdObs.Count > 0
+                    ? sirdObs.OrderBy(o => o.SimulationTime).ToList()
+                    : new List<PandemicObservation>();
+
+                sb.AppendLine("[SIRD TIME SERIES]");
+                sb.AppendLine("sim_time,pandemic_day,healthy,sick,recovered,dead,total,delta_sick,delta_dead");
+                {
+                    int prevSick = 0;
+                    int prevDead = 0;
+                    foreach (PandemicObservation obs in sortedSird)
+                    {
+                        int sick = (int)obs.SickCitizens;
+                        int dead = (int)obs.DeadCitizens;
+                        int total = (int)(obs.HealthyCitizens + obs.SickCitizens + obs.RecoveredCitizens + obs.DeadCitizens);
+                        int day = gameStart == default(DateTime) ? 0
+                            : Math.Max(1, (int)Math.Floor((obs.SimulationTime - gameStart).TotalDays) + 1);
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3},{4},{5},{6},{7},{8}",
+                            obs.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
+                            day,
+                            obs.HealthyCitizens,
+                            sick,
+                            obs.RecoveredCitizens,
+                            dead,
+                            total,
+                            sick - prevSick,
+                            dead - prevDead);
+                        sb.AppendLine();
+                        prevSick = sick;
+                        prevDead = dead;
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Policy Timeline ---
+                sb.AppendLine("[POLICY TIMELINE]");
+                sb.AppendLine("sim_time,pandemic_day,policy_type,enabled,short_label");
+                if (snapshot?.PolicyMarkers != null)
+                {
+                    foreach (PandemicPolicyMarkerSnapshot marker in snapshot.PolicyMarkers)
+                    {
+                        int day = gameStart == default(DateTime) ? 0
+                            : Math.Max(1, (int)Math.Floor((marker.SimulationTime - gameStart).TotalDays) + 1);
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3},{4}",
+                            marker.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
+                            day,
+                            marker.Type.ToString(),
+                            marker.Enabled ? "1" : "0",
+                            CsvEscape(marker.ShortLabel ?? marker.Type.ToString()));
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Healthcare Time Series (last ~7 game days) ---
+                sb.AppendLine("[HEALTHCARE TIME SERIES]");
+                sb.AppendLine("sim_time,pandemic_day,hospital_usage_pct,ambulance_usage_pct");
+                IList<PandemicHealthcareTimePoint> hcSeries = manager?.GetHealthcareTimeSeries();
+                if (hcSeries != null)
+                {
+                    foreach (PandemicHealthcareTimePoint hc in hcSeries.OrderBy(h => h.SimulationTime))
+                    {
+                        int day = gameStart == default(DateTime) ? 0
+                            : Math.Max(1, (int)Math.Floor((hc.SimulationTime - gameStart).TotalDays) + 1);
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3}",
+                            hc.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
+                            day,
+                            hc.HospitalUsagePercent.ToString("F2", CultureInfo.InvariantCulture),
+                            hc.AmbulanceUsagePercent.ToString("F2", CultureInfo.InvariantCulture));
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Peak Statistics ---
+                sb.AppendLine("[PEAK STATISTICS]");
+                sb.AppendLine("peak_sick_count,peak_sick_day,final_sick,final_recovered,final_dead,total_tracked,attack_rate_pct,case_fatality_rate_pct");
+                if (sortedSird.Count > 0)
+                {
+                    PandemicObservation peakObs = sortedSird.OrderByDescending(o => o.SickCitizens).First();
+                    int peakDay = gameStart == default(DateTime) ? 0
+                        : Math.Max(1, (int)Math.Floor((peakObs.SimulationTime - gameStart).TotalDays) + 1);
+                    PandemicObservation lastObs = sortedSird[sortedSird.Count - 1];
+                    int finalSick = (int)lastObs.SickCitizens;
+                    int finalRecovered = (int)lastObs.RecoveredCitizens;
+                    int finalDead = (int)lastObs.DeadCitizens;
+                    int totalTracked = finalSick + finalRecovered + finalDead + (int)lastObs.HealthyCitizens;
+                    int everInfected = finalSick + finalRecovered + finalDead;
+                    float attackRate = totalTracked > 0 ? (float)everInfected / totalTracked * 100f : 0f;
+                    float cfr = (finalRecovered + finalDead) > 0
+                        ? (float)finalDead / (finalRecovered + finalDead) * 100f
+                        : 0f;
+                    sb.AppendFormat(
+                        CultureInfo.InvariantCulture,
+                        "{0},{1},{2},{3},{4},{5},{6},{7}",
+                        (int)peakObs.SickCitizens,
+                        peakDay,
+                        finalSick,
+                        finalRecovered,
+                        finalDead,
+                        totalTracked,
+                        attackRate.ToString("F2", CultureInfo.InvariantCulture),
+                        cfr.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine();
+
+                File.WriteAllText(filePath, sb.ToString());
+                Log.Info("The 'Real Time' pandemic run data was exported to: " + filePath);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("The 'Real Time' pandemic data export failed: " + ex);
+            }
+        }
+
+        private static string CsvEscape(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            if (value.IndexOf(',') >= 0 || value.IndexOf('"') >= 0 || value.IndexOf('\n') >= 0)
+            {
+                return "\"" + value.Replace("\"", "\"\"") + "\"";
+            }
+
+            return value;
         }
 
         private void OnStartRestartClicked()
@@ -1045,6 +1415,7 @@ namespace RealTime.UI
 
             if (currentSnapshot != null && currentSnapshot.CanStart)
             {
+                realWorldStartTime = DateTime.Now;
                 manager.StartPandemic();
                 Refresh();
                 return;
@@ -1054,6 +1425,7 @@ namespace RealTime.UI
             {
                 if (result == 1)
                 {
+                    realWorldStartTime = DateTime.Now;
                     manager.RestartSimulation();
                     Refresh();
                 }

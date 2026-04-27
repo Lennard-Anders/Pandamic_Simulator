@@ -2,7 +2,7 @@
 # Setzt Umgebungsvariablen und baut das Projekt
 
 $env:CITIES_SKYLINES_BINARIES = "C:\Program Files (x86)\Steam\steamapps\common\Cities_Skylines\Cities_Data\Managed"
-$env:CITIES_SKYLINES_MOD_DIR = "C:\Users\mail\AppData\Local\Colossal Order\Cities_Skylines\Addons\Mods\RealTime"
+$env:CITIES_SKYLINES_MOD_DIR = "C:\Users\tanmo\AppData\Local\Colossal Order\Cities_Skylines\Addons\Mods\RealTime"
 
 Write-Host "🔨 Building RealTime mod..." -ForegroundColor Cyan
 cd (Split-Path -Parent $MyInvocation.MyCommand.Path)

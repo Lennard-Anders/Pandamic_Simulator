@@ -1871,6 +1871,30 @@ namespace RealTime.Pandemic
 
         public bool IsQuarantineEnabled() => Config != null && Config.QuarantineBehavior != RealTime.Config.QuarantineBehavior.None;
 
+        internal DateTime GetPandemicRunStartedAt() => pandemicRunStartedAt;
+
+        internal IList<PandemicObservation> GetAllObservations() =>
+            Observer?.GetObservations() ?? new List<PandemicObservation>();
+
+        internal IList<PandemicHealthcareTimePoint> GetHealthcareTimeSeries()
+        {
+            var result = new List<PandemicHealthcareTimePoint>(healthcareUsageSamples.Count);
+            foreach (PandemicHealthcareUsageSample sample in healthcareUsageSamples)
+            {
+                if (sample != null)
+                {
+                    result.Add(new PandemicHealthcareTimePoint
+                    {
+                        SimulationTime = sample.SimulationTime,
+                        HospitalUsagePercent = sample.HospitalUsagePercent,
+                        AmbulanceUsagePercent = sample.AmbulanceUsagePercent,
+                    });
+                }
+            }
+
+            return result;
+        }
+
         public bool IsLockdownEnabled() => QuarantineManager.Instance.InLockDown;
 
         public bool AreWorldOverlaysEnabled() => worldOverlaysEnabled;

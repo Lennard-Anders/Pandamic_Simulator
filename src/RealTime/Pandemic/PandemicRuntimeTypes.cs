@@ -105,6 +105,15 @@ namespace RealTime.Pandemic
         public ushort HomeBuildingId { get; set; }
     }
 
+    internal sealed class PandemicHealthcareTimePoint
+    {
+        public DateTime SimulationTime { get; set; }
+
+        public float HospitalUsagePercent { get; set; }
+
+        public float AmbulanceUsagePercent { get; set; }
+    }
+
     internal static class PandemicTaxonomy
     {
         public static PandemicInfectionOriginCategory GetBuildingOriginCategory(ItemClass.Service service, ItemClass.SubService subService)

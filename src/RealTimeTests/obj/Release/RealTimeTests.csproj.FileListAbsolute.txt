@@ -10,17 +10,6 @@ C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.dll
 C:\Users\mail\pandemic-skylines\src\RealTimeTests\obj\Release\RealTimeTests.pdb
 C:\Users\mail\pandemic-skylines\src\bin\Tests\Release\RealTimeTests.dll
 C:\Users\mail\pandemic-skylines\src\bin\Tests\Release\RealTimeTests.pdb
-c:\Users\tanmo\Pandamic_Simulator\src\bin\Tests\Release\RealTimeTests.dll
-c:\Users\tanmo\Pandamic_Simulator\src\bin\Tests\Release\RealTimeTests.pdb
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.csproj.AssemblyReference.cache
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.GeneratedMSBuildEditorConfig.editorconfig
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.AssemblyInfoInputs.cache
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.AssemblyInfo.cs
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.csproj.CoreCompileInputs.cache
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.sourcelink.json
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTime.3435642E.Up2Date
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.dll
-c:\Users\tanmo\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.pdb
 C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.dll
 C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.pdb
 C:\Users\mail\pandemic-skylines\Pandamic_Simulator\src\bin\Tests\Release\RealTimeTests.dll
