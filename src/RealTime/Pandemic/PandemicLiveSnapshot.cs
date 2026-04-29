@@ -43,7 +43,19 @@ namespace RealTime.Pandemic
 
         public int Healthy { get; set; }
 
+        public int Exposed { get; set; }
+
         public int Sick { get; set; }
+
+        public int LocationHome { get; set; }
+
+        public int LocationWork { get; set; }
+
+        public int LocationVisit { get; set; }
+
+        public int LocationTransit { get; set; }
+
+        public int LocationMoving { get; set; }
 
         public int Recovered { get; set; }
 

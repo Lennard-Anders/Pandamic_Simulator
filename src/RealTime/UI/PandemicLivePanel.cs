@@ -64,6 +64,7 @@ namespace RealTime.UI
         private readonly List<UILabel> originRows = new List<UILabel>();
         private readonly List<UILabel> districtRows = new List<UILabel>();
         private readonly List<UILabel> lockdownRows = new List<UILabel>();
+        private readonly List<UILabel> popLocRows = new List<UILabel>();
         private readonly UIButton[] spreaderButtons = new UIButton[5];
         private readonly UIButton[] locationButtons = new UIButton[5];
         private readonly Dictionary<DashboardSection, bool> sectionExpanded = new Dictionary<DashboardSection, bool>
@@ -72,6 +73,7 @@ namespace RealTime.UI
             { DashboardSection.Lockdown, true },
             { DashboardSection.Spreaders, true },
             { DashboardSection.Locations, true },
+            { DashboardSection.PopulationLocations, true },
             { DashboardSection.Origins, false },
             { DashboardSection.Districts, false },
             { DashboardSection.Settings, false },
@@ -92,6 +94,7 @@ namespace RealTime.UI
         private int lockdownVisibleRows;
         private int spreaderVisibleRows;
         private int locationVisibleRows;
+        private int popLocVisibleRows;
         private PandemicSettingControl activeEditingControl;
 
         private UIPanel panel;
@@ -140,6 +143,10 @@ namespace RealTime.UI
         private UILabel settingsSummaryLabel;
         private UIPanel settingsContentPanel;
         private UIPanel settingsPanel;
+        private UIPanel popLocCard;
+        private UIButton popLocToggleButton;
+        private UILabel popLocSummaryLabel;
+        private UIPanel popLocContentPanel;
 
         private PandemicLiveSnapshot currentSnapshot;
 
@@ -390,6 +397,12 @@ namespace RealTime.UI
             originSummaryLabel = CreateCardSummary(originCard);
             originContentPanel = CreateCardContent(originCard);
 
+            popLocCard = CreateCardPanel(detailContentPanel);
+            popLocToggleButton = CreateSectionButton(popLocCard, "Population Locations");
+            popLocToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.PopulationLocations);
+            popLocSummaryLabel = CreateCardSummary(popLocCard);
+            popLocContentPanel = CreateCardContent(popLocCard);
+
             districtCard = CreateCardPanel(detailContentPanel);
             districtToggleButton = CreateSectionButton(districtCard, "District Infection Rates");
             districtToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Districts);
@@ -621,6 +634,7 @@ namespace RealTime.UI
             RefreshAgeRows(snapshot);
             RefreshLockdownRows(snapshot);
             RefreshOriginRows(snapshot);
+            RefreshPopulationLocationRows(snapshot);
             RefreshDistrictRows(snapshot);
             RefreshSpreaderButtons(snapshot);
             RefreshLocationButtons(snapshot);
@@ -697,6 +711,30 @@ namespace RealTime.UI
             districtSummaryLabel.text = snapshot == null
                 ? "No district data."
                 : "Districts: " + snapshot.Districts.Count.ToString("N0", cultureInfo);
+        }
+
+        private void RefreshPopulationLocationRows(PandemicLiveSnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.TrackedPopulation == 0)
+            {
+                SetLabelRows(popLocContentPanel, popLocRows, new List<string> { "No location data available." }, ref popLocVisibleRows);
+                popLocSummaryLabel.text = "No population data.";
+                return;
+            }
+
+            int total = snapshot.LocationHome + snapshot.LocationWork + snapshot.LocationVisit + snapshot.LocationTransit + snapshot.LocationMoving;
+            if (total == 0) total = 1;
+            var texts = new List<string>
+            {
+                "Home       | " + snapshot.LocationHome.ToString("N0", cultureInfo)    + " | " + FormatPercent((float)snapshot.LocationHome    * 100f / total),
+                "Work       | " + snapshot.LocationWork.ToString("N0", cultureInfo)    + " | " + FormatPercent((float)snapshot.LocationWork    * 100f / total),
+                "Visiting   | " + snapshot.LocationVisit.ToString("N0", cultureInfo)   + " | " + FormatPercent((float)snapshot.LocationVisit   * 100f / total),
+                "In Transit | " + snapshot.LocationTransit.ToString("N0", cultureInfo) + " | " + FormatPercent((float)snapshot.LocationTransit * 100f / total),
+                "On Foot    | " + snapshot.LocationMoving.ToString("N0", cultureInfo)  + " | " + FormatPercent((float)snapshot.LocationMoving  * 100f / total),
+            };
+
+            SetLabelRows(popLocContentPanel, popLocRows, texts, ref popLocVisibleRows);
+            popLocSummaryLabel.text = "Tracked: " + (total == 1 && snapshot.LocationHome == 0 ? 0 : total).ToString("N0", cultureInfo) + " citizens";
         }
 
         private void RefreshSpreaderButtons(PandemicLiveSnapshot snapshot)
@@ -867,6 +905,7 @@ namespace RealTime.UI
             y += Mathf.Max(leftHeight, rightHeight) + CardGap;
 
             y += LayoutTextCard(originCard, originToggleButton, originSummaryLabel, originContentPanel, originRows, DashboardSection.Origins, 0f, y, DetailWidth) + CardGap;
+            y += LayoutTextCard(popLocCard, popLocToggleButton, popLocSummaryLabel, popLocContentPanel, popLocRows, DashboardSection.PopulationLocations, 0f, y, DetailWidth) + CardGap;
             y += LayoutTextCard(districtCard, districtToggleButton, districtSummaryLabel, districtContentPanel, districtRows, DashboardSection.Districts, 0f, y, DetailWidth) + CardGap;
             y += LayoutSettingsCard(y) + CardGap;
 
@@ -1270,7 +1309,7 @@ namespace RealTime.UI
                     : new List<PandemicObservation>();
 
                 sb.AppendLine("[SIRD TIME SERIES]");
-                sb.AppendLine("sim_time,pandemic_day,healthy,sick,recovered,dead,total,delta_sick,delta_dead");
+                sb.AppendLine("sim_time,pandemic_day,healthy,exposed,sick,recovered,dead,total,delta_sick,delta_dead");
                 {
                     int prevSick = 0;
                     int prevDead = 0;
@@ -1278,15 +1317,17 @@ namespace RealTime.UI
                     {
                         int sick = (int)obs.SickCitizens;
                         int dead = (int)obs.DeadCitizens;
-                        int total = (int)(obs.HealthyCitizens + obs.SickCitizens + obs.RecoveredCitizens + obs.DeadCitizens);
+                        int exposed = (int)obs.ExposedCitizens;
+                        int total = (int)(obs.HealthyCitizens + obs.ExposedCitizens + obs.SickCitizens + obs.RecoveredCitizens + obs.DeadCitizens);
                         int day = gameStart == default(DateTime) ? 0
                             : Math.Max(1, (int)Math.Floor((obs.SimulationTime - gameStart).TotalDays) + 1);
                         sb.AppendFormat(
                             CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3},{4},{5},{6},{7},{8}",
+                            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}",
                             obs.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
                             day,
                             obs.HealthyCitizens,
+                            exposed,
                             sick,
                             obs.RecoveredCitizens,
                             dead,
@@ -1377,6 +1418,163 @@ namespace RealTime.UI
                         attackRate.ToString("F2", CultureInfo.InvariantCulture),
                         cfr.ToString("F2", CultureInfo.InvariantCulture));
                     sb.AppendLine();
+                }
+
+                sb.AppendLine();
+
+                // --- Pandemic Settings (all config parameters from the UI) ---
+                RealTimeConfig cfg = manager?.RuntimeConfig;
+                sb.AppendLine("[PANDEMIC SETTINGS]");
+                sb.AppendLine("parameter,value");
+                if (cfg != null)
+                {
+                    // Disease properties
+                    sb.AppendLine("DiseaseDuration,"          + cfg.DiseaseDuration);
+                    sb.AppendLine("DetectionTime,"            + cfg.DetectionTime);
+                    sb.AppendLine("StartSymptoms,"            + cfg.StartSymptoms);
+                    sb.AppendLine("EndSymptoms,"              + cfg.EndSymptoms);
+                    sb.AppendLine("StartInfection,"           + cfg.StartInfection);
+                    sb.AppendLine("EndInfection,"             + cfg.EndInfection);
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "IndoorTransmissionProbability,{0}" + Environment.NewLine,
+                        cfg.IndoorDiseaseTransmissionProbability.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "OutdoorTransmissionProbability,{0}" + Environment.NewLine,
+                        cfg.OutdoorDiseaseTransmissionProbability.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "TransmissionRange,{0}" + Environment.NewLine,
+                        cfg.DiseaseTransmissionRange.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "InitialInfectionRatio,{0}" + Environment.NewLine,
+                        cfg.DiseaseStartInfectionRatio.ToString("F2", CultureInfo.InvariantCulture));
+                    // Death rates by age
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "DeathRateChild,{0}" + Environment.NewLine,
+                        cfg.DeathChild.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "DeathRateTeen,{0}" + Environment.NewLine,
+                        cfg.DeathTeen.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "DeathRateYoung,{0}" + Environment.NewLine,
+                        cfg.DeathYoung.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "DeathRateAdult,{0}" + Environment.NewLine,
+                        cfg.DeathAdult.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "DeathRateSenior,{0}" + Environment.NewLine,
+                        cfg.DeathSenior.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "SymptomProbability,{0}" + Environment.NewLine,
+                        cfg.SymptomProbability.ToString("F2", CultureInfo.InvariantCulture));
+                    // Mask settings
+                    sb.AppendLine("TransmissionProbabilityReduction," + cfg.TransmissionProbabilityReduction);
+                    sb.AppendLine("RatioIgnoreMasks,"              + cfg.RatioIgnoreMasks);
+                    sb.AppendLine("RatioOtherProtectionMask,"      + cfg.RatioOtherProtectionMask);
+                    sb.AppendLine("RatioOwnProtectionMask,"        + cfg.RatioOwnProtectionMask);
+                    sb.AppendLine("MaskBehavior,"                  + cfg.MaskBehavior.ToString());
+                    // Contact tracing
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "BuildingContactTracingProbability,{0}" + Environment.NewLine,
+                        cfg.BuildingContactTracingProbability.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "AppBasedContactTracingProbability,{0}" + Environment.NewLine,
+                        cfg.AppBasedContactTracingProbability.ToString("F2", CultureInfo.InvariantCulture));
+                    // Testing
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "RelativeTestCapacity,{0}" + Environment.NewLine,
+                        cfg.RelativeTestCapacity.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendFormat(CultureInfo.InvariantCulture,
+                        "PercentOfTestsForSick,{0}" + Environment.NewLine,
+                        cfg.PercentageOfTestsReservedForSickCitizens.ToString("F2", CultureInfo.InvariantCulture));
+                    sb.AppendLine("MaximumTestDuration,"           + cfg.MaximumTestDuration);
+                    sb.AppendLine("MinimumTestDuration,"           + cfg.MinimumTestDuration);
+                    // Quarantine & lockdown
+                    sb.AppendLine("QuarantineBehavior,"            + cfg.QuarantineBehavior.ToString());
+                    sb.AppendLine("OnlyTestedCitizensToQuarantine," + (cfg.OnlyTestedCitizensToQuarantine ? "1" : "0"));
+                    sb.AppendLine("LockdownBehavior,"              + cfg.LockdownBehavior.ToString());
+                    // Superspreader thresholds
+                    sb.AppendLine("HubHighlightThreshold,"             + cfg.HubHighlightThreshold);
+                    sb.AppendLine("SuperspreaderCitizenThreshold,"     + cfg.SuperspreaderCitizenThreshold);
+                    sb.AppendLine("SuperspreaderLocationThreshold,"    + cfg.SuperspreaderLocationThreshold);
+                }
+
+                sb.AppendLine();
+
+                // --- Infection Origins Time Series ---
+                var allObsForOrigins = manager?.GetAllObservations();
+                sb.AppendLine("[INFECTION ORIGINS TIME SERIES]");
+                sb.AppendLine("sim_time,pandemic_day,home,work,school,healthcare,commercial,transit,outdoor,other");
+                if (allObsForOrigins != null && allObsForOrigins.Count > 0)
+                {
+                    foreach (PandemicObservation obs in allObsForOrigins.OrderBy(o => o.SimulationTime))
+                    {
+                        int cHome = 0, cWork = 0, cSchool = 0, cHealthcare = 0;
+                        int cCommercial = 0, cTransit = 0, cOutdoor = 0, cOther = 0;
+
+                        foreach (var kvp in obs.Infections)
+                        {
+                            foreach (Infection inf in kvp.Value)
+                            {
+                                switch (inf.OriginCategory)
+                                {
+                                    case PandemicInfectionOriginCategory.ResidentialHome:          cHome++;       break;
+                                    case PandemicInfectionOriginCategory.WorkplaceOfficeIndustry:  cWork++;       break;
+                                    case PandemicInfectionOriginCategory.SchoolUniversity:         cSchool++;     break;
+                                    case PandemicInfectionOriginCategory.Healthcare:               cHealthcare++; break;
+                                    case PandemicInfectionOriginCategory.CommercialLeisureTourism: cCommercial++; break;
+                                    case PandemicInfectionOriginCategory.OutdoorStreet:            cOutdoor++;    break;
+                                    case PandemicInfectionOriginCategory.Bus:
+                                    case PandemicInfectionOriginCategory.Tram:
+                                    case PandemicInfectionOriginCategory.Metro:
+                                    case PandemicInfectionOriginCategory.Train:
+                                    case PandemicInfectionOriginCategory.ShipFerry:
+                                    case PandemicInfectionOriginCategory.Plane:
+                                    case PandemicInfectionOriginCategory.Taxi:
+                                    case PandemicInfectionOriginCategory.CarOtherVehicle:
+                                    case PandemicInfectionOriginCategory.StopPlatform:             cTransit++;    break;
+                                    default:                                                        cOther++;      break;
+                                }
+                            }
+                        }
+
+                        int originDay = gameStart == default(DateTime) ? 0
+                            : Math.Max(1, (int)Math.Floor((obs.SimulationTime - gameStart).TotalDays) + 1);
+
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}",
+                            obs.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
+                            originDay,
+                            cHome, cWork, cSchool, cHealthcare, cCommercial, cTransit, cOutdoor, cOther);
+                        sb.AppendLine();
+                    }
+                }
+
+                sb.AppendLine();
+
+                // --- Citizen Locations Time Series ---
+                var allObsForLoc = manager?.GetAllObservations();
+                sb.AppendLine("[CITIZEN LOCATIONS TIME SERIES]");
+                sb.AppendLine("sim_time,pandemic_day,game_hour,at_home,at_work,visiting,in_transit,on_foot");
+                if (allObsForLoc != null && allObsForLoc.Count > 0)
+                {
+                    foreach (PandemicObservation obs in allObsForLoc.OrderBy(o => o.SimulationTime))
+                    {
+                        int locDay = gameStart == default(DateTime) ? 0
+                            : Math.Max(1, (int)Math.Floor((obs.SimulationTime - gameStart).TotalDays) + 1);
+                        sb.AppendFormat(
+                            CultureInfo.InvariantCulture,
+                            "{0},{1},{2},{3},{4},{5},{6},{7}",
+                            obs.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
+                            locDay,
+                            obs.SimulationTime.Hour,
+                            obs.CitizensAtHome,
+                            obs.CitizensAtWork,
+                            obs.CitizensVisiting,
+                            obs.CitizensInTransit,
+                            obs.CitizensOnFoot);
+                        sb.AppendLine();
+                    }
                 }
 
                 sb.AppendLine();
@@ -2015,6 +2213,7 @@ namespace RealTime.UI
             spreaderToggleButton.text = BuildSectionHeader(DashboardSection.Spreaders, "Top Spreaders");
             locationToggleButton.text = BuildSectionHeader(DashboardSection.Locations, "Top Origin Locations");
             originToggleButton.text = BuildSectionHeader(DashboardSection.Origins, "Origin Distribution");
+            popLocToggleButton.text = BuildSectionHeader(DashboardSection.PopulationLocations, "Population Locations");
             districtToggleButton.text = BuildSectionHeader(DashboardSection.Districts, "District Infection Rates");
             settingsToggleButton.text = BuildSectionHeader(DashboardSection.Settings, "Pandemic Settings");
 
@@ -2394,6 +2593,7 @@ namespace RealTime.UI
             Lockdown,
             Spreaders,
             Locations,
+            PopulationLocations,
             Origins,
             Districts,
             Settings,

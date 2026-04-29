@@ -39,6 +39,8 @@ namespace RealTime.Pandemic
         private List<uint> initialPopulationRecovered = new List<uint>();
         private List<uint> initialPopulationDead = new List<uint>();
         private List<uint> initialPopulationSick = new List<uint>();
+        // SEIR: citizens infected but not yet infectious (latent/exposed phase)
+        private List<uint> initialPopulationExposed = new List<uint>();
 
         private List<uint> removedCitizens = new List<uint>();
         private HashSet<uint> usedCitizens = new HashSet<uint>();
@@ -325,9 +327,17 @@ namespace RealTime.Pandemic
             {
                 RestorePublicTransportService();
 
-                // Heal all currently sick citizens.
+                // Heal all currently sick citizens (both infectious and latent/exposed).
                 Citizen[] citizens = CitizenMgr.GetCitizensArray();
                 foreach (uint citizenId in initialPopulationSick)
+                {
+                    uint realId = retrieveID(citizenId);
+                    if (realId < citizens.Length && !CitizenProxy.IsEmpty(ref citizens[realId]))
+                    {
+                        CitizenProxy.SetSick(ref citizens[realId], false);
+                    }
+                }
+                foreach (uint citizenId in initialPopulationExposed)
                 {
                     uint realId = retrieveID(citizenId);
                     if (realId < citizens.Length && !CitizenProxy.IsEmpty(ref citizens[realId]))
@@ -390,11 +400,11 @@ namespace RealTime.Pandemic
                 }
 
                 float infectionRatio = Config.DiseaseStartInfectionRatio;
-                uint intendedNumberOfSickCitizens = Math.Max((uint)(infectionRatio * (initialPopulationSick.Count + initialPopulationHealthy.Count) / 100f), 1);
+                uint intendedNumberOfSickCitizens = Math.Max((uint)(infectionRatio * (initialPopulationSick.Count + initialPopulationExposed.Count + initialPopulationHealthy.Count) / 100f), 1);
 
-                Debug.Log("Intended number of sick citizens: " + intendedNumberOfSickCitizens + ", actual number of sick citizens: " + initialPopulationSick.Count + ", number of healthy citizens: " + initialPopulationHealthy.Count + ", infection candidates: " + infectionCandidates);
+                Debug.Log("Intended number of sick citizens: " + intendedNumberOfSickCitizens + ", actual number of sick citizens: " + (initialPopulationSick.Count + initialPopulationExposed.Count) + ", number of healthy citizens: " + initialPopulationHealthy.Count + ", infection candidates: " + infectionCandidates);
 
-                while (intendedNumberOfSickCitizens > initialPopulationSick.Count && initialPopulationHealthy.Count > 0)
+                while (intendedNumberOfSickCitizens > (initialPopulationSick.Count + initialPopulationExposed.Count) && initialPopulationHealthy.Count > 0)
                 {
                     // Sickening citizens
                     uint citizenID;
@@ -427,14 +437,14 @@ namespace RealTime.Pandemic
                     return;
                 }
 
-                if (initialPopulationSick.Count == 0)
+                if (initialPopulationSick.Count == 0 && initialPopulationExposed.Count == 0)
                 {
                     Log.Warning("The 'Real Time' pandemic manager could not seed initial infections yet; initialization will be retried.");
                     startCompleted = false;
                     return;
                 }
 
-                Debug.Log("Intended number of sick citizens: " + intendedNumberOfSickCitizens + ", actual number of sick citizens: " + initialPopulationSick.Count + ", number of healthy citizens: " + initialPopulationHealthy.Count);
+                Debug.Log("Intended number of sick citizens: " + intendedNumberOfSickCitizens + ", actual number of sick citizens: " + (initialPopulationSick.Count + initialPopulationExposed.Count) + ", number of healthy citizens: " + initialPopulationHealthy.Count);
 
                 lastDateTime = simulation.m_currentGameTime;
                 lastDateTimeCitizensUpdate = simulation.m_currentGameTime;
@@ -442,6 +452,7 @@ namespace RealTime.Pandemic
                 hadAnySickCitizens = true;
 
                 Observer.AddSickCitizens(currentDateTime, initialPopulationSick.Count);
+                Observer.AddExposedCitizens(currentDateTime, initialPopulationExposed.Count);
                 Observer.AddHealthyCitizens(currentDateTime, initialPopulationHealthy.Count);
                 Observer.AddRecoveredCitizens(currentDateTime, initialPopulationRecovered.Count);
                 Observer.AddDeadCitizens(currentDateTime, initialPopulationDead.Count);
@@ -1098,14 +1109,27 @@ namespace RealTime.Pandemic
                 }
 
                 double symptomPhaseDays = Math.Max(1.0, Config.DiseaseDuration - Config.StartSymptoms);
-                double childDeathProbability = 1 - Math.Pow(1 - Config.DeathChild / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0));
-                double teenDeathProbability = 1 - Math.Pow(1 - Config.DeathTeen / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0));
-                double youngDeathProbability = 1 - Math.Pow(1 - Config.DeathYoung / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0));
-                double adultDeathProbability = 1 - Math.Pow(1 - Config.DeathAdult / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0));
-                double seniorDeathProbability = 1 - Math.Pow(1 - Config.DeathSenior / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0));
+
+                // C) Hospital saturation mortality multiplier: overwhelmed hospitals increase CFR
+                double saturationMultiplier = 1.0;
+                if (healthcareUsageSamples.Count > 0)
+                {
+                    float latestHospitalPct = healthcareUsageSamples[healthcareUsageSamples.Count - 1]?.HospitalUsagePercent ?? 0f;
+                    if (latestHospitalPct >= 90f)
+                        saturationMultiplier = 2.0;
+                    else if (latestHospitalPct >= 75f)
+                        saturationMultiplier = 1.35;
+                }
+
+                double childDeathProbability  = (1 - Math.Pow(1 - Config.DeathChild  / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
+                double teenDeathProbability   = (1 - Math.Pow(1 - Config.DeathTeen   / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
+                double youngDeathProbability  = (1 - Math.Pow(1 - Config.DeathYoung  / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
+                double adultDeathProbability  = (1 - Math.Pow(1 - Config.DeathAdult  / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
+                double seniorDeathProbability = (1 - Math.Pow(1 - Config.DeathSenior / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
 
                 try
                 {
+                    PromoteExposedToInfectious();
                     kill(childDeathProbability, teenDeathProbability, youngDeathProbability, adultDeathProbability, seniorDeathProbability);
                 }
                 catch (Exception ex)
@@ -1196,7 +1220,23 @@ namespace RealTime.Pandemic
 
                 try
                 {
+                    int locHome = 0, locWork = 0, locVisit = 0, locTransit = 0, locOnFoot = 0;
+                    foreach (var state in citizenTickStates)
+                    {
+                        switch (state.Location)
+                        {
+                            case Citizen.Location.Home:    locHome++;    break;
+                            case Citizen.Location.Work:    locWork++;    break;
+                            case Citizen.Location.Visit:   locVisit++;   break;
+                            case Citizen.Location.Moving:
+                                if (state.VehicleId > 0) locTransit++;
+                                else                     locOnFoot++;
+                                break;
+                        }
+                    }
+                    Observer.AddLocationSnapshot(currentDateTime, locHome, locWork, locVisit, locTransit, locOnFoot);
                     Observer.AddSickCitizens(currentDateTime, initialPopulationSick.Count);
+                    Observer.AddExposedCitizens(currentDateTime, initialPopulationExposed.Count);
                     Observer.AddHealthyCitizens(currentDateTime, initialPopulationHealthy.Count);
                     Observer.AddRecoveredCitizens(currentDateTime, initialPopulationRecovered.Count);
                     Observer.AddDeadCitizens(currentDateTime, initialPopulationDead.Count);
@@ -1347,7 +1387,7 @@ namespace RealTime.Pandemic
         private void UpdatePerformanceTier()
         {
             int population = initialPopulation.Count;
-            int sick = initialPopulationSick.Count;
+            int sick = initialPopulationSick.Count + initialPopulationExposed.Count;
             if (population > 30000 || sick > 2000 || averageUpdateDurationMs > 25d)
             {
                 performanceTier = PandemicPerformanceTier.Extreme;
@@ -2173,6 +2213,7 @@ namespace RealTime.Pandemic
             snapshot.PandemicDay = GetPandemicDayNumber();
             snapshot.Healthy = initialPopulationHealthy.Count;
             snapshot.Sick = initialPopulationSick.Count;
+            snapshot.Exposed = initialPopulationExposed.Count;
             snapshot.Recovered = initialPopulationRecovered.Count;
             snapshot.Dead = initialPopulationDead.Count;
             snapshot.DeltaSick = 0;
@@ -2199,8 +2240,14 @@ namespace RealTime.Pandemic
                 {
                     snapshot.Healthy = (int)latest.HealthyCitizens;
                     snapshot.Sick = (int)latest.SickCitizens;
+                    snapshot.Exposed = (int)latest.ExposedCitizens;
                     snapshot.Recovered = (int)latest.RecoveredCitizens;
                     snapshot.Dead = (int)latest.DeadCitizens;
+                    snapshot.LocationHome    = (int)latest.CitizensAtHome;
+                    snapshot.LocationWork    = (int)latest.CitizensAtWork;
+                    snapshot.LocationVisit   = (int)latest.CitizensVisiting;
+                    snapshot.LocationTransit = (int)latest.CitizensInTransit;
+                    snapshot.LocationMoving  = (int)latest.CitizensOnFoot;
                 }
 
                 if (Observer.TryGetLatestObservation(out latest) && Observer.TryGetPreviousObservation(out var previous))
@@ -2211,7 +2258,7 @@ namespace RealTime.Pandemic
                 }
             }
 
-            snapshot.TrackedPopulation = Math.Max(0, snapshot.Healthy + snapshot.Sick + snapshot.Recovered + snapshot.Dead);
+            snapshot.TrackedPopulation = Math.Max(0, snapshot.Healthy + snapshot.Exposed + snapshot.Sick + snapshot.Recovered + snapshot.Dead);
         }
 
         internal int GetPandemicDayNumber()
@@ -3221,6 +3268,7 @@ namespace RealTime.Pandemic
             initialPopulationRecovered.Clear();
             initialPopulationDead.Clear();
             initialPopulationSick.Clear();
+            initialPopulationExposed.Clear();
             removedCitizens.Clear();
             usedCitizens.Clear();
             citizenMatching.Clear();
@@ -3403,6 +3451,28 @@ namespace RealTime.Pandemic
             return false;
         }
 
+        // SEIR: promote citizens from latent/exposed phase into the infectious phase once
+        // StartInfection days have elapsed since their infection timestamp.
+        private void PromoteExposedToInfectious()
+        {
+            for (int i = 0; i < initialPopulationExposed.Count; i++)
+            {
+                uint citizenId = initialPopulationExposed[i];
+                if (!activeInfections.ContainsKey(citizenId))
+                {
+                    initialPopulationExposed.RemoveAt(i--);
+                    continue;
+                }
+
+                double daysElapsed = ((currentDateTime.Ticks / 10000) - activeInfections[citizenId]) / (24.0 * 3600.0 * 1000.0);
+                if (daysElapsed >= Config.StartInfection)
+                {
+                    initialPopulationExposed.RemoveAt(i--);
+                    initialPopulationSick.Add(citizenId);
+                }
+            }
+        }
+
         private void InfectCitizen(uint infectedCitizenID, ref Citizen infectedCitizen)
         {
             InfectCitizen(infectedCitizenID, ref infectedCitizen, 0);
@@ -3428,7 +3498,14 @@ namespace RealTime.Pandemic
             hadAnySickCitizens = true;
 
             initialPopulationHealthy.Remove(infectedCitizenID);
-            initialPopulationSick.Add(infectedCitizenID);
+
+            // SEIR: route to exposed (latent) or infectious based on how far along the infection already is.
+            // offset is negative (backdated); daysElapsed = -offset / ms_per_day.
+            double daysAlreadyElapsed = (-offset) / (24.0 * 3600.0 * 1000.0);
+            if (daysAlreadyElapsed >= Config.StartInfection)
+                initialPopulationSick.Add(infectedCitizenID);
+            else
+                initialPopulationExposed.Add(infectedCitizenID);
         }
 
         private void HealCitizen(uint infectedCitizenID, ref Citizen infectedCitizen)
@@ -3446,6 +3523,7 @@ namespace RealTime.Pandemic
 
             initialPopulationRecovered.Add(infectedCitizenID);
             initialPopulationSick.Remove(infectedCitizenID);
+            initialPopulationExposed.Remove(infectedCitizenID); // defensive: in case of edge-case recovery before promotion
         }
 
         private void KillCitizen(uint infectedCitizenID, ref Citizen infectedCitizen)
@@ -3465,6 +3543,7 @@ namespace RealTime.Pandemic
 
             initialPopulationDead.Add(infectedCitizenID);
             initialPopulationSick.Remove(infectedCitizenID);
+            initialPopulationExposed.Remove(infectedCitizenID); // defensive
         }
 
         private void RecordDeath(uint citizenId, ref Citizen citizen)
@@ -4078,6 +4157,7 @@ namespace RealTime.Pandemic
                     continue;
                 }
 
+                bool isSymptomatic = infectedCitizensWithSymptoms.Contains(citizenID);
                 double deathProbability = 0;
                 Citizen.AgeGroup ageGroup = CitizenProxy.GetAge(ref citizens[retrieveID(citizenID)]);
                 switch (ageGroup)
@@ -4098,6 +4178,11 @@ namespace RealTime.Pandemic
                         deathProbability = seniorDeathProbability;
                         break;
                 }
+
+                // B) Asymptomatic death fix: asymptomatics can still die but at 10% of the symptomatic rate,
+                // reflecting silent severe outcomes (e.g. sudden cardiac events, undetected organ damage).
+                if (!isSymptomatic)
+                    deathProbability *= 0.10;
 
                 if (random.NextDouble() < deathProbability)
                 {

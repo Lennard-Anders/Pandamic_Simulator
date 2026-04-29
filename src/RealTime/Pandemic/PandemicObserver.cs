@@ -155,6 +155,30 @@ namespace RealTime.Pandemic
             observation.SickCitizens = (uint)count;
         }
 
+        public void AddExposedCitizens(DateTime simulationTime, int count)
+        {
+            if (simulationTime.Ticks == ignored.Ticks)
+            {
+                return;
+            }
+            PandemicObservation observation = GetObservation(simulationTime);
+            observation.ExposedCitizens = (uint)count;
+        }
+
+        public void AddLocationSnapshot(DateTime simulationTime, int atHome, int atWork, int visiting, int inTransit, int onFoot)
+        {
+            if (simulationTime.Ticks == ignored.Ticks)
+            {
+                return;
+            }
+            PandemicObservation observation = GetObservation(simulationTime);
+            observation.CitizensAtHome     = (uint)atHome;
+            observation.CitizensAtWork     = (uint)atWork;
+            observation.CitizensVisiting   = (uint)visiting;
+            observation.CitizensInTransit  = (uint)inTransit;
+            observation.CitizensOnFoot     = (uint)onFoot;
+        }
+
         public void AddRecoveredCitizen(DateTime simulationTime)
         {
 
@@ -375,8 +399,15 @@ namespace RealTime.Pandemic
 
         public uint HealthyCitizens { get; set; }
         public uint SickCitizens { get; set; }
+        public uint ExposedCitizens { get; set; }
         public uint RecoveredCitizens { get; set; }
         public uint DeadCitizens { get; set; }
+
+        public uint CitizensAtHome { get; set; }
+        public uint CitizensAtWork { get; set; }
+        public uint CitizensVisiting { get; set; }
+        public uint CitizensInTransit { get; set; }
+        public uint CitizensOnFoot { get; set; }
 
         public Dictionary<uint, List<Infection>> Infections { get; } = new Dictionary<uint, List<Infection>>();
 

@@ -83,7 +83,7 @@ NUMERIC_COLS = {
     "DISTRICT INFECTION RATES": ["district_id", "infected_residents", "resident_count", "infected_percent"],
     "TOP SPREADERS":          ["rank", "infection_count", "is_superspreader"],
     "TOP ORIGIN LOCATIONS":   ["rank", "infection_count", "is_superspreader"],
-    "SIRD TIME SERIES":       ["pandemic_day", "healthy", "sick", "recovered",
+    "SIRD TIME SERIES":       ["pandemic_day", "healthy", "exposed", "sick", "recovered",
                                "dead", "total", "delta_sick", "delta_dead"],
     "HEALTHCARE TIME SERIES": ["pandemic_day", "hospital_usage_pct", "ambulance_usage_pct"],
     "PEAK STATISTICS":        ["peak_sick_count", "peak_sick_day", "final_sick",
@@ -91,6 +91,13 @@ NUMERIC_COLS = {
                                "attack_rate_pct", "case_fatality_rate_pct"],
     "POLICY TIMELINE":        ["pandemic_day", "enabled"],
     "POLICY STATE":           ["enabled"],
+    "INFECTION ORIGINS TIME SERIES": [
+        "pandemic_day", "home", "work", "school",
+        "healthcare", "commercial", "transit", "outdoor", "other",
+    ],
+    "CITIZEN LOCATIONS TIME SERIES": [
+        "pandemic_day", "game_hour", "at_home", "at_work", "visiting", "in_transit", "on_foot",
+    ],
 }
 
 # ── CSV parser ────────────────────────────────────────────────────────────────
@@ -137,7 +144,7 @@ def _coerce(data: dict) -> dict:
             for col in cols:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-    for s in ("SIRD TIME SERIES", "HEALTHCARE TIME SERIES", "POLICY TIMELINE"):
+    for s in ("SIRD TIME SERIES", "HEALTHCARE TIME SERIES", "POLICY TIMELINE", "INFECTION ORIGINS TIME SERIES", "CITIZEN LOCATIONS TIME SERIES"):
         if s in data and "sim_time" in data[s].columns:
             data[s]["sim_time"] = pd.to_datetime(
                 data[s]["sim_time"], errors="coerce", utc=True
@@ -229,11 +236,19 @@ def fig_epidemic_curve(data: dict) -> go.Figure:
         fill="tozeroy", fillcolor="rgba(88,166,255,0.07)",
         hovertemplate="Day %{x}: %{y:,.0f} Healthy<extra></extra>",
     ))
+    # SEIR: show Exposed (E) — latent / not yet infectious
+    if "exposed" in sird.columns:
+        fig.add_trace(go.Scatter(
+            x=x, y=sird["exposed"].fillna(0), name="Exposed (E)",
+            line=dict(color=C["hospital"], width=2, dash="dot"),
+            fill="tozeroy", fillcolor="rgba(255,166,87,0.10)",
+            hovertemplate="Day %{x}: %{y:,.0f} Exposed (latent)<extra></extra>",
+        ))
     fig.add_trace(go.Scatter(
-        x=x, y=sird["sick"], name="Infected (I)",
+        x=x, y=sird["sick"], name="Infectious (I)",
         line=dict(color=C["sick"], width=2.5),
         fill="tozeroy", fillcolor="rgba(248,81,73,0.14)",
-        hovertemplate="Day %{x}: %{y:,.0f} Infected<extra></extra>",
+        hovertemplate="Day %{x}: %{y:,.0f} Infectious<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
         x=x, y=sird["recovered"], name="Recovered (R)",
@@ -559,6 +574,141 @@ def fig_locations(data: dict) -> go.Figure:
     return fig
 
 
+def fig_movement_origins(data: dict) -> go.Figure:
+    """Stacked area: where new infections happen each observation, with policy markers."""
+    orig_ts = data.get("INFECTION ORIGINS TIME SERIES", pd.DataFrame())
+    fig = go.Figure()
+    if orig_ts.empty:
+        fig.update_layout(
+            title="No movement origin data  (run a new simulation to capture)",
+            **_layout()
+        )
+        return fig
+
+    orig_ts = orig_ts.sort_values("pandemic_day").reset_index(drop=True)
+
+    ORIGIN_COLS = [
+        ("home",       "Home",         "rgba(224,92,92,0.75)"),
+        ("work",       "Workplace",    "rgba(91,141,232,0.75)"),
+        ("school",     "School",       "rgba(240,192,64,0.75)"),
+        ("commercial", "Commercial",   "rgba(76,175,135,0.75)"),
+        ("transit",    "Transit",      "rgba(155,89,182,0.75)"),
+        ("healthcare", "Healthcare",   "rgba(26,188,156,0.75)"),
+        ("outdoor",    "Outdoor",      "rgba(232,148,78,0.75)"),
+        ("other",      "Other / Seed", "rgba(127,140,141,0.60)"),
+    ]
+
+    for col, label, color in ORIGIN_COLS:
+        if col not in orig_ts.columns:
+            continue
+        fig.add_trace(go.Scatter(
+            x=orig_ts["pandemic_day"],
+            y=orig_ts[col].fillna(0),
+            name=label,
+            stackgroup="one",
+            line=dict(width=0.5, color=color),
+            fillcolor=color,
+            hovertemplate=f"{label}: %{{y}}<extra></extra>",
+        ))
+
+    # Policy event markers
+    policy_tl = data.get("POLICY TIMELINE", pd.DataFrame())
+    if not policy_tl.empty and "pandemic_day" in policy_tl.columns:
+        seen_days: set = set()
+        for _, row in policy_tl.iterrows():
+            try:
+                day = float(row["pandemic_day"])
+            except (ValueError, TypeError):
+                continue
+            if day in seen_days:
+                continue
+            seen_days.add(day)
+            enabled = str(row.get("enabled", "")).strip().lower() in ("true", "1", "yes")
+            line_color = C["sick"] if enabled else C["muted"]
+            label_text = str(row.get("short_label", row.get("policy_type", "")))[:14]
+            fig.add_vline(
+                x=day, line_dash="dot", line_color=line_color, line_width=1,
+                annotation_text=label_text,
+                annotation_font_color=line_color,
+                annotation_font_size=9,
+                annotation_textangle=-90,
+            )
+
+    fig.update_layout(
+        title="Where Infections Happen Over Time  (with policy event markers)",
+        xaxis=dict(**_AXIS, title="Pandemic Day"),
+        yaxis=dict(**_AXIS, title="New Infections per Observation"),
+        legend=dict(
+            bgcolor=C["surface2"], bordercolor=C["border"],
+            font=dict(color=C["text"], size=10),
+            orientation="h", yanchor="bottom", y=1.02, x=0,
+        ),
+        **_layout(),
+    )
+    return fig
+
+
+def fig_citizen_daily_rhythm(data: dict) -> go.Figure:
+    """Stacked area showing where citizens are at each hour of the day (averaged across simulation)."""
+    loc_ts = data.get("CITIZEN LOCATIONS TIME SERIES", pd.DataFrame())
+    fig = go.Figure()
+    if loc_ts.empty or "game_hour" not in loc_ts.columns:
+        fig.update_layout(
+            title="No citizen location data  (run a new simulation to capture)",
+            **_layout()
+        )
+        return fig
+
+    loc_ts = loc_ts.copy()
+    # Average counts per game hour across the whole simulation
+    hour_avg = (
+        loc_ts.groupby("game_hour")[["at_home", "at_work", "visiting", "in_transit", "on_foot"]]
+        .mean()
+        .reset_index()
+        .sort_values("game_hour")
+    )
+
+    LOC_COLS = [
+        ("at_home",    "Home",        "rgba(224,92,92,0.80)"),
+        ("at_work",    "Work",        "rgba(91,141,232,0.80)"),
+        ("visiting",   "Visiting",    "rgba(76,175,135,0.80)"),
+        ("in_transit", "In Transit",  "rgba(155,89,182,0.80)"),
+        ("on_foot",    "On Foot",     "rgba(232,148,78,0.80)"),
+    ]
+
+    for col, label, color in LOC_COLS:
+        if col not in hour_avg.columns:
+            continue
+        fig.add_trace(go.Scatter(
+            x=hour_avg["game_hour"],
+            y=hour_avg[col].fillna(0),
+            name=label,
+            stackgroup="one",
+            line=dict(width=0.5, color=color),
+            fillcolor=color,
+            hovertemplate=f"{label}: %{{y:.0f}}<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title="Where Are Citizens During the Day  (average across simulation)",
+        xaxis=dict(
+            **_AXIS,
+            title="Hour of Day",
+            tickmode="array",
+            tickvals=list(range(0, 24, 2)),
+            ticktext=[f"{h:02d}:00" for h in range(0, 24, 2)],
+        ),
+        yaxis=dict(**_AXIS, title="Citizens (average)"),
+        legend=dict(
+            bgcolor=C["surface2"], bordercolor=C["border"],
+            font=dict(color=C["text"], size=10),
+            orientation="h", yanchor="bottom", y=1.02, x=0,
+        ),
+        **_layout(),
+    )
+    return fig
+
+
 def fig_r_number(data: dict) -> go.Figure:
     """Approximate rolling R number from SIRD time series."""
     sird = data.get("SIRD TIME SERIES", pd.DataFrame())
@@ -629,68 +779,227 @@ def graph(fig, height: int = 340) -> dcc.Graph:
                                           "modeBarButtonsToRemove": ["lasso2d", "select2d"]})
 
 
+# ── Pandemic settings labels & grouping ──────────────────────────────────────
+_SETTINGS_GROUPS = [
+    ("🧫 Disease Properties", [
+        ("InitialInfectionRatio",           "Initial Infection %",                  "pct",   True),
+        ("DiseaseDuration",                 "Disease Duration",                     "days",  True),
+        ("DetectionTime",                   "Detection Time",                       "days",  False),
+        ("StartSymptoms",                   "Symptom Start Day",                    "day",   False),
+        ("EndSymptoms",                     "Symptom End Day",                      "day",   False),
+        ("StartInfection",                  "Infectious Start Day",                 "day",   True),
+        ("EndInfection",                    "Infectious End Day",                   "day",   True),
+        ("IndoorTransmissionProbability",   "Indoor Transmission Probability",      "x",     True),
+        ("OutdoorTransmissionProbability",  "Outdoor Transmission Probability",     "x",     True),
+        ("TransmissionRange",               "Transmission Range",                   "m",     True),
+    ]),
+    ("💀 Death Rates by Age", [
+        ("DeathRateChild",   "Child",   "pct", True),
+        ("DeathRateTeen",    "Teen",    "pct", True),
+        ("DeathRateYoung",   "Young",   "pct", True),
+        ("DeathRateAdult",   "Adult",   "pct", True),
+        ("DeathRateSenior",  "Senior",  "pct", True),
+        ("SymptomProbability", "Symptom Probability", "pct", False),
+    ]),
+    ("😷 Mask Settings", [
+        ("MaskBehavior",                    "Mask Behaviour",                       "",    True),
+        ("TransmissionProbabilityReduction","Transmission Reduction Factor",        "x",   False),
+        ("RatioIgnoreMasks",                "Citizens Ignoring Masks",              "%",   False),
+        ("RatioOtherProtectionMask",        "Other-Protection Mask Ratio",          "%",   False),
+        ("RatioOwnProtectionMask",          "Own-Protection Mask Ratio",            "%",   False),
+    ]),
+    ("📞 Contact Tracing", [
+        ("BuildingContactTracingProbability", "Building Contact Tracing %",         "%",   False),
+        ("AppBasedContactTracingProbability", "App-Based Contact Tracing %",        "%",   False),
+    ]),
+    ("🧪 Testing", [
+        ("RelativeTestCapacity",             "Relative Test Capacity",              "%",   False),
+        ("PercentOfTestsForSick",            "Tests Reserved for Sick",             "%",   False),
+        ("MinimumTestDuration",              "Min Test Duration",                   "days",False),
+        ("MaximumTestDuration",              "Max Test Duration",                   "days",False),
+    ]),
+    ("🔒 Quarantine & Lockdown", [
+        ("QuarantineBehavior",              "Quarantine Behaviour",                 "",    True),
+        ("OnlyTestedCitizensToQuarantine",  "Only Tested → Quarantine",             "",    False),
+        ("LockdownBehavior",                "Lockdown Behaviour",                   "",    True),
+    ]),
+    ("📡 Superspreader Thresholds", [
+        ("HubHighlightThreshold",           "Hub Highlight Min Infections",         "",    False),
+        ("SuperspreaderCitizenThreshold",   "Citizen Superspreader Min",            "",    False),
+        ("SuperspreaderLocationThreshold",  "Location Superspreader Min",           "",    False),
+    ]),
+]
+
+_HIGH_THRESH = {
+    "IndoorTransmissionProbability":  2.0,
+    "OutdoorTransmissionProbability": 0.5,
+    "InitialInfectionRatio":          20.0,
+    "DeathRateChild":    1.0,
+    "DeathRateTeen":     1.0,
+    "DeathRateYoung":    1.0,
+    "DeathRateAdult":    2.0,
+    "DeathRateSenior":   5.0,
+}
+
+
+def _fmt_val(raw: str, unit: str) -> str:
+    """Format a raw config string value with unit suffix."""
+    try:
+        v = float(raw)
+        if unit == "pct" or unit == "%":
+            return f"{v:.1f}%"
+        elif unit == "days" or unit == "day":
+            return f"{int(v)} day{'s' if v != 1 else ''}"
+        elif unit == "x":
+            return f"{v:.2f}×"
+        elif unit == "m":
+            return f"{v:.1f} m"
+        else:
+            return raw
+    except (ValueError, TypeError):
+        if unit == "" and raw in ("0", "1"):
+            return "Yes ✓" if raw == "1" else "No"
+        return raw
+
+
 def summary_table(data: dict) -> html.Div:
-    core   = data.get("CORE METRICS",  pd.DataFrame())
-    policy = data.get("POLICY STATE",  pd.DataFrame())
-    meta   = data.get("RUN METADATA",  pd.DataFrame())
-    rows   = []
+    meta     = data.get("RUN METADATA",     pd.DataFrame())
+    core     = data.get("CORE METRICS",     pd.DataFrame())
+    policy   = data.get("POLICY STATE",     pd.DataFrame())
+    settings = data.get("PANDEMIC SETTINGS",pd.DataFrame())
 
-    def row(label, val, highlight=False):
+    # Build a flat key→value dict from pandemic settings
+    cfg: dict = {}
+    if not settings.empty and "parameter" in settings.columns and "value" in settings.columns:
+        for _, sr in settings.iterrows():
+            cfg[str(sr["parameter"]).strip()] = str(sr["value"]).strip()
+
+    def _td(text, muted=False, bold=False, color=None, width=None):
+        style = {
+            "padding": "7px 14px",
+            "fontSize": "12px",
+            "color": color or (C["muted"] if muted else C["text"]),
+            "fontWeight": "700" if bold else "400",
+            "borderBottom": f"1px solid {C['border']}",
+            "verticalAlign": "middle",
+        }
+        if width:
+            style["width"] = width
+        return html.Td(text, style=style)
+
+    def data_row(label, val, highlight=False, important=False):
+        val_color = C["sick"] if highlight else (C["hospital"] if important else C["text"])
         return html.Tr([
-            html.Td(label, style={"color": C["muted"], "padding": "7px 14px", "width": "260px", "fontSize": "12px"}),
-            html.Td(str(val), style={
-                "color": C["sick"] if highlight else C["text"],
-                "padding": "7px 14px", "fontWeight": "600", "fontSize": "13px",
-            }),
-        ])
+            _td(label, muted=True, width="280px"),
+            _td(str(val), bold=important or highlight, color=val_color),
+        ], style={"backgroundColor": C["surface2"]})
 
+    def section_header(title):
+        return html.Tr(
+            html.Td(title, colSpan=2, style={
+                "backgroundColor": C["surface3"],
+                "color": C["text"],
+                "fontWeight": "700",
+                "fontSize": "11px",
+                "padding": "10px 14px 8px",
+                "textTransform": "uppercase",
+                "letterSpacing": "0.08em",
+                "borderBottom": f"2px solid {C['border']}",
+            })
+        )
+
+    rows = []
+
+    # ── Run Timing ─────────────────────────────────────────────────────────────
+    rows.append(section_header("⏱ Run Timing"))
     if not meta.empty:
         r = meta.iloc[0]
         rows += [
-            row("Start Time (wall clock)",  r.get("start_wall_time", "—")[:19].replace("T", " ")),
-            row("End Time (wall clock)",    r.get("end_wall_time",   "—")[:19].replace("T", " ")),
-            row("Wall Clock Duration",      r.get("elapsed_wall_seconds", "—") + "s"),
-            row("In-Game Pandemic Start",   str(r.get("game_start_time", "—"))[:19]),
-            row("In-Game Pandemic End",     str(r.get("game_end_time",   "—"))[:19]),
-            row("Pandemic Day (final)",     r.get("pandemic_day", "—")),
-            row("Lifecycle State",          r.get("lifecycle_state", "—")),
+            data_row("Start (wall clock)", str(r.get("start_wall_time", "—"))[:19].replace("T", " ")),
+            data_row("End (wall clock)",   str(r.get("end_wall_time",   "—"))[:19].replace("T", " ")),
+            data_row("Wall Duration",      str(r.get("elapsed_wall_seconds", "—")) + " s"),
+            data_row("Game Start",         str(r.get("game_start_time", "—"))[:19].replace("T", " ")),
+            data_row("Game End",           str(r.get("game_end_time",   "—"))[:19].replace("T", " ")),
+            data_row("Pandemic Day (final)", r.get("pandemic_day", "—")),
+            data_row("Lifecycle State",    r.get("lifecycle_state", "—")),
         ]
 
+    # ── Outcome Metrics ────────────────────────────────────────────────────────
+    rows.append(section_header("📊 Outcome Metrics"))
     if not core.empty:
         r = core.iloc[0]
         def fi(k): return f"{int(float(r.get(k, 0))):,}"
         def fp(k): return f"{float(r.get(k, 0)):.1f}%"
+        hosp_pct = float(r.get("hospital_usage_pct", 0))
+        amb_pct  = float(r.get("ambulance_usage_pct", 0))
         rows += [
-            row("Tracked Population",       fi("tracked_population")),
-            row("Total Transmissions",      fi("transmissions_total")),
-            row("  · Indoor",               fi("transmissions_indoor")),
-            row("  · Outdoor",              fi("transmissions_outdoor")),
-            row("  · Vehicle",              fi("transmissions_vehicle")),
-            row("Citizens Quarantined",     fi("quarantine_citizens")),
-            row("Positive Tests",           fi("positive_tests")),
-            row("Contacts Tracked (pairs)", fi("contacts_tracked_pairs")),
-            row("Hotspot Buildings",        fi("hotspot_buildings")),
-            row("Hub Buildings",            fi("hub_buildings")),
-            row("Hospital Usage (final)",   fp("hospital_usage_pct"), float(r.get("hospital_usage_pct", 0)) > 80),
-            row("Ambulance Usage (final)",  fp("ambulance_usage_pct"), float(r.get("ambulance_usage_pct", 0)) > 80),
+            data_row("Tracked Population",       fi("tracked_population")),
+            data_row("Total Transmissions",      fi("transmissions_total"), important=True),
+            data_row("  · Indoor",               fi("transmissions_indoor")),
+            data_row("  · Outdoor",              fi("transmissions_outdoor")),
+            data_row("  · Vehicle",              fi("transmissions_vehicle")),
+            data_row("Citizens Quarantined",     fi("quarantine_citizens")),
+            data_row("Positive Tests",           fi("positive_tests")),
+            data_row("Contacts Tracked (pairs)", fi("contacts_tracked_pairs")),
+            data_row("Hotspot Buildings",        fi("hotspot_buildings")),
+            data_row("Hub Buildings",            fi("hub_buildings")),
+            data_row("Hospital Usage (final)",   fp("hospital_usage_pct"),  highlight=hosp_pct > 80, important=hosp_pct > 50),
+            data_row("Ambulance Usage (final)",  fp("ambulance_usage_pct"), highlight=amb_pct  > 80, important=amb_pct  > 50),
         ]
 
+    # ── Active Policies ────────────────────────────────────────────────────────
+    rows.append(section_header("🏛 Active Policies at Stop"))
     if not policy.empty:
         for _, pr in policy.iterrows():
             enabled = int(float(pr.get("enabled", 0)))
-            rows.append(row(f"Policy: {pr.get('policy', '')}", "ON ▲" if enabled else "OFF ▼"))
+            rows.append(data_row(
+                str(pr.get("policy", "")),
+                "ON ▲" if enabled else "OFF ▼",
+                important=bool(enabled),
+            ))
+
+    # ── Pandemic Settings (from config) ───────────────────────────────────────
+    if cfg:
+        for group_title, params in _SETTINGS_GROUPS:
+            rows.append(section_header(group_title))
+            for key, label, unit, is_important in params:
+                raw = cfg.get(key)
+                if raw is None:
+                    continue
+                formatted = _fmt_val(raw, unit)
+                # Highlight if value exceeds a known danger threshold
+                try:
+                    fv = float(raw)
+                    highlight = key in _HIGH_THRESH and fv > _HIGH_THRESH[key]
+                except (ValueError, TypeError):
+                    highlight = False
+                rows.append(data_row(label, formatted, highlight=highlight, important=is_important and not highlight))
+    else:
+        rows.append(section_header("⚙ Pandemic Settings"))
+        rows.append(data_row("(Not available)",
+            "Run a new simulation to capture settings"))
 
     if not rows:
         return html.Div("No data available.", style={"color": C["muted"]})
 
-    return html.Table(
+    table = html.Table(
         rows,
         style={
-            "backgroundColor": C["surface2"],
-            "borderRadius": "8px",
-            "border": f"1px solid {C['border']}",
             "width": "100%",
             "borderCollapse": "collapse",
+            "tableLayout": "fixed",
+        },
+    )
+
+    return html.Div(
+        table,
+        style={
+            "backgroundColor": C["surface2"],
+            "border": f"1px solid {C['border']}",
+            "borderRadius": "8px",
+            "overflowY": "auto",
+            "maxHeight": "640px",
+            "overflowX": "hidden",
         },
     )
 
@@ -915,6 +1224,14 @@ def render_dashboard(stored):
         dbc.Row([
             dbc.Col(graph(fig_spreaders(data),  320), width=6),
             dbc.Col(graph(fig_locations(data),  320), width=6),
+        ], className="g-3 mb-3"),
+
+        section_title("🏢 Movement Patterns & Intervention Impact"),
+        dbc.Row([
+            dbc.Col(graph(fig_movement_origins(data), 420), width=12),
+        ], className="g-3 mb-3"),
+        dbc.Row([
+            dbc.Col(graph(fig_citizen_daily_rhythm(data), 380), width=12),
         ], className="g-3 mb-3"),
     ])
 
