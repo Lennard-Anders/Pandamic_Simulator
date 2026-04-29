@@ -422,12 +422,14 @@ namespace RealTime.Pandemic
                         initialPopulationHealthy.RemoveAt(index);
                     }
 
-                    int infectionOffsetRange = (int)Math.Max(Config.StartInfection - 1, 0) * 24 * 3600 * 1000;
-                    int offset = infectionOffsetRange > 0 ? random.Next(infectionOffsetRange) : 0;
-                    InfectCitizen(citizenID, ref citizens[retrieveID(citizenID)], -offset);
+                    // Seed citizens start already-infectious: backdate by exactly StartInfection days
+                    // so daysAlreadyElapsed >= Config.StartInfection and they route to initialPopulationSick (I),
+                    // not initialPopulationExposed (E). New infections from spread() use offset=0 and go through E→I normally.
+                    long seedOffset = (long)Config.StartInfection * 24L * 3600L * 1000L;
+                    InfectCitizen(citizenID, ref citizens[retrieveID(citizenID)], -seedOffset);
                     PandemicInfectionOriginInfo seedOrigin = CreateSeedOrigin(ref citizens[retrieveID(citizenID)]);
                     RecordInfectionOrigin(citizenID, seedOrigin);
-                    Observer.AddCitizenInfection(0, citizenID, currentDateTime.AddMilliseconds(-offset), seedOrigin);
+                    Observer.AddCitizenInfection(0, citizenID, currentDateTime.AddMilliseconds(-seedOffset), seedOrigin);
                 }
 
                 if (initialPopulation.Count == 0)
