@@ -1265,7 +1265,7 @@ namespace RealTime.Pandemic
                     lastStoreTime = tempDateTime;
                 }
 
-                if (Observer.GetSickCitizens() == 0 && hadAnySickCitizens)
+                if (Observer.GetSickCitizens() == 0 && initialPopulationExposed.Count == 0 && hadAnySickCitizens)
                 {
                     try
                     {

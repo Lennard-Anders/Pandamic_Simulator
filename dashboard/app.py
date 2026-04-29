@@ -699,12 +699,11 @@ def fig_citizen_daily_rhythm(data: dict) -> go.Figure:
             ticktext=[f"{h:02d}:00" for h in range(0, 24, 2)],
         ),
         yaxis=dict(**_AXIS, title="Citizens (average)"),
-        legend=dict(
+        **_layout(legend=dict(
             bgcolor=C["surface2"], bordercolor=C["border"],
             font=dict(color=C["text"], size=10),
             orientation="h", yanchor="bottom", y=1.02, x=0,
-        ),
-        **_layout(),
+        )),
     )
     return fig
 

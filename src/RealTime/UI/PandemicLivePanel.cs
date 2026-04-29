@@ -551,7 +551,7 @@ namespace RealTime.UI
             {
                 metricTitles[0].text = "Lifecycle";
                 metricValues[0].text = "Manager unavailable";
-                metricTitles[1].text = "SIRD";
+                metricTitles[1].text = "SEIRD";
                 metricValues[1].text = "-";
                 metricTitles[2].text = "Change";
                 metricValues[2].text = "-";
@@ -582,10 +582,10 @@ namespace RealTime.UI
                     ? new Color32(124, 84, 34, 255)
                     : new Color32(72, 72, 72, 255);
 
-            metricTitles[1].text = "SIRD";
+            metricTitles[1].text = "SEIRD";
             metricValues[1].text =
-                "S " + snapshot.Healthy.ToString("N0", cultureInfo) + " | I " + snapshot.Sick.ToString("N0", cultureInfo) + "\n"
-                + "R " + snapshot.Recovered.ToString("N0", cultureInfo) + " | D " + snapshot.Dead.ToString("N0", cultureInfo);
+                "S " + snapshot.Healthy.ToString("N0", cultureInfo) + " | E " + snapshot.Exposed.ToString("N0", cultureInfo) + "\n"
+                + "I " + snapshot.Sick.ToString("N0", cultureInfo) + " | R " + snapshot.Recovered.ToString("N0", cultureInfo) + " | D " + snapshot.Dead.ToString("N0", cultureInfo);
             metricPanels[1].color = new Color32(82, 82, 82, 255);
 
             metricTitles[2].text = "Change";
