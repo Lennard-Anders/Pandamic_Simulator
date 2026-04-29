@@ -108,6 +108,12 @@ namespace RealTime.Core
                 configProvider.LoadDefaultConfiguration();
             }
 
+            // Validate and repair configuration to ensure core Real Time features are active
+            if (configProvider?.Configuration != null)
+            {
+                configProvider.Configuration.Validate();
+            }
+
             IViewItemFactory itemFactory = new CitiesViewItemFactory(helper);
             CloseConfigUI();
             Compatibility compatibility = localizationProvider == null ? null : Compatibility.Create(localizationProvider);
@@ -148,6 +154,12 @@ namespace RealTime.Core
             {
                 configProvider = new ConfigurationProvider<RealTimeConfig>(RealTimeConfig.StorageId, Name, () => new RealTimeConfig(latestVersion: true));
                 configProvider.LoadDefaultConfiguration();
+            }
+
+            // Validate and repair configuration to ensure core Real Time features are active
+            if (configProvider?.Configuration != null)
+            {
+                configProvider.Configuration.Validate();
             }
 
             if (localizationProvider == null)
@@ -240,12 +252,24 @@ namespace RealTime.Core
                 return;
             }
 
-            if (localizationProvider.LoadTranslation(LocaleManager.instance.language))
+            // Try to load the current game language
+            string currentLanguage = LocaleManager.instance.language;
+            bool translationLoaded = localizationProvider.LoadTranslation(currentLanguage);
+
+            // Fall back to English if the current language fails to load
+            if (!translationLoaded)
             {
-                localizationProvider.SetEnglishUSFormatsState(configProvider.Configuration.UseEnglishUSFormats);
-                core?.Translate(localizationProvider);
+                Log.Warning($"Real Time: Failed to load localization for language '{currentLanguage}', falling back to English.");
+                translationLoaded = localizationProvider.LoadTranslation("en");
+                if (!translationLoaded)
+                {
+                    Log.Warning("Real Time: Failed to load English localization as fallback. UI may show empty text.");
+                    return;
+                }
             }
 
+            localizationProvider.SetEnglishUSFormatsState(configProvider.Configuration.UseEnglishUSFormats);
+            core?.Translate(localizationProvider);
             configUI?.Translate(localizationProvider);
         }
 
@@ -262,8 +286,15 @@ namespace RealTime.Core
         {
             try
             {
-                UITabstrip[] tabStrips = GetCandidateTabStrips(helper);
-                if (tabStrips == null || tabStrips.Length == 0)
+                UIComponent helperRoot = ResolveHelperRoot(helper);
+                if (helperRoot == null)
+                {
+                    return;
+                }
+
+                // Only process tab strips within the mod's settings root, not global UI
+                UITabstrip[] tabStrips = helperRoot.GetComponentsInChildren<UITabstrip>() ?? new UITabstrip[0];
+                if (tabStrips.Length == 0)
                 {
                     return;
                 }
@@ -281,6 +312,7 @@ namespace RealTime.Core
                 }
 
                 CompactTabStrip(target.Strip, target.Buttons);
+                EnsureUIReadability(helperRoot);
             }
             catch (Exception ex)
             {
@@ -288,21 +320,6 @@ namespace RealTime.Core
             }
         }
 
-        private static UITabstrip[] GetCandidateTabStrips(UIHelperBase helper)
-        {
-            UIComponent helperRoot = ResolveHelperRoot(helper);
-            if (helperRoot != null)
-            {
-                var strips = helperRoot.GetComponentsInChildren<UITabstrip>();
-                if (strips != null && strips.Length > 0)
-                {
-                    return strips;
-                }
-            }
-
-            UIView view = UIView.GetAView();
-            return view?.GetComponentsInChildren<UITabstrip>() ?? new UITabstrip[0];
-        }
 
         private static UIComponent ResolveHelperRoot(UIHelperBase helper)
         {
@@ -334,6 +351,82 @@ namespace RealTime.Core
             }
 
             return null;
+        }
+
+        private static void EnsureUIReadability(UIComponent modSettingsRoot)
+        {
+            if (modSettingsRoot == null)
+            {
+                return;
+            }
+
+            try
+            {
+                // Ensure all labels are visible with proper colors and scaling
+                var labels = modSettingsRoot.GetComponentsInChildren<UILabel>();
+                foreach (var label in labels)
+                {
+                    if (label != null)
+                    {
+                        // Set text color to white if it's black or transparent
+                        if (label.textColor.a < 0.1f || (label.textColor.r < 0.1f && label.textColor.g < 0.1f && label.textColor.b < 0.1f))
+                        {
+                            label.textColor = new Color32(255, 255, 255, 255);
+                        }
+
+                        // Ensure disabled color is visible
+                        label.disabledTextColor = new Color32(128, 128, 128, 255);
+
+                        // Ensure text scale is readable
+                        if (label.textScale < 0.7f)
+                        {
+                            label.textScale = 0.8f;
+                        }
+
+                        // Enable word wrap for long text
+                        label.wordWrap = true;
+
+                        // Set reasonable padding
+                        if (label.textPadding == null || label.textPadding.top + label.textPadding.bottom == 0)
+                        {
+                            label.textPadding = new RectOffset(2, 2, 2, 2);
+                        }
+                    }
+                }
+
+                // Ensure all buttons have visible text
+                var buttons = modSettingsRoot.GetComponentsInChildren<UIButton>();
+                foreach (var button in buttons)
+                {
+                    if (button != null)
+                    {
+                        // Set text color to white if it's black or transparent
+                        if (button.textColor.a < 0.1f || (button.textColor.r < 0.1f && button.textColor.g < 0.1f && button.textColor.b < 0.1f))
+                        {
+                            button.textColor = new Color32(255, 255, 255, 255);
+                        }
+
+                        // Ensure disabled color is visible
+                        button.disabledTextColor = new Color32(128, 128, 128, 255);
+
+                        // Ensure text scale is readable
+                        if (button.textScale < 0.7f)
+                        {
+                            button.textScale = 0.8f;
+                        }
+
+                        // Set reasonable text padding
+                        if (button.textPadding == null || button.textPadding.top + button.textPadding.bottom == 0)
+                        {
+                            button.textPadding = new RectOffset(2, 2, 2, 2);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("The 'Real Time' mod could not ensure UI readability, error message: " + ex);
+            }
         }
 
         private static UIButton[] GetTabButtons(UITabstrip tabStrip)

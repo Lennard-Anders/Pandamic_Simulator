@@ -39,6 +39,7 @@ C = {
     "muted":     "#8b949e",
     "accent":    "#1f6feb",
     "healthy":   "#58a6ff",
+    "exposed":   "#ffa657",
     "sick":      "#f85149",
     "recovered": "#3fb950",
     "dead":      "#bc8cff",
@@ -69,7 +70,7 @@ _XY = dict(xaxis=_AXIS, yaxis=_AXIS)
 # ── Numeric columns by section ────────────────────────────────────────────────
 NUMERIC_COLS = {
     "CORE METRICS": [
-        "tracked_population", "healthy", "sick", "recovered", "dead",
+        "tracked_population", "healthy", "exposed", "sick", "recovered", "dead",
         "delta_sick", "delta_recovered", "delta_dead", "quarantine_citizens",
         "positive_tests", "tested_citizens", "contacts_tracked_citizens",
         "contacts_tracked_pairs", "contacts_recorded_total",
@@ -83,11 +84,11 @@ NUMERIC_COLS = {
     "DISTRICT INFECTION RATES": ["district_id", "infected_residents", "resident_count", "infected_percent"],
     "TOP SPREADERS":          ["rank", "infection_count", "is_superspreader"],
     "TOP ORIGIN LOCATIONS":   ["rank", "infection_count", "is_superspreader"],
-    "SIRD TIME SERIES":       ["pandemic_day", "healthy", "exposed", "sick", "recovered",
+    "SEIRD TIME SERIES":      ["pandemic_day", "healthy", "exposed", "sick", "recovered",
                                "dead", "total", "delta_sick", "delta_dead"],
     "HEALTHCARE TIME SERIES": ["pandemic_day", "hospital_usage_pct", "ambulance_usage_pct"],
-    "PEAK STATISTICS":        ["peak_sick_count", "peak_sick_day", "final_sick",
-                               "final_recovered", "final_dead", "total_tracked",
+    "PEAK STATISTICS":        ["peak_sick_count", "peak_sick_day", "final_exposed",
+                               "final_sick", "final_recovered", "final_dead", "total_tracked",
                                "attack_rate_pct", "case_fatality_rate_pct"],
     "POLICY TIMELINE":        ["pandemic_day", "enabled"],
     "POLICY STATE":           ["enabled"],
@@ -144,7 +145,7 @@ def _coerce(data: dict) -> dict:
             for col in cols:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-    for s in ("SIRD TIME SERIES", "HEALTHCARE TIME SERIES", "POLICY TIMELINE", "INFECTION ORIGINS TIME SERIES", "CITIZEN LOCATIONS TIME SERIES"):
+    for s in ("SEIRD TIME SERIES", "HEALTHCARE TIME SERIES", "POLICY TIMELINE", "INFECTION ORIGINS TIME SERIES", "CITIZEN LOCATIONS TIME SERIES"):
         if s in data and "sim_time" in data[s].columns:
             data[s]["sim_time"] = pd.to_datetime(
                 data[s]["sim_time"], errors="coerce", utc=True
@@ -221,42 +222,42 @@ def _layout(**overrides) -> dict:
 
 
 def fig_epidemic_curve(data: dict) -> go.Figure:
-    sird   = data.get("SIRD TIME SERIES",  pd.DataFrame())
+    seird  = data.get("SEIRD TIME SERIES", pd.DataFrame())
     policy = data.get("POLICY TIMELINE",   pd.DataFrame())
     fig    = go.Figure()
 
-    if sird.empty:
-        fig.update_layout(title="No SIRD data", **_layout())
+    if seird.empty:
+        fig.update_layout(title="No SEIRD data", **_layout())
         return fig
 
-    x = sird["pandemic_day"]
+    x = seird["pandemic_day"]
     fig.add_trace(go.Scatter(
-        x=x, y=sird["healthy"], name="Healthy (S)",
+        x=x, y=seird["healthy"], name="Healthy (S)",
         line=dict(color=C["healthy"], width=1.8),
         fill="tozeroy", fillcolor="rgba(88,166,255,0.07)",
         hovertemplate="Day %{x}: %{y:,.0f} Healthy<extra></extra>",
     ))
     # SEIR: show Exposed (E) — latent / not yet infectious
-    if "exposed" in sird.columns:
+    if "exposed" in seird.columns:
         fig.add_trace(go.Scatter(
-            x=x, y=sird["exposed"].fillna(0), name="Exposed (E)",
-            line=dict(color=C["hospital"], width=2, dash="dot"),
+            x=x, y=seird["exposed"].fillna(0), name="Exposed (E)",
+            line=dict(color=C["exposed"], width=2, dash="dot"),
             fill="tozeroy", fillcolor="rgba(255,166,87,0.10)",
             hovertemplate="Day %{x}: %{y:,.0f} Exposed (latent)<extra></extra>",
         ))
     fig.add_trace(go.Scatter(
-        x=x, y=sird["sick"], name="Infectious (I)",
+        x=x, y=seird["sick"], name="Infectious (I)",
         line=dict(color=C["sick"], width=2.5),
         fill="tozeroy", fillcolor="rgba(248,81,73,0.14)",
         hovertemplate="Day %{x}: %{y:,.0f} Infectious<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
-        x=x, y=sird["recovered"], name="Recovered (R)",
+        x=x, y=seird["recovered"], name="Recovered (R)",
         line=dict(color=C["recovered"], width=2),
         hovertemplate="Day %{x}: %{y:,.0f} Recovered<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
-        x=x, y=sird["dead"], name="Dead (D)",
+        x=x, y=seird["dead"], name="Dead (D)",
         line=dict(color=C["dead"], width=2),
         hovertemplate="Day %{x}: %{y:,.0f} Dead<extra></extra>",
     ))
@@ -276,7 +277,7 @@ def fig_epidemic_curve(data: dict) -> go.Figure:
             )
 
     fig.update_layout(
-        title="Epidemic Curve (SIRD) with Policy Events",
+        title="Epidemic Curve (SEIRD) with Policy Events",
         xaxis=dict(**_AXIS, title="Pandemic Day"),
         yaxis=dict(**_AXIS, title="Citizens"),
         **_layout(),
@@ -285,36 +286,36 @@ def fig_epidemic_curve(data: dict) -> go.Figure:
 
 
 def fig_delta(data: dict) -> go.Figure:
-    sird = data.get("SIRD TIME SERIES", pd.DataFrame())
+    seird = data.get("SEIRD TIME SERIES", pd.DataFrame())
     fig  = go.Figure()
-    if sird.empty or "delta_sick" not in sird.columns:
+    if seird.empty or "delta_sick" not in seird.columns:
         fig.update_layout(title="No delta data", **_layout())
         return fig
-    x  = sird["pandemic_day"]
-    ds = sird["delta_sick"].fillna(0)
+    x  = seird["pandemic_day"]
+    ds = seird["delta_sick"].fillna(0)
     fig.add_trace(go.Bar(
-        x=x, y=ds.clip(lower=0), name="New Infections",
+        x=x, y=ds.clip(lower=0), name="Infectious Increase",
         marker_color=C["sick"], opacity=0.85,
         hovertemplate="Day %{x}: +%{y:,.0f}<extra></extra>",
     ))
     fig.add_trace(go.Bar(
-        x=x, y=ds.clip(upper=0), name="Net Recovery / Death",
+        x=x, y=ds.clip(upper=0), name="Infectious Decrease",
         marker_color=C["recovered"], opacity=0.7,
         hovertemplate="Day %{x}: %{y:,.0f}<extra></extra>",
     ))
     fig.update_layout(
-        title="Daily Net Infection Change",
+        title="Daily Net Infectious Change",
         barmode="relative",
         xaxis=dict(**_AXIS, title="Pandemic Day"),
-        yaxis=dict(**_AXIS, title="Δ Citizens"),
+        yaxis=dict(**_AXIS, title="Delta Citizens"),
         **_layout(),
     )
     return fig
 
 
 def fig_healthcare(data: dict) -> go.Figure:
-    hc   = data.get("HEALTHCARE TIME SERIES", pd.DataFrame())
-    sird = data.get("SIRD TIME SERIES",        pd.DataFrame())
+    hc    = data.get("HEALTHCARE TIME SERIES", pd.DataFrame())
+    seird = data.get("SEIRD TIME SERIES",      pd.DataFrame())
     fig  = make_subplots(specs=[[{"secondary_y": True}]])
 
     if not hc.empty:
@@ -334,50 +335,51 @@ def fig_healthcare(data: dict) -> go.Figure:
                       annotation_font_color="rgba(248,81,73,0.70)",
                       annotation_font_size=10)
 
-    if not sird.empty:
+    if not seird.empty:
         fig.add_trace(go.Scatter(
-            x=sird["pandemic_day"], y=sird["sick"],
-            name="Infected (ref)", line=dict(color=C["sick"], width=1.5, dash="dot"),
+            x=seird["pandemic_day"], y=seird["sick"],
+            name="Infectious (I, ref)", line=dict(color=C["sick"], width=1.5, dash="dot"),
             opacity=0.45,
-            hovertemplate="Day %{x}: %{y:,.0f} Infected<extra></extra>",
+            hovertemplate="Day %{x}: %{y:,.0f} Infectious<extra></extra>",
         ), secondary_y=True)
 
-    fig.update_layout(title="Healthcare Capacity vs Infected", **_layout())
+    fig.update_layout(title="Healthcare Capacity vs Infectious (I)", **_layout())
     fig.update_yaxes(title_text="Usage %", secondary_y=False, **_AXIS)
-    fig.update_yaxes(title_text="Infected Citizens", secondary_y=True, **_AXIS)
+    fig.update_yaxes(title_text="Infectious Citizens", secondary_y=True, **_AXIS)
     fig.update_xaxes(title_text="Pandemic Day", **_AXIS)
     return fig
 
 
-def fig_sird_donut(data: dict) -> go.Figure:
+def fig_seird_donut(data: dict) -> go.Figure:
     peak = data.get("PEAK STATISTICS", pd.DataFrame())
     fig  = go.Figure()
     if not peak.empty:
         r       = peak.iloc[0]
         total   = float(r.get("total_tracked", 0))
+        exposed = float(r.get("final_exposed", 0))
         sick    = float(r.get("final_sick", 0))
         rec     = float(r.get("final_recovered", 0))
         dead    = float(r.get("final_dead", 0))
-        healthy = max(0.0, total - sick - rec - dead)
-        vals    = [healthy, sick, rec, dead]
-        labels  = ["Healthy", "Still Infected", "Recovered", "Dead"]
+        healthy = max(0.0, total - exposed - sick - rec - dead)
+        vals    = [healthy, exposed, sick, rec, dead]
+        labels  = ["Healthy (S)", "Exposed (E)", "Infectious (I)", "Recovered (R)", "Dead (D)"]
     else:
         core = data.get("CORE METRICS", pd.DataFrame())
         if core.empty:
             fig.update_layout(title="No data", **_layout())
             return fig
         r    = core.iloc[0]
-        vals = [float(r.get(k, 0)) for k in ("healthy", "sick", "recovered", "dead")]
-        labels = ["Healthy", "Infected", "Recovered", "Dead"]
+        vals = [float(r.get(k, 0)) for k in ("healthy", "exposed", "sick", "recovered", "dead")]
+        labels = ["Healthy (S)", "Exposed (E)", "Infectious (I)", "Recovered (R)", "Dead (D)"]
 
     fig.add_trace(go.Pie(
         labels=labels, values=vals,
-        marker_colors=[C["healthy"], C["sick"], C["recovered"], C["dead"]],
+        marker_colors=[C["healthy"], C["exposed"], C["sick"], C["recovered"], C["dead"]],
         hole=0.60, textinfo="percent",
         hovertemplate="%{label}: %{value:,.0f}<extra></extra>",
         textfont=dict(size=11),
     ))
-    fig.update_layout(title="Final Population State", **_layout())
+    fig.update_layout(title="Final SEIRD Population State", **_layout())
     return fig
 
 
@@ -709,18 +711,18 @@ def fig_citizen_daily_rhythm(data: dict) -> go.Figure:
 
 
 def fig_r_number(data: dict) -> go.Figure:
-    """Approximate rolling R number from SIRD time series."""
-    sird = data.get("SIRD TIME SERIES", pd.DataFrame())
+    """Approximate rolling R number from SEIRD time series."""
+    seird = data.get("SEIRD TIME SERIES", pd.DataFrame())
     fig  = go.Figure()
-    if sird.empty or "sick" not in sird.columns:
-        fig.update_layout(title="No SIRD data for R estimation", **_layout())
+    if seird.empty or "sick" not in seird.columns:
+        fig.update_layout(title="No SEIRD data for R estimation", **_layout())
         return fig
-    sird  = sird.sort_values("pandemic_day").reset_index(drop=True)
-    sick  = sird["sick"].fillna(0).astype(float)
+    seird = seird.sort_values("pandemic_day").reset_index(drop=True)
+    sick  = seird["sick"].fillna(0).astype(float)
     window = max(3, len(sick) // 20)
     ratio  = sick.rolling(window, min_periods=2).mean().pct_change(periods=window).fillna(0) + 1
     ratio  = ratio.clip(0, 10)
-    x = sird["pandemic_day"]
+    x = seird["pandemic_day"]
     fig.add_trace(go.Scatter(
         x=x, y=ratio, name="Approx R(t)",
         line=dict(color=C["hospital"], width=2),
@@ -1185,7 +1187,7 @@ def render_dashboard(stored):
         kpi_card("Population",       kpis["total_pop"],       "Tracked citizens",             C["healthy"]),
         kpi_card("Attack Rate",      kpis["attack_rate"],      "Ever infected / total pop",    C["sick"]),
         kpi_card("Case Fatality",    kpis["cfr"],              "Deaths / resolved cases",      C["dead"]),
-        kpi_card("Peak Infected",    kpis["peak_sick"],        kpis["peak_day"],               C["hospital"]),
+        kpi_card("Peak Infectious",  kpis["peak_sick"],        kpis["peak_day"],               C["hospital"]),
         kpi_card("Recovered",        kpis["total_recovered"],  "Final recovered count",        C["recovered"]),
         kpi_card("Total Deaths",     kpis["total_dead"],       "Final pandemic death toll",    C["dead"]),
     ], className="g-3 mb-2")
@@ -1195,7 +1197,7 @@ def render_dashboard(stored):
         section_title("📈 Epidemic Timeline"),
         dbc.Row([
             dbc.Col(graph(fig_epidemic_curve(data), 360), width=8),
-            dbc.Col(graph(fig_sird_donut(data),     360), width=4),
+            dbc.Col(graph(fig_seird_donut(data),    360), width=4),
         ], className="g-3 mb-3"),
         dbc.Row([
             dbc.Col(graph(fig_delta(data),     310), width=4),
@@ -1299,17 +1301,17 @@ def render_comparison(_, filepaths):
     overlay = go.Figure()
     palette = [C["sick"], C["hospital"], C["dead"], C["recovered"], C["vehicle"], C["indoor"]]
     for i, (name, d) in enumerate(runs):
-        sird = d.get("SIRD TIME SERIES", pd.DataFrame())
-        if not sird.empty and "pandemic_day" in sird.columns:
+        seird = d.get("SEIRD TIME SERIES", pd.DataFrame())
+        if not seird.empty and "pandemic_day" in seird.columns:
             overlay.add_trace(go.Scatter(
-                x=sird["pandemic_day"], y=sird["sick"],
+                x=seird["pandemic_day"], y=seird["sick"],
                 name=name, line=dict(color=palette[i % len(palette)], width=2),
-                hovertemplate=f"{name} – Day %{{x}}: %{{y:,.0f}} infected<extra></extra>",
+                hovertemplate=f"{name} - Day %{{x}}: %{{y:,.0f}} infectious<extra></extra>",
             ))
     overlay.update_layout(
         title="Epidemic Curves – All Runs Overlaid",
         xaxis=dict(**_AXIS, title="Pandemic Day"),
-        yaxis=dict(**_AXIS, title="Active Infected"),
+        yaxis=dict(**_AXIS, title="Active Infectious (I)"),
         height=340,
         **_layout(),
     )
@@ -1321,7 +1323,7 @@ def render_comparison(_, filepaths):
         dbc.Row([
             dbc.Col(dcc.Graph(figure=bar(attack_rates, "Attack Rate % per Run",    C["sick"])),    width=3),
             dbc.Col(dcc.Graph(figure=bar(cfrs,         "Case Fatality % per Run",  C["dead"])),    width=3),
-            dbc.Col(dcc.Graph(figure=bar(peak_sicks,   "Peak Infected per Run",    C["hospital"])),width=3),
+            dbc.Col(dcc.Graph(figure=bar(peak_sicks,   "Peak Infectious per Run",  C["hospital"])),width=3),
             dbc.Col(dcc.Graph(figure=bar(total_deads,  "Total Deaths per Run",     C["dead"])),    width=3),
         ], className="g-3"),
     ])

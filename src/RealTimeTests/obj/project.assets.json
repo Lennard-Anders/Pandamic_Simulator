@@ -966,39 +966,32 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\tanmo\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "C:\\Users\\mail\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\tanmo\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
+      "projectUniqueName": "C:\\Users\\mail\\Documents\\GitHub\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
       "projectName": "RealTimeTests",
-      "projectPath": "C:\\Users\\tanmo\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
-      "packagesPath": "C:\\Users\\tanmo\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\tanmo\\Pandamic_Simulator\\src\\RealTimeTests\\obj\\",
+      "projectPath": "C:\\Users\\mail\\Documents\\GitHub\\Pandamic_Simulator\\src\\RealTimeTests\\RealTimeTests.csproj",
+      "packagesPath": "C:\\Users\\mail\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\mail\\Documents\\GitHub\\Pandamic_Simulator\\src\\RealTimeTests\\obj\\",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\tanmo\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        "C:\\Users\\mail\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net471"
       ],
       "sources": {
-        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
         "net471": {
           "targetAlias": "net471",
           "projectReferences": {
-            "C:\\Users\\tanmo\\Pandamic_Simulator\\src\\RealTime\\RealTime.csproj": {
-              "projectPath": "C:\\Users\\tanmo\\Pandamic_Simulator\\src\\RealTime\\RealTime.csproj"
+            "C:\\Users\\mail\\Documents\\GitHub\\Pandamic_Simulator\\src\\RealTime\\RealTime.csproj": {
+              "projectPath": "C:\\Users\\mail\\Documents\\GitHub\\Pandamic_Simulator\\src\\RealTime\\RealTime.csproj"
             }
           }
         }
@@ -1012,8 +1005,7 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      },
-      "SdkAnalysisLevel": "10.0.200"
+      }
     },
     "frameworks": {
       "net471": {
@@ -1042,7 +1034,7 @@
             "version": "[1.2.0.164, )"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.200\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.420\\RuntimeIdentifierGraph.json"
       }
     }
   }

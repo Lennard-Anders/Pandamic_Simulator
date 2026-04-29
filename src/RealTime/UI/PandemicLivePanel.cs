@@ -43,8 +43,8 @@ namespace RealTime.UI
         private const float ChartTop = MetricsTop + MetricCardHeight + 12f;
         private const float ChartHeight = 186f;
         private const float ChartGap = 8f;
-        private const float SidrChartWidth = 212f;
-        private const float TrendChartWidth = HeaderWidth - SidrChartWidth - ChartGap;
+        private const float SeirdChartWidth = 212f;
+        private const float TrendChartWidth = HeaderWidth - SeirdChartWidth - ChartGap;
         private const float DetailTop = HeaderTop + HeaderHeight + 8f;
         private const float DetailScrollHeight = ExpandedPanelHeight - DetailTop - 10f;
         private const float ScrollbarWidth = 10f;
@@ -110,7 +110,7 @@ namespace RealTime.UI
         private UIButton xrayTypeButton;
         private UIButton xrayBasisButton;
         private PandemicTrendChartView trendChart;
-        private PandemicSidrBarView sidrBarView;
+        private PandemicSeirdBarView seirdBarView;
         private UIScrollablePanel detailScroll;
         private UIPanel detailContentPanel;
         private UIScrollbar detailScrollbar;
@@ -217,7 +217,7 @@ namespace RealTime.UI
             detailContentPanel = null;
             detailScrollbar = null;
             trendChart = null;
-            sidrBarView = null;
+            seirdBarView = null;
             currentSnapshot = null;
             settingsBuilt = false;
             layoutDirty = true;
@@ -317,9 +317,9 @@ namespace RealTime.UI
             trendChart.Initialize(headerPanel, TrendChartWidth, ChartHeight);
             trendChart.Component.relativePosition = new Vector3(0f, ChartTop);
 
-            sidrBarView = new PandemicSidrBarView();
-            sidrBarView.Initialize(headerPanel, SidrChartWidth, ChartHeight);
-            sidrBarView.Component.relativePosition = new Vector3(TrendChartWidth + ChartGap, ChartTop);
+            seirdBarView = new PandemicSeirdBarView();
+            seirdBarView.Initialize(headerPanel, SeirdChartWidth, ChartHeight);
+            seirdBarView.Component.relativePosition = new Vector3(TrendChartWidth + ChartGap, ChartTop);
         }
 
         private void CreateDetailScroll()
@@ -830,9 +830,9 @@ namespace RealTime.UI
                 trendChart.Refresh(currentSnapshot, cultureInfo);
             }
 
-            if (sidrBarView != null)
+            if (seirdBarView != null)
             {
-                sidrBarView.Refresh(currentSnapshot, cultureInfo);
+                seirdBarView.Refresh(currentSnapshot, cultureInfo);
             }
         }
 
@@ -1129,14 +1129,15 @@ namespace RealTime.UI
 
                 // --- Core Metrics ---
                 sb.AppendLine("[CORE METRICS]");
-                sb.AppendLine("tracked_population,healthy,sick,recovered,dead,delta_sick,delta_recovered,delta_dead,quarantine_citizens,positive_tests,tested_citizens,contacts_tracked_citizens,contacts_tracked_pairs,contacts_recorded_total,transmissions_total,transmissions_indoor,transmissions_outdoor,transmissions_vehicle,hotspot_buildings,hub_buildings,hospital_usage_pct,ambulance_usage_pct,observation_count");
+                sb.AppendLine("tracked_population,healthy,exposed,sick,recovered,dead,delta_sick,delta_recovered,delta_dead,quarantine_citizens,positive_tests,tested_citizens,contacts_tracked_citizens,contacts_tracked_pairs,contacts_recorded_total,transmissions_total,transmissions_indoor,transmissions_outdoor,transmissions_vehicle,hotspot_buildings,hub_buildings,hospital_usage_pct,ambulance_usage_pct,observation_count");
                 if (snapshot != null)
                 {
                     sb.AppendFormat(
                         CultureInfo.InvariantCulture,
-                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22}",
+                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22},{23}",
                         snapshot.TrackedPopulation,
                         snapshot.Healthy,
+                        snapshot.Exposed,
                         snapshot.Sick,
                         snapshot.Recovered,
                         snapshot.Dead,
@@ -1162,7 +1163,7 @@ namespace RealTime.UI
                 }
                 else
                 {
-                    sb.AppendLine("0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,0.00,0");
+                    sb.AppendLine("0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,0.00,0");
                 }
 
                 sb.AppendLine();
@@ -1302,18 +1303,18 @@ namespace RealTime.UI
 
                 sb.AppendLine();
 
-                // --- SIRD Time Series ---
-                IList<PandemicObservation> sirdObs = manager?.GetAllObservations();
-                List<PandemicObservation> sortedSird = sirdObs != null && sirdObs.Count > 0
-                    ? sirdObs.OrderBy(o => o.SimulationTime).ToList()
+                // --- SEIRD Time Series ---
+                IList<PandemicObservation> seirdObs = manager?.GetAllObservations();
+                List<PandemicObservation> sortedSeird = seirdObs != null && seirdObs.Count > 0
+                    ? seirdObs.OrderBy(o => o.SimulationTime).ToList()
                     : new List<PandemicObservation>();
 
-                sb.AppendLine("[SIRD TIME SERIES]");
+                sb.AppendLine("[SEIRD TIME SERIES]");
                 sb.AppendLine("sim_time,pandemic_day,healthy,exposed,sick,recovered,dead,total,delta_sick,delta_dead");
                 {
                     int prevSick = 0;
                     int prevDead = 0;
-                    foreach (PandemicObservation obs in sortedSird)
+                    foreach (PandemicObservation obs in sortedSeird)
                     {
                         int sick = (int)obs.SickCitizens;
                         int dead = (int)obs.DeadCitizens;
@@ -1390,27 +1391,29 @@ namespace RealTime.UI
 
                 // --- Peak Statistics ---
                 sb.AppendLine("[PEAK STATISTICS]");
-                sb.AppendLine("peak_sick_count,peak_sick_day,final_sick,final_recovered,final_dead,total_tracked,attack_rate_pct,case_fatality_rate_pct");
-                if (sortedSird.Count > 0)
+                sb.AppendLine("peak_sick_count,peak_sick_day,final_exposed,final_sick,final_recovered,final_dead,total_tracked,attack_rate_pct,case_fatality_rate_pct");
+                if (sortedSeird.Count > 0)
                 {
-                    PandemicObservation peakObs = sortedSird.OrderByDescending(o => o.SickCitizens).First();
+                    PandemicObservation peakObs = sortedSeird.OrderByDescending(o => o.SickCitizens).First();
                     int peakDay = gameStart == default(DateTime) ? 0
                         : Math.Max(1, (int)Math.Floor((peakObs.SimulationTime - gameStart).TotalDays) + 1);
-                    PandemicObservation lastObs = sortedSird[sortedSird.Count - 1];
+                    PandemicObservation lastObs = sortedSeird[sortedSeird.Count - 1];
+                    int finalExposed = (int)lastObs.ExposedCitizens;
                     int finalSick = (int)lastObs.SickCitizens;
                     int finalRecovered = (int)lastObs.RecoveredCitizens;
                     int finalDead = (int)lastObs.DeadCitizens;
-                    int totalTracked = finalSick + finalRecovered + finalDead + (int)lastObs.HealthyCitizens;
-                    int everInfected = finalSick + finalRecovered + finalDead;
+                    int totalTracked = finalExposed + finalSick + finalRecovered + finalDead + (int)lastObs.HealthyCitizens;
+                    int everInfected = finalExposed + finalSick + finalRecovered + finalDead;
                     float attackRate = totalTracked > 0 ? (float)everInfected / totalTracked * 100f : 0f;
                     float cfr = (finalRecovered + finalDead) > 0
                         ? (float)finalDead / (finalRecovered + finalDead) * 100f
                         : 0f;
                     sb.AppendFormat(
                         CultureInfo.InvariantCulture,
-                        "{0},{1},{2},{3},{4},{5},{6},{7}",
+                        "{0},{1},{2},{3},{4},{5},{6},{7},{8}",
                         (int)peakObs.SickCitizens,
                         peakDay,
+                        finalExposed,
                         finalSick,
                         finalRecovered,
                         finalDead,

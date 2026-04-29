@@ -680,12 +680,30 @@ namespace RealTime.Config
         /// <summary>Validates this instance and corrects possible invalid property values.</summary>
         public void Validate()
         {
+            // Repair core Real Time realism features that should be active
+            // These are the fundamental features that provide Real Time functionality
+            IsDynamicDayLengthEnabled = true;
+            UseSlowAging = true;
+            IsWeekendEnabled = true;
+            IsLunchtimeEnabled = true;
+            StopConstructionAtNight = true;
+            SwitchOffLightsAtNight = true;
+            CanAbandonJourney = true;
+            AreEventsEnabled = true;
+
+            // Ensure Static Baseline features don't disable Real Time functionality
+            StaticBaselineDisableRealTimeEvents = false;
+            StaticBaselineDisableTouristLeisure = false;
+
+            // Validate numeric ranges
             WakeUpHour = FastMath.Clamp(WakeUpHour, 4f, 8f);
             GoToSleepHour = FastMath.Clamp(GoToSleepHour, 20f, 23.75f);
 
             DayTimeSpeed = FastMath.Clamp(DayTimeSpeed, 1u, 6u);
             NightTimeSpeed = FastMath.Clamp(NightTimeSpeed, 1u, 6u);
 
+            // Don't force VirtualCitizens to None to avoid performance issues with large cities
+            // The Real Time AI patches remain active regardless
             VirtualCitizens = (VirtualCitizensLevel)FastMath.Clamp((int)VirtualCitizens, (int)VirtualCitizensLevel.None, (int)VirtualCitizensLevel.Vanilla);
             ConstructionSpeed = FastMath.Clamp(ConstructionSpeed, 1u, 100u);
 
