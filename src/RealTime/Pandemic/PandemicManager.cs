@@ -1267,7 +1267,25 @@ namespace RealTime.Pandemic
                     lastStoreTime = tempDateTime;
                 }
 
-                if (Observer.GetSickCitizens() == 0 && initialPopulationExposed.Count == 0 && hadAnySickCitizens)
+                if (pandemicRunStartedAt != default(DateTime) && (currentDateTime - pandemicRunStartedAt).TotalDays >= 30.0)
+                {
+                    try
+                    {
+                        Observer.WriteToDisc(true);
+                        ContactManager.Instance.WriteToDisk();
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning("The 'Real Time' pandemic manager failed to persist 30-day auto-stop output: " + ex);
+                    }
+
+                    // 30 simulation days elapsed — auto-stop.
+                    active = false;
+                    lifecycleState = PandemicLifecycleState.Finished;
+                    pandemicRunFinishedAt = currentDateTime;
+                    Log.Info("The 'Real Time' pandemic manager auto-stopped after 30 simulation days and saved CSV data.");
+                }
+                else if (Observer.GetSickCitizens() == 0 && initialPopulationExposed.Count == 0 && hadAnySickCitizens)
                 {
                     try
                     {

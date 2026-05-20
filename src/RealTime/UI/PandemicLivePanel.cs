@@ -84,6 +84,7 @@ namespace RealTime.UI
 
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
         private DateTime realWorldStartTime;
+        private PandemicLifecycleState lastKnownLifecycleState = PandemicLifecycleState.Dormant;
         private bool collapsed;
         private bool settingsBuilt;
         private bool layoutDirty = true;
@@ -264,6 +265,20 @@ namespace RealTime.UI
 
             PandemicManager manager = PandemicManager.Instance;
             currentSnapshot = manager?.GetLiveSnapshot();
+
+            // Auto-stop: if the simulation just transitioned Running → Finished (30-day limit or
+            // natural burnout), trigger the full export + stop so the user never has to click Stop.
+            PandemicLifecycleState currentLifecycleState = currentSnapshot?.LifecycleState ?? PandemicLifecycleState.Dormant;
+            if (lastKnownLifecycleState == PandemicLifecycleState.Running
+                && currentLifecycleState == PandemicLifecycleState.Finished
+                && manager != null)
+            {
+                ExportSimulationDataToCsv(currentSnapshot);
+                manager.StopPandemic();
+                currentSnapshot = manager.GetLiveSnapshot();
+            }
+            lastKnownLifecycleState = currentLifecycleState;
+
             EnsureSettingsControls();
             RefreshButtons(manager, currentSnapshot);
             RefreshSummary(currentSnapshot);
