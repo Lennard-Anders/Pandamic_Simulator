@@ -24,6 +24,13 @@ namespace RealTime.Pandemic
             prophylacticQuarantine.Clear();
         }
 
+        /// <summary>Clears all process-wide quarantine state when a level-owned manager is released.</summary>
+        internal void ResetForLevelUnload()
+        {
+            Reset();
+            InLockDown = false;
+        }
+
         public void AddCitizenInQuarantine(uint citizenId, DateTime currentTime)
         {
             citizensInQuarantine[citizenId] = currentTime;
@@ -55,6 +62,13 @@ namespace RealTime.Pandemic
                 }
             }
             return citizensInQuarantine.ContainsKey(citizenId) && (currentTime.Ticks - citizensInQuarantine[citizenId].Ticks) / TimeSpan.TicksPerDay <= quarantineDuration;
+        }
+
+        /// <summary>Queries terminal state without expiring or otherwise mutating retained data.</summary>
+        internal bool IsInQuarantineReadOnly(uint citizenId, DateTime currentTime)
+        {
+            return citizensInQuarantine.ContainsKey(citizenId)
+                && (currentTime.Ticks - citizensInQuarantine[citizenId].Ticks) / TimeSpan.TicksPerDay <= quarantineDuration;
         }
 
         public bool HasBeenChecked(uint citizenId)

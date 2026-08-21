@@ -35,6 +35,19 @@ namespace RealTime.Pandemic
             lastPerformedTestNonSick = default;
         }
 
+        /// <summary>Starts a new deterministic testing random stream.</summary>
+        internal void ResetRandom(int seed)
+        {
+            random = new System.Random(seed);
+        }
+
+        /// <summary>Clears references and cached state retained by this process-wide singleton.</summary>
+        internal void ResetForLevelUnload()
+        {
+            Reset();
+            config = null;
+        }
+
         public void Init(Config.RealTimeConfig config, int population, DateTime initialTime)
         {
             Reset();

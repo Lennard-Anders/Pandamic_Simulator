@@ -10,18 +10,24 @@
     <OutputPath>..\bin\Tests\$(Configuration)\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="GitVersionTask" Version="5.2.4">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.9.8">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.164">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RealTime\RealTime.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <TestRuntimeGameAssembly Include="$(CitiesSkylinesBinaries)Assembly-CSharp.dll" />
+    <TestRuntimeGameAssembly Include="$(CitiesSkylinesBinaries)ColossalManaged.dll" />
+    <TestRuntimeGameAssembly Include="$(CitiesSkylinesBinaries)ICities.dll" />
+    <TestRuntimeGameAssembly Include="$(CitiesSkylinesBinaries)UnityEngine.dll" />
+    <TestRuntimeGameAssembly Include="$(CitiesSkylinesBinaries)UnityEngine.UI.dll" />
+  </ItemGroup>
+  <Target Name="CopyCitiesSkylinesTestRuntimeAssemblies" AfterTargets="Build">
+    <Copy
+      SourceFiles="@(TestRuntimeGameAssembly)"
+      DestinationFolder="$(OutputPath)"
+      SkipUnchangedFiles="true" />
+  </Target>
 </Project>

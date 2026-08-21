@@ -32,6 +32,24 @@ namespace RealTime.Pandemic
         public void Init(Config.RealTimeConfig config)
         {
             this.config = config;
+            ResetRuntimeState();
+        }
+
+        /// <summary>Starts a new deterministic contact-tracing random stream.</summary>
+        internal void ResetRandom(int seed)
+        {
+            random = new System.Random(seed);
+        }
+
+        /// <summary>Clears references and cached state retained by this process-wide singleton.</summary>
+        internal void ResetForLevelUnload()
+        {
+            config = null;
+            ResetRuntimeState();
+        }
+
+        private void ResetRuntimeState()
+        {
             contacts.Clear();
             citizensUsingContactTracingBuilding.Clear();
             citizensNotUsingContactTracingBuilding.Clear();
@@ -127,6 +145,29 @@ namespace RealTime.Pandemic
                 return;
             }
 
+            WriteToDisk(Path.Combine(modRoot, "contacts.csv"));
+        }
+
+        /// <summary>Writes the retained contact graph to an explicit run-owned destination.</summary>
+        internal void WriteToDisk(string outputFile)
+        {
+            if (string.IsNullOrEmpty(outputFile))
+            {
+                return;
+            }
+
+            string directory = Path.GetDirectoryName(outputFile);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(outputFile, BuildCsv());
+        }
+
+        /// <summary>Builds the legacy contacts CSV without performing any file-system IO.</summary>
+        internal string BuildCsv()
+        {
             var csv = new StringBuilder();
             csv.AppendLine("citizen_id;contact_id;last_contact_time_ms");
 
@@ -145,7 +186,7 @@ namespace RealTime.Pandemic
             csv.AppendLine($"#recorded_building_contacts;{GetTotalRecordedBuildingContacts()}");
             csv.AppendLine($"#recorded_non_building_contacts;{GetTotalRecordedNonBuildingContacts()}");
 
-            File.WriteAllText(Path.Combine(modRoot, "contacts.csv"), csv.ToString());
+            return csv.ToString();
         }
     }
 }

@@ -7,7 +7,6 @@ namespace RealTime.UI
     using System;
     using System.Collections.Generic;
     using System.Globalization;
-    using System.IO;
     using System.Linq;
     using System.Reflection;
     using System.Text;
@@ -15,6 +14,7 @@ namespace RealTime.UI
     using ColossalFramework.UI;
     using RealTime.Config;
     using RealTime.Core;
+    using RealTime.Experiments;
     using RealTime.Pandemic;
     using SkyTools.Configuration;
     using SkyTools.Tools;
@@ -110,6 +110,7 @@ namespace RealTime.UI
         private UIButton xrayToggleButton;
         private UIButton xrayTypeButton;
         private UIButton xrayBasisButton;
+        private UIButton experimentsButton;
         private PandemicTrendChartView trendChart;
         private PandemicSeirdBarView seirdBarView;
         private UIScrollablePanel detailScroll;
@@ -150,6 +151,8 @@ namespace RealTime.UI
         private UIPanel popLocContentPanel;
 
         private PandemicLiveSnapshot currentSnapshot;
+
+        internal event Action ExperimentsRequested;
 
         public void Enable()
         {
@@ -271,12 +274,15 @@ namespace RealTime.UI
             PandemicLifecycleState currentLifecycleState = currentSnapshot?.LifecycleState ?? PandemicLifecycleState.Dormant;
             if (lastKnownLifecycleState == PandemicLifecycleState.Running
                 && currentLifecycleState == PandemicLifecycleState.Finished
-                && manager != null)
+                && manager != null
+                && !manager.IsBatchRunOwned
+                && !ExperimentControlGate.IsControlLocked)
             {
                 ExportSimulationDataToCsv(currentSnapshot);
                 manager.StopPandemic();
                 currentSnapshot = manager.GetLiveSnapshot();
             }
+
             lastKnownLifecycleState = currentLifecycleState;
 
             EnsureSettingsControls();
@@ -306,13 +312,13 @@ namespace RealTime.UI
             stopButton.eventClicked += (c, e) => OnStopClicked();
 
             maskButton = CreateActionButton(headerPanel, "Masks", (buttonWidth * 2f) + (ButtonSpacing * 2f), 0f, buttonWidth);
-            maskButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleMasks(); Refresh(); };
+            maskButton.eventClicked += (c, e) => { if (CanUseManualControls()) PandemicManager.Instance?.ToggleMasks(); Refresh(); };
 
             quarantineButton = CreateActionButton(headerPanel, "Quarantine", (buttonWidth * 3f) + (ButtonSpacing * 3f), 0f, buttonWidth);
-            quarantineButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleQuarantine(); Refresh(); };
+            quarantineButton.eventClicked += (c, e) => { if (CanUseManualControls()) PandemicManager.Instance?.ToggleQuarantine(); Refresh(); };
 
             lockdownButton = CreateActionButton(headerPanel, "Lockdown", (buttonWidth * 4f) + (ButtonSpacing * 4f), 0f, buttonWidth);
-            lockdownButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleLockdown(); Refresh(); };
+            lockdownButton.eventClicked += (c, e) => { if (CanUseManualControls()) PandemicManager.Instance?.ToggleLockdown(); Refresh(); };
 
             overlayButton = CreateActionButton(headerPanel, "Overlays", 0f, secondRowY, buttonWidth);
             overlayButton.eventClicked += (c, e) => { PandemicManager.Instance?.ToggleWorldOverlays(); Refresh(); };
@@ -325,6 +331,10 @@ namespace RealTime.UI
 
             xrayBasisButton = CreateActionButton(headerPanel, "Basis", (buttonWidth * 3f) + (ButtonSpacing * 3f), secondRowY, buttonWidth);
             xrayBasisButton.eventClicked += (c, e) => { PandemicManager.Instance?.CycleXRayLocationMode(); Refresh(); };
+
+            experimentsButton = CreateActionButton(headerPanel, "Experiments", (buttonWidth * 4f) + (ButtonSpacing * 4f), secondRowY, buttonWidth);
+            experimentsButton.tooltip = "Open automated experiment batches";
+            experimentsButton.eventClicked += (c, e) => ExperimentsRequested?.Invoke();
 
             CreateMetricCards();
 
@@ -504,12 +514,24 @@ namespace RealTime.UI
         {
             if (manager == null || snapshot == null)
             {
+                string unavailableTooltip = ExperimentControlGate.IsControlLocked
+                    ? "Controlled by active experiment batch"
+                    : string.Empty;
                 startRestartButton.text = "Start";
+                startRestartButton.isEnabled = false;
+                startRestartButton.tooltip = unavailableTooltip;
                 stopButton.text = "Stop";
                 stopButton.isEnabled = false;
+                stopButton.tooltip = unavailableTooltip;
                 maskButton.text = "Masks";
                 quarantineButton.text = "Quarantine";
                 lockdownButton.text = "Lockdown";
+                maskButton.isEnabled = false;
+                quarantineButton.isEnabled = false;
+                lockdownButton.isEnabled = false;
+                maskButton.tooltip = unavailableTooltip;
+                quarantineButton.tooltip = unavailableTooltip;
+                lockdownButton.tooltip = unavailableTooltip;
                 overlayButton.text = "Overlays";
                 xrayToggleButton.text = "X-Ray: OFF";
                 xrayTypeButton.text = "Type: Infected";
@@ -522,9 +544,21 @@ namespace RealTime.UI
             startRestartButton.text = snapshot.CanStart ? "Start" : "Restart";
             startRestartButton.color = snapshot.CanStart ? new Color32(30, 140, 200, 255) : new Color32(70, 110, 170, 255);
 
+            bool manualControlsEnabled = !ExperimentControlGate.IsControlLocked && !manager.IsBatchRunOwned;
+            string controlledTooltip = manualControlsEnabled ? string.Empty : "Controlled by active experiment batch";
+            startRestartButton.isEnabled = manualControlsEnabled;
+            maskButton.isEnabled = manualControlsEnabled;
+            quarantineButton.isEnabled = manualControlsEnabled;
+            lockdownButton.isEnabled = manualControlsEnabled;
+            startRestartButton.tooltip = controlledTooltip;
+            stopButton.tooltip = controlledTooltip;
+            maskButton.tooltip = controlledTooltip;
+            quarantineButton.tooltip = controlledTooltip;
+            lockdownButton.tooltip = controlledTooltip;
+
             stopButton.text = "Stop";
-            stopButton.isEnabled = snapshot.CanStop;
-            stopButton.color = snapshot.CanStop ? new Color32(180, 40, 40, 255) : new Color32(84, 84, 84, 255);
+            stopButton.isEnabled = snapshot.CanStop && manualControlsEnabled;
+            stopButton.color = stopButton.isEnabled ? new Color32(180, 40, 40, 255) : new Color32(84, 84, 84, 255);
 
             bool masksOn = manager.IsMasksEnabled();
             bool quarantineOn = manager.IsQuarantineEnabled();
@@ -855,6 +889,26 @@ namespace RealTime.UI
         {
             PandemicManager manager = PandemicManager.Instance;
             RealTimeConfig config = manager?.RuntimeConfig;
+            bool batchControlled = ExperimentControlGate.IsControlLocked || (manager?.IsBatchRunOwned ?? false);
+            bool controlsEnabled = config != null && !batchControlled;
+            if (!controlsEnabled && activeEditingControl != null)
+            {
+                CommitOrCancelNumericEdit(activeEditingControl, applyChanges: false);
+            }
+
+            foreach (PandemicSettingControl control in settingControls)
+            {
+                if (control.ValueButton != null) control.ValueButton.isEnabled = controlsEnabled;
+                if (control.MinusButton != null) control.MinusButton.isEnabled = controlsEnabled;
+                if (control.PlusButton != null) control.PlusButton.isEnabled = controlsEnabled;
+                if (control.Editor != null) control.Editor.isEnabled = controlsEnabled;
+                string controlledTooltip = batchControlled ? "Controlled by active experiment batch" : string.Empty;
+                if (control.ValueButton != null) control.ValueButton.tooltip = controlledTooltip;
+                if (control.MinusButton != null) control.MinusButton.tooltip = controlledTooltip;
+                if (control.PlusButton != null) control.PlusButton.tooltip = controlledTooltip;
+                if (control.Editor != null) control.Editor.tooltip = controlledTooltip;
+            }
+
             if (config == null)
             {
                 return;
@@ -1077,14 +1131,14 @@ namespace RealTime.UI
         private void OnStopClicked()
         {
             PandemicManager manager = PandemicManager.Instance;
-            if (manager == null)
+            if (manager == null || ExperimentControlGate.IsControlLocked || manager.IsBatchRunOwned)
             {
                 return;
             }
 
             ConfirmPanel.ShowModal("Stop Pandemic", "Stop the pandemic simulation and heal all infected citizens?", (component, result) =>
             {
-                if (result == 1)
+                if (result == 1 && CanUseManualControls())
                 {
                     PandemicLiveSnapshot finalSnapshot = manager.GetLiveSnapshot();
                     ExportSimulationDataToCsv(finalSnapshot);
@@ -1098,507 +1152,16 @@ namespace RealTime.UI
         {
             try
             {
-                string modRoot = ModPaths.GetModRoot();
-                if (string.IsNullOrEmpty(modRoot))
+                PandemicManager manager = PandemicManager.Instance;
+                if (manager == null || snapshot == null)
                 {
-                    Log.Warning("The 'Real Time' pandemic data export failed: mod root path could not be resolved.");
                     return;
                 }
 
-                string pandemicDataDir = Path.Combine(modRoot, "Pandemic Data");
-                if (!Directory.Exists(pandemicDataDir))
-                {
-                    Directory.CreateDirectory(pandemicDataDir);
-                }
-
-                DateTime realEnd = DateTime.Now;
-                TimeSpan elapsed = realWorldStartTime == default(DateTime)
-                    ? TimeSpan.Zero
-                    : realEnd - realWorldStartTime;
-
-                string timestamp = realEnd.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
-                string fileName = "pandemic_run_" + timestamp + ".csv";
-                string filePath = Path.Combine(pandemicDataDir, fileName);
-
-                var sb = new StringBuilder();
-
-                // --- Run Metadata ---
-                PandemicManager manager = PandemicManager.Instance;
-                DateTime gameStart = manager != null ? manager.GetPandemicRunStartedAt() : default(DateTime);
-                DateTime gameEnd = snapshot?.SimulationTime ?? default(DateTime);
-
-                sb.AppendLine("[RUN METADATA]");
-                sb.AppendLine("start_wall_time,end_wall_time,elapsed_wall_seconds,game_start_time,game_end_time,pandemic_day,lifecycle_state");
-                sb.AppendFormat(
-                    CultureInfo.InvariantCulture,
-                    "{0},{1},{2},{3},{4},{5},{6}",
-                    realWorldStartTime == default(DateTime) ? "unknown" : realWorldStartTime.ToString("o", CultureInfo.InvariantCulture),
-                    realEnd.ToString("o", CultureInfo.InvariantCulture),
-                    Math.Round(elapsed.TotalSeconds, 1).ToString(CultureInfo.InvariantCulture),
-                    gameStart == default(DateTime) ? "unknown" : gameStart.ToString("o", CultureInfo.InvariantCulture),
-                    gameEnd == default(DateTime) ? "unknown" : gameEnd.ToString("o", CultureInfo.InvariantCulture),
-                    snapshot?.PandemicDay.ToString(CultureInfo.InvariantCulture) ?? "0",
-                    snapshot?.LifecycleState.ToString() ?? "Unknown");
-                sb.AppendLine();
-                sb.AppendLine();
-
-                // --- Core Metrics ---
-                sb.AppendLine("[CORE METRICS]");
-                sb.AppendLine("tracked_population,healthy,exposed,sick,recovered,dead,delta_sick,delta_recovered,delta_dead,quarantine_citizens,positive_tests,tested_citizens,contacts_tracked_citizens,contacts_tracked_pairs,contacts_recorded_total,transmissions_total,transmissions_indoor,transmissions_outdoor,transmissions_vehicle,hotspot_buildings,hub_buildings,hospital_usage_pct,ambulance_usage_pct,observation_count");
-                if (snapshot != null)
-                {
-                    sb.AppendFormat(
-                        CultureInfo.InvariantCulture,
-                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22},{23}",
-                        snapshot.TrackedPopulation,
-                        snapshot.Healthy,
-                        snapshot.Exposed,
-                        snapshot.Sick,
-                        snapshot.Recovered,
-                        snapshot.Dead,
-                        snapshot.DeltaSick,
-                        snapshot.DeltaRecovered,
-                        snapshot.DeltaDead,
-                        snapshot.QuarantineCitizens,
-                        snapshot.PositiveTests,
-                        snapshot.TestedCitizens,
-                        snapshot.ContactsTrackedCitizens,
-                        snapshot.ContactsTrackedPairs,
-                        snapshot.ContactsRecordedTotal,
-                        snapshot.TransmissionsTotal,
-                        snapshot.TransmissionsIndoor,
-                        snapshot.TransmissionsOutdoor,
-                        snapshot.TransmissionsVehicle,
-                        snapshot.HotspotBuildings,
-                        snapshot.HubBuildings,
-                        snapshot.HospitalUsagePercent.ToString("F2", CultureInfo.InvariantCulture),
-                        snapshot.AmbulanceUsagePercent.ToString("F2", CultureInfo.InvariantCulture),
-                        snapshot.ObservationCount);
-                    sb.AppendLine();
-                }
-                else
-                {
-                    sb.AppendLine("0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,0.00,0");
-                }
-
-                sb.AppendLine();
-
-                // --- Policy State ---
-                sb.AppendLine("[POLICY STATE]");
-                sb.AppendLine("policy,enabled");
-                if (manager != null)
-                {
-                    sb.AppendLine("Masks," + (manager.IsMasksEnabled() ? "1" : "0"));
-                    sb.AppendLine("Quarantine," + (manager.IsQuarantineEnabled() ? "1" : "0"));
-                    sb.AppendLine("Lockdown," + (manager.IsLockdownEnabled() ? "1" : "0"));
-                    sb.AppendLine("WorldOverlays," + (manager.AreWorldOverlaysEnabled() ? "1" : "0"));
-                }
-
-                sb.AppendLine();
-
-                // --- Age Groups ---
-                sb.AppendLine("[AGE GROUPS]");
-                sb.AppendLine("age_group,infected_count,infected_percent");
-                if (snapshot?.AgeGroups != null)
-                {
-                    foreach (var age in snapshot.AgeGroups)
-                    {
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2}",
-                            CsvEscape(age.Label),
-                            age.InfectedCount,
-                            age.InfectedPercent.ToString("F2", CultureInfo.InvariantCulture));
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Lockdown Families ---
-                sb.AppendLine("[LOCKDOWN FAMILIES]");
-                sb.AppendLine("family,is_closed,infected_pct,threshold_pct,manual_closed");
-                if (snapshot?.LockdownFamilies != null)
-                {
-                    foreach (var family in snapshot.LockdownFamilies)
-                    {
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3},{4}",
-                            CsvEscape(family.Label),
-                            family.IsClosed ? "1" : "0",
-                            family.CurrentInfectedPercent.ToString("F2", CultureInfo.InvariantCulture),
-                            family.AutoCloseThresholdPercent.ToString("F2", CultureInfo.InvariantCulture),
-                            family.ManualClosed ? "1" : "0");
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Infection Origins ---
-                sb.AppendLine("[INFECTION ORIGINS]");
-                sb.AppendLine("origin,count,percent");
-                if (snapshot?.Origins != null)
-                {
-                    foreach (var origin in snapshot.Origins.OrderByDescending(o => o.Count))
-                    {
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2}",
-                            CsvEscape(origin.Label),
-                            origin.Count,
-                            origin.Percent.ToString("F2", CultureInfo.InvariantCulture));
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- District Infection Rates ---
-                sb.AppendLine("[DISTRICT INFECTION RATES]");
-                sb.AppendLine("district_name,district_id,infected_residents,resident_count,infected_percent");
-                if (snapshot?.Districts != null)
-                {
-                    foreach (var district in snapshot.Districts)
-                    {
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3},{4}",
-                            CsvEscape(district.DistrictName),
-                            district.DistrictId,
-                            district.InfectedResidents,
-                            district.ResidentCount,
-                            district.InfectedPercent.ToString("F2", CultureInfo.InvariantCulture));
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Top Spreaders ---
-                sb.AppendLine("[TOP SPREADERS]");
-                sb.AppendLine("rank,label,infection_count,is_superspreader");
-                if (snapshot?.TopSpreaders != null)
-                {
-                    for (int i = 0; i < snapshot.TopSpreaders.Count; i++)
-                    {
-                        var spreader = snapshot.TopSpreaders[i];
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3}",
-                            i + 1,
-                            CsvEscape(spreader.Label),
-                            spreader.InfectionCount,
-                            spreader.IsSuperspreader ? "1" : "0");
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Top Origin Locations ---
-                sb.AppendLine("[TOP ORIGIN LOCATIONS]");
-                sb.AppendLine("rank,label,infection_count,is_superspreader");
-                if (snapshot?.TopOriginLocations != null)
-                {
-                    for (int i = 0; i < snapshot.TopOriginLocations.Count; i++)
-                    {
-                        var location = snapshot.TopOriginLocations[i];
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3}",
-                            i + 1,
-                            CsvEscape(location.Label),
-                            location.InfectionCount,
-                            location.IsSuperspreader ? "1" : "0");
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- SEIRD Time Series ---
-                IList<PandemicObservation> seirdObs = manager?.GetAllObservations();
-                List<PandemicObservation> sortedSeird = seirdObs != null && seirdObs.Count > 0
-                    ? seirdObs.OrderBy(o => o.SimulationTime).ToList()
-                    : new List<PandemicObservation>();
-
-                sb.AppendLine("[SEIRD TIME SERIES]");
-                sb.AppendLine("sim_time,pandemic_day,healthy,exposed,sick,recovered,dead,total,delta_sick,delta_dead");
-                {
-                    int prevSick = 0;
-                    int prevDead = 0;
-                    foreach (PandemicObservation obs in sortedSeird)
-                    {
-                        int sick = (int)obs.SickCitizens;
-                        int dead = (int)obs.DeadCitizens;
-                        int exposed = (int)obs.ExposedCitizens;
-                        int total = (int)(obs.HealthyCitizens + obs.ExposedCitizens + obs.SickCitizens + obs.RecoveredCitizens + obs.DeadCitizens);
-                        int day = gameStart == default(DateTime) ? 0
-                            : Math.Max(1, (int)Math.Floor((obs.SimulationTime - gameStart).TotalDays) + 1);
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}",
-                            obs.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
-                            day,
-                            obs.HealthyCitizens,
-                            exposed,
-                            sick,
-                            obs.RecoveredCitizens,
-                            dead,
-                            total,
-                            sick - prevSick,
-                            dead - prevDead);
-                        sb.AppendLine();
-                        prevSick = sick;
-                        prevDead = dead;
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Policy Timeline ---
-                sb.AppendLine("[POLICY TIMELINE]");
-                sb.AppendLine("sim_time,pandemic_day,policy_type,enabled,short_label");
-                if (snapshot?.PolicyMarkers != null)
-                {
-                    foreach (PandemicPolicyMarkerSnapshot marker in snapshot.PolicyMarkers)
-                    {
-                        int day = gameStart == default(DateTime) ? 0
-                            : Math.Max(1, (int)Math.Floor((marker.SimulationTime - gameStart).TotalDays) + 1);
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3},{4}",
-                            marker.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
-                            day,
-                            marker.Type.ToString(),
-                            marker.Enabled ? "1" : "0",
-                            CsvEscape(marker.ShortLabel ?? marker.Type.ToString()));
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Healthcare Time Series (last ~7 game days) ---
-                sb.AppendLine("[HEALTHCARE TIME SERIES]");
-                sb.AppendLine("sim_time,pandemic_day,hospital_usage_pct,ambulance_usage_pct");
-                IList<PandemicHealthcareTimePoint> hcSeries = manager?.GetHealthcareTimeSeries();
-                if (hcSeries != null)
-                {
-                    foreach (PandemicHealthcareTimePoint hc in hcSeries.OrderBy(h => h.SimulationTime))
-                    {
-                        int day = gameStart == default(DateTime) ? 0
-                            : Math.Max(1, (int)Math.Floor((hc.SimulationTime - gameStart).TotalDays) + 1);
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3}",
-                            hc.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
-                            day,
-                            hc.HospitalUsagePercent.ToString("F2", CultureInfo.InvariantCulture),
-                            hc.AmbulanceUsagePercent.ToString("F2", CultureInfo.InvariantCulture));
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Peak Statistics ---
-                sb.AppendLine("[PEAK STATISTICS]");
-                sb.AppendLine("peak_sick_count,peak_sick_day,final_exposed,final_sick,final_recovered,final_dead,total_tracked,attack_rate_pct,case_fatality_rate_pct");
-                if (sortedSeird.Count > 0)
-                {
-                    PandemicObservation peakObs = sortedSeird.OrderByDescending(o => o.SickCitizens).First();
-                    int peakDay = gameStart == default(DateTime) ? 0
-                        : Math.Max(1, (int)Math.Floor((peakObs.SimulationTime - gameStart).TotalDays) + 1);
-                    PandemicObservation lastObs = sortedSeird[sortedSeird.Count - 1];
-                    int finalExposed = (int)lastObs.ExposedCitizens;
-                    int finalSick = (int)lastObs.SickCitizens;
-                    int finalRecovered = (int)lastObs.RecoveredCitizens;
-                    int finalDead = (int)lastObs.DeadCitizens;
-                    int totalTracked = finalExposed + finalSick + finalRecovered + finalDead + (int)lastObs.HealthyCitizens;
-                    int everInfected = finalExposed + finalSick + finalRecovered + finalDead;
-                    float attackRate = totalTracked > 0 ? (float)everInfected / totalTracked * 100f : 0f;
-                    float cfr = (finalRecovered + finalDead) > 0
-                        ? (float)finalDead / (finalRecovered + finalDead) * 100f
-                        : 0f;
-                    sb.AppendFormat(
-                        CultureInfo.InvariantCulture,
-                        "{0},{1},{2},{3},{4},{5},{6},{7},{8}",
-                        (int)peakObs.SickCitizens,
-                        peakDay,
-                        finalExposed,
-                        finalSick,
-                        finalRecovered,
-                        finalDead,
-                        totalTracked,
-                        attackRate.ToString("F2", CultureInfo.InvariantCulture),
-                        cfr.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendLine();
-                }
-
-                sb.AppendLine();
-
-                // --- Pandemic Settings (all config parameters from the UI) ---
-                RealTimeConfig cfg = manager?.RuntimeConfig;
-                sb.AppendLine("[PANDEMIC SETTINGS]");
-                sb.AppendLine("parameter,value");
-                if (cfg != null)
-                {
-                    // Disease properties
-                    sb.AppendLine("DiseaseDuration,"          + cfg.DiseaseDuration);
-                    sb.AppendLine("DetectionTime,"            + cfg.DetectionTime);
-                    sb.AppendLine("StartSymptoms,"            + cfg.StartSymptoms);
-                    sb.AppendLine("EndSymptoms,"              + cfg.EndSymptoms);
-                    sb.AppendLine("StartInfection,"           + cfg.StartInfection);
-                    sb.AppendLine("EndInfection,"             + cfg.EndInfection);
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "IndoorTransmissionProbability,{0}" + Environment.NewLine,
-                        cfg.IndoorDiseaseTransmissionProbability.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "OutdoorTransmissionProbability,{0}" + Environment.NewLine,
-                        cfg.OutdoorDiseaseTransmissionProbability.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "TransmissionRange,{0}" + Environment.NewLine,
-                        cfg.DiseaseTransmissionRange.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "InitialInfectionRatio,{0}" + Environment.NewLine,
-                        cfg.DiseaseStartInfectionRatio.ToString("F2", CultureInfo.InvariantCulture));
-                    // Death rates by age
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "DeathRateChild,{0}" + Environment.NewLine,
-                        cfg.DeathChild.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "DeathRateTeen,{0}" + Environment.NewLine,
-                        cfg.DeathTeen.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "DeathRateYoung,{0}" + Environment.NewLine,
-                        cfg.DeathYoung.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "DeathRateAdult,{0}" + Environment.NewLine,
-                        cfg.DeathAdult.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "DeathRateSenior,{0}" + Environment.NewLine,
-                        cfg.DeathSenior.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "SymptomProbability,{0}" + Environment.NewLine,
-                        cfg.SymptomProbability.ToString("F2", CultureInfo.InvariantCulture));
-                    // Mask settings
-                    sb.AppendLine("TransmissionProbabilityReduction," + cfg.TransmissionProbabilityReduction);
-                    sb.AppendLine("RatioIgnoreMasks,"              + cfg.RatioIgnoreMasks);
-                    sb.AppendLine("RatioOtherProtectionMask,"      + cfg.RatioOtherProtectionMask);
-                    sb.AppendLine("RatioOwnProtectionMask,"        + cfg.RatioOwnProtectionMask);
-                    sb.AppendLine("MaskBehavior,"                  + cfg.MaskBehavior.ToString());
-                    // Contact tracing
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "BuildingContactTracingProbability,{0}" + Environment.NewLine,
-                        cfg.BuildingContactTracingProbability.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "AppBasedContactTracingProbability,{0}" + Environment.NewLine,
-                        cfg.AppBasedContactTracingProbability.ToString("F2", CultureInfo.InvariantCulture));
-                    // Testing
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "RelativeTestCapacity,{0}" + Environment.NewLine,
-                        cfg.RelativeTestCapacity.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendFormat(CultureInfo.InvariantCulture,
-                        "PercentOfTestsForSick,{0}" + Environment.NewLine,
-                        cfg.PercentageOfTestsReservedForSickCitizens.ToString("F2", CultureInfo.InvariantCulture));
-                    sb.AppendLine("MaximumTestDuration,"           + cfg.MaximumTestDuration);
-                    sb.AppendLine("MinimumTestDuration,"           + cfg.MinimumTestDuration);
-                    // Quarantine & lockdown
-                    sb.AppendLine("QuarantineBehavior,"            + cfg.QuarantineBehavior.ToString());
-                    sb.AppendLine("OnlyTestedCitizensToQuarantine," + (cfg.OnlyTestedCitizensToQuarantine ? "1" : "0"));
-                    sb.AppendLine("LockdownBehavior,"              + cfg.LockdownBehavior.ToString());
-                    // Superspreader thresholds
-                    sb.AppendLine("HubHighlightThreshold,"             + cfg.HubHighlightThreshold);
-                    sb.AppendLine("SuperspreaderCitizenThreshold,"     + cfg.SuperspreaderCitizenThreshold);
-                    sb.AppendLine("SuperspreaderLocationThreshold,"    + cfg.SuperspreaderLocationThreshold);
-                }
-
-                sb.AppendLine();
-
-                // --- Infection Origins Time Series ---
-                var allObsForOrigins = manager?.GetAllObservations();
-                sb.AppendLine("[INFECTION ORIGINS TIME SERIES]");
-                sb.AppendLine("sim_time,pandemic_day,home,work,school,healthcare,commercial,transit,outdoor,other");
-                if (allObsForOrigins != null && allObsForOrigins.Count > 0)
-                {
-                    foreach (PandemicObservation obs in allObsForOrigins.OrderBy(o => o.SimulationTime))
-                    {
-                        int cHome = 0, cWork = 0, cSchool = 0, cHealthcare = 0;
-                        int cCommercial = 0, cTransit = 0, cOutdoor = 0, cOther = 0;
-
-                        foreach (var kvp in obs.Infections)
-                        {
-                            foreach (Infection inf in kvp.Value)
-                            {
-                                switch (inf.OriginCategory)
-                                {
-                                    case PandemicInfectionOriginCategory.ResidentialHome:          cHome++;       break;
-                                    case PandemicInfectionOriginCategory.WorkplaceOfficeIndustry:  cWork++;       break;
-                                    case PandemicInfectionOriginCategory.SchoolUniversity:         cSchool++;     break;
-                                    case PandemicInfectionOriginCategory.Healthcare:               cHealthcare++; break;
-                                    case PandemicInfectionOriginCategory.CommercialLeisureTourism: cCommercial++; break;
-                                    case PandemicInfectionOriginCategory.OutdoorStreet:            cOutdoor++;    break;
-                                    case PandemicInfectionOriginCategory.Bus:
-                                    case PandemicInfectionOriginCategory.Tram:
-                                    case PandemicInfectionOriginCategory.Metro:
-                                    case PandemicInfectionOriginCategory.Train:
-                                    case PandemicInfectionOriginCategory.ShipFerry:
-                                    case PandemicInfectionOriginCategory.Plane:
-                                    case PandemicInfectionOriginCategory.Taxi:
-                                    case PandemicInfectionOriginCategory.CarOtherVehicle:
-                                    case PandemicInfectionOriginCategory.StopPlatform:             cTransit++;    break;
-                                    default:                                                        cOther++;      break;
-                                }
-                            }
-                        }
-
-                        int originDay = gameStart == default(DateTime) ? 0
-                            : Math.Max(1, (int)Math.Floor((obs.SimulationTime - gameStart).TotalDays) + 1);
-
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}",
-                            obs.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
-                            originDay,
-                            cHome, cWork, cSchool, cHealthcare, cCommercial, cTransit, cOutdoor, cOther);
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                // --- Citizen Locations Time Series ---
-                var allObsForLoc = manager?.GetAllObservations();
-                sb.AppendLine("[CITIZEN LOCATIONS TIME SERIES]");
-                sb.AppendLine("sim_time,pandemic_day,game_hour,at_home,at_work,visiting,in_transit,on_foot");
-                if (allObsForLoc != null && allObsForLoc.Count > 0)
-                {
-                    foreach (PandemicObservation obs in allObsForLoc.OrderBy(o => o.SimulationTime))
-                    {
-                        int locDay = gameStart == default(DateTime) ? 0
-                            : Math.Max(1, (int)Math.Floor((obs.SimulationTime - gameStart).TotalDays) + 1);
-                        sb.AppendFormat(
-                            CultureInfo.InvariantCulture,
-                            "{0},{1},{2},{3},{4},{5},{6},{7}",
-                            obs.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
-                            locDay,
-                            obs.SimulationTime.Hour,
-                            obs.CitizensAtHome,
-                            obs.CitizensAtWork,
-                            obs.CitizensVisiting,
-                            obs.CitizensInTransit,
-                            obs.CitizensOnFoot);
-                        sb.AppendLine();
-                    }
-                }
-
-                sb.AppendLine();
-
-                File.WriteAllText(filePath, sb.ToString());
-                Log.Info("The 'Real Time' pandemic run data was exported to: " + filePath);
+                PandemicOutputContext output = manager.CurrentRunContext?.Output ?? PandemicOutputContext.CreateManual();
+                PandemicRunExportResult result = PandemicRunExportService.Instance.Export(
+                    new PandemicRunExportRequest(manager, snapshot, output, realWorldStartTime, DateTime.Now));
+                Log.Info("The 'Real Time' pandemic run data was exported to: " + result.RichCsvPath);
             }
             catch (Exception ex)
             {
@@ -1606,25 +1169,10 @@ namespace RealTime.UI
             }
         }
 
-        private static string CsvEscape(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return string.Empty;
-            }
-
-            if (value.IndexOf(',') >= 0 || value.IndexOf('"') >= 0 || value.IndexOf('\n') >= 0)
-            {
-                return "\"" + value.Replace("\"", "\"\"") + "\"";
-            }
-
-            return value;
-        }
-
         private void OnStartRestartClicked()
         {
             PandemicManager manager = PandemicManager.Instance;
-            if (manager == null)
+            if (manager == null || ExperimentControlGate.IsControlLocked || manager.IsBatchRunOwned)
             {
                 return;
             }
@@ -1639,13 +1187,19 @@ namespace RealTime.UI
 
             ConfirmPanel.ShowModal(RestartDialogTitle, RestartDialogMessage, (component, result) =>
             {
-                if (result == 1)
+                if (result == 1 && CanUseManualControls())
                 {
                     realWorldStartTime = DateTime.Now;
                     manager.RestartSimulation();
                     Refresh();
                 }
             });
+        }
+
+        private static bool CanUseManualControls()
+        {
+            return !ExperimentControlGate.IsControlLocked
+                && !(PandemicManager.Instance?.IsBatchRunOwned ?? false);
         }
 
         private void FocusSpreader(int index)
@@ -1795,7 +1349,8 @@ namespace RealTime.UI
 
         private void BeginNumericEdit(PandemicSettingControl control)
         {
-            if (control?.Slider == null || control.Editor == null)
+            if (ExperimentControlGate.IsControlLocked || PandemicManager.Instance?.IsBatchRunOwned == true
+                || control?.Slider == null || control.Editor == null)
             {
                 return;
             }
@@ -1862,6 +1417,11 @@ namespace RealTime.UI
 
         private bool TryApplyNumericInput(PandemicSettingControl control, string rawText)
         {
+            if (ExperimentControlGate.IsControlLocked || PandemicManager.Instance?.IsBatchRunOwned == true)
+            {
+                return false;
+            }
+
             PandemicManager manager = PandemicManager.Instance;
             RealTimeConfig config = manager?.RuntimeConfig;
             if (config == null || control?.Slider == null)
@@ -1990,6 +1550,11 @@ namespace RealTime.UI
 
         private void AdjustNumericSetting(PandemicSettingControl control, int direction)
         {
+            if (ExperimentControlGate.IsControlLocked || PandemicManager.Instance?.IsBatchRunOwned == true)
+            {
+                return;
+            }
+
             PandemicManager manager = PandemicManager.Instance;
             RealTimeConfig config = manager?.RuntimeConfig;
             if (config == null || control?.Slider == null)
@@ -2041,6 +1606,11 @@ namespace RealTime.UI
 
         private void ToggleSetting(PandemicSettingControl control)
         {
+            if (ExperimentControlGate.IsControlLocked || PandemicManager.Instance?.IsBatchRunOwned == true)
+            {
+                return;
+            }
+
             PandemicManager manager = PandemicManager.Instance;
             RealTimeConfig config = manager?.RuntimeConfig;
             if (config == null || control == null)
@@ -2056,6 +1626,11 @@ namespace RealTime.UI
 
         private void CycleSetting(PandemicSettingControl control)
         {
+            if (ExperimentControlGate.IsControlLocked || PandemicManager.Instance?.IsBatchRunOwned == true)
+            {
+                return;
+            }
+
             PandemicManager manager = PandemicManager.Instance;
             RealTimeConfig config = manager?.RuntimeConfig;
             if (config == null || control == null)

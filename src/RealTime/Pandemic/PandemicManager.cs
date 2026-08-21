@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using RealTime.CustomAI;
+using RealTime.Experiments;
 using RealTime.GameConnection;
 using SkyTools.Tools;
 using UnityEngine;
@@ -32,6 +33,9 @@ namespace RealTime.Pandemic
         private DateTime currentDateTime;
         private DateTime pandemicRunStartedAt;
         private DateTime pandemicRunFinishedAt;
+        private PandemicRunContext runContext;
+        private PandemicCompletionReason completionReason;
+        private bool frozenForFinalization;
         private bool hadAnySickCitizens;
 
         private List<uint> initialPopulation = new List<uint>();
@@ -257,13 +261,16 @@ namespace RealTime.Pandemic
             BuildingMgr = connections.BuildingManager;
 
             Config = config;
-            EnsureRuntimeConfigDefaults();
+            NormalizeRuntimeConfiguration(Config);
 
             bool initialized = CitizenMgr != null && CitizenProxy != null && BuildingMgr != null;
             active = false;
             lifecycleState = PandemicLifecycleState.Dormant;
             pandemicRunStartedAt = default(DateTime);
             pandemicRunFinishedAt = default(DateTime);
+            runContext = null;
+            completionReason = PandemicCompletionReason.None;
+            frozenForFinalization = false;
             if (!initialized)
             {
                 Log.Warning("The 'Real Time' pandemic manager could not be activated because one or more game connections are missing.");
@@ -300,9 +307,43 @@ namespace RealTime.Pandemic
 
         public bool StartPandemic()
         {
+            if (ExperimentControlGate.IsControlLocked)
+            {
+                return false;
+            }
+
             if (lifecycleState == PandemicLifecycleState.Running)
             {
                 return true;
+            }
+
+            runContext = PandemicRunContext.CreateManual(DateTime.Now);
+            BootstrapSimulation(QuarantineManager.Instance.InLockDown);
+            return lifecycleState == PandemicLifecycleState.Running;
+        }
+
+        /// <summary>Starts a controller-owned run with explicit policy, outputs, and random streams.</summary>
+        internal bool StartPandemic(PandemicRunContext context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            if (!context.IsBatch)
+            {
+                throw new ArgumentException("The controller-owned start entry point requires a batch run context.", nameof(context));
+            }
+
+            if (lifecycleState == PandemicLifecycleState.Running)
+            {
+                return ReferenceEquals(runContext, context);
+            }
+
+            runContext = context;
+            if (context.ComponentSeeds != null)
+            {
+                ResetRandomState(context.ComponentSeeds);
             }
 
             BootstrapSimulation(QuarantineManager.Instance.InLockDown);
@@ -311,16 +352,67 @@ namespace RealTime.Pandemic
 
         public bool RestartSimulation()
         {
+            if (ExperimentControlGate.IsControlLocked)
+            {
+                return false;
+            }
+
             bool lockdownEnabled = QuarantineManager.Instance.InLockDown;
+            runContext = PandemicRunContext.CreateManual(DateTime.Now);
+            BootstrapSimulation(lockdownEnabled);
+            return lifecycleState == PandemicLifecycleState.Running;
+        }
+
+        /// <summary>Restarts from the current city state under a controller-owned context.</summary>
+        internal bool RestartSimulation(PandemicRunContext context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            if (!context.IsBatch)
+            {
+                throw new ArgumentException("The controller-owned restart entry point requires a batch run context.", nameof(context));
+            }
+
+            bool lockdownEnabled = QuarantineManager.Instance.InLockDown;
+            runContext = context;
+            if (context.ComponentSeeds != null)
+            {
+                ResetRandomState(context.ComponentSeeds);
+            }
+
             BootstrapSimulation(lockdownEnabled);
             return lifecycleState == PandemicLifecycleState.Running;
         }
 
         public void StopPandemic()
         {
-            if (lifecycleState == PandemicLifecycleState.Dormant)
+            if (ExperimentControlGate.IsControlLocked)
             {
                 return;
+            }
+
+            StopPandemicCore();
+        }
+
+        private void StopPandemicCore()
+        {
+            if (lifecycleState == PandemicLifecycleState.Dormant)
+            {
+                // A bootstrap attempt can fail before the lifecycle leaves Dormant. Release its
+                // controller-owned context as well so an aborted batch cannot remain latched.
+                active = false;
+                startCompleted = false;
+                frozenForFinalization = false;
+                runContext = null;
+                return;
+            }
+
+            if (completionReason == PandemicCompletionReason.None)
+            {
+                completionReason = PandemicCompletionReason.ManualStop;
             }
 
             try
@@ -354,6 +446,63 @@ namespace RealTime.Pandemic
             active = false;
             startCompleted = false;
             lifecycleState = PandemicLifecycleState.Dormant;
+            frozenForFinalization = false;
+            runContext = null;
+        }
+
+        /// <summary>Freezes a batch run at its terminal snapshot without healing citizens or clearing metrics.</summary>
+        internal bool FreezeForBatchFinalization(PandemicCompletionReason reason)
+        {
+            if (runContext == null || !runContext.IsBatch)
+            {
+                return false;
+            }
+
+            if (IsAwaitingBatchFinalization)
+            {
+                return true;
+            }
+
+            if (lifecycleState != PandemicLifecycleState.Running)
+            {
+                throw new InvalidOperationException("Only a running batch can be frozen for finalization.");
+            }
+
+            if (reason == PandemicCompletionReason.None || reason == PandemicCompletionReason.ManualStop)
+            {
+                throw new ArgumentOutOfRangeException(nameof(reason));
+            }
+
+            FreezeRun(reason);
+            return true;
+        }
+
+        /// <summary>Performs destructive cleanup only after the batch controller has durably finalized exports.</summary>
+        internal void CompleteBatchFinalization()
+        {
+            if (runContext != null && runContext.IsBatch)
+            {
+                if (!IsAwaitingBatchFinalization)
+                {
+                    throw new InvalidOperationException("The batch must be frozen and exported before final cleanup.");
+                }
+
+                StopPandemicCore();
+            }
+        }
+
+        /// <summary>Stops and cleans up a controller-owned run that cannot be finalized normally.</summary>
+        internal void AbortBatchRun()
+        {
+            if (runContext != null && runContext.IsBatch)
+            {
+                if (completionReason == PandemicCompletionReason.None)
+                {
+                    completionReason = PandemicCompletionReason.Aborted;
+                }
+
+                StopPandemicCore();
+            }
         }
 
         private void BootstrapSimulation(bool lockdownEnabled)
@@ -371,6 +520,8 @@ namespace RealTime.Pandemic
                 currentDateTime = simulation.m_currentGameTime;
                 pandemicRunStartedAt = currentDateTime;
                 pandemicRunFinishedAt = default(DateTime);
+                completionReason = PandemicCompletionReason.None;
+                frozenForFinalization = false;
                 SeedPolicyTimeline();
 
                 Citizen[] citizens = CitizenMgr.GetCitizensArray();
@@ -461,15 +612,7 @@ namespace RealTime.Pandemic
                 Observer.FinishObservations(currentDateTime);
                 CaptureHealthcareUsageSample(currentDateTime, citizens);
 
-                try
-                {
-                    Observer.WriteToDisc(true);
-                    ContactManager.Instance.WriteToDisk();
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning("The 'Real Time' pandemic manager failed to persist initial observer output: " + ex);
-                }
+                PersistRunSnapshot(force: true, "initial");
 
                 TestManager.Instance.Init(Config, initialPopulation.Count, currentDateTime);
                 QuarantineManager.Instance.InLockDown = lockdownEnabled;
@@ -498,7 +641,7 @@ namespace RealTime.Pandemic
                 return false;
             }
 
-            EnsureRuntimeConfigDefaults();
+            NormalizeRuntimeConfiguration(Config);
             active = false;
             if (Observer == null)
             {
@@ -536,6 +679,73 @@ namespace RealTime.Pandemic
             QuarantineManager.Instance.InLockDown = lockdownEnabled;
         }
 
+        /// <summary>Reseeds every <see cref="System.Random"/> stream owned by the TENUS pandemic.</summary>
+        internal void ResetRandomState(PandemicComponentSeeds seeds)
+        {
+            if (seeds == null)
+            {
+                throw new ArgumentNullException(nameof(seeds));
+            }
+
+            random = new System.Random(seeds.PandemicManagerSeed);
+            Masks.ResetRandom(seeds.MaskManagerSeed);
+            TestManager.Instance.ResetRandom(seeds.TestManagerSeed);
+            ContactManager.Instance.ResetRandom(seeds.ContactManagerSeed);
+        }
+
+        private void PersistRunSnapshot(bool force, string phase)
+        {
+            PandemicOutputContext output = runContext?.Output;
+            if (runContext?.IsBatch == true || output == null || !output.WriteManagerSnapshots)
+            {
+                return;
+            }
+
+            try
+            {
+                Observer?.WriteToDisc(force, output.ObserverCsvPath);
+                ContactManager.Instance.WriteToDisk(output.ContactsCsvPath);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("The 'Real Time' pandemic manager failed to persist " + phase + " observer output: " + ex);
+            }
+        }
+
+        private void FreezeRun(PandemicCompletionReason reason)
+        {
+            if (frozenForFinalization)
+            {
+                return;
+            }
+
+            active = false;
+            lifecycleState = PandemicLifecycleState.Finished;
+            pandemicRunFinishedAt = currentDateTime != default(DateTime)
+                ? currentDateTime
+                : simulation != null ? simulation.m_currentGameTime : DateTime.Now;
+            completionReason = reason;
+            Observer?.Freeze();
+
+            // Force one final coherent analytics snapshot while Update still owns the simulation pause.
+            cachedAnalyticsInfectionCount = -1;
+            cachedSuperspreaderInfectionCount = -1;
+            nextAnalyticsSnapshotRefreshTime = 0f;
+            nextSuperspreaderSnapshotRefreshTime = 0f;
+            try
+            {
+                GetLiveSnapshot();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("The 'Real Time' pandemic manager could not refresh every terminal analytics view: " + ex);
+            }
+            finally
+            {
+                frozenForFinalization = true;
+            }
+        }
+
         internal PandemicPublicTransportShutdownState GetPublicTransportShutdownState() => publicTransportShutdownState;
 
         internal bool ShouldBlockPublicTransportDepotSpawn(ushort buildingId, VehicleInfo vehicleInfo)
@@ -558,7 +768,8 @@ namespace RealTime.Pandemic
 
         internal void NotifyPublicTransportVehicleArrivedAtTarget(ushort vehicleId, ref Vehicle vehicle)
         {
-            if (publicTransportShutdownState != PandemicPublicTransportShutdownState.Draining
+            if (IsAwaitingBatchFinalization
+                || publicTransportShutdownState != PandemicPublicTransportShutdownState.Draining
                 || !IsPublicTransportVehicle(vehicleId, ref vehicle))
             {
                 return;
@@ -588,7 +799,8 @@ namespace RealTime.Pandemic
 
         internal void NotifyPublicTransportVehicleArrivedAtSource(ushort vehicleId, ref Vehicle vehicle)
         {
-            if (publicTransportShutdownState == PandemicPublicTransportShutdownState.Open
+            if (IsAwaitingBatchFinalization
+                || publicTransportShutdownState == PandemicPublicTransportShutdownState.Open
                 || !IsPublicTransportVehicle(vehicleId, ref vehicle))
             {
                 return;
@@ -1071,6 +1283,11 @@ namespace RealTime.Pandemic
 
         public void Update()
         {
+            if (IsAwaitingBatchFinalization)
+            {
+                return;
+            }
+
             long tickStart = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
@@ -1254,53 +1471,26 @@ namespace RealTime.Pandemic
 
                 if ((tempDateTime.Ticks - lastStoreTime.Ticks) / TimeSpan.TicksPerMinute >= STORE_INTERVAL_MINUTES)
                 {
-                    try
-                    {
-                        Observer.WriteToDisc(true);
-                        ContactManager.Instance.WriteToDisk();
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Warning("The 'Real Time' pandemic manager failed to persist periodic observer output: " + ex);
-                    }
-
+                    PersistRunSnapshot(force: true, "periodic");
                     lastStoreTime = tempDateTime;
                 }
 
-                if (pandemicRunStartedAt != default(DateTime) && (currentDateTime - pandemicRunStartedAt).TotalDays >= 30.0)
+                PandemicRunPolicy policy = runContext?.Policy ?? PandemicRunPolicy.CreateLegacyManual();
+                PandemicCompletionReason terminalReason = policy.Evaluate(
+                    pandemicRunStartedAt,
+                    currentDateTime,
+                    initialPopulationSick.Count,
+                    initialPopulationExposed.Count,
+                    hadAnySickCitizens);
+                if (terminalReason != PandemicCompletionReason.None)
                 {
-                    try
-                    {
-                        Observer.WriteToDisc(true);
-                        ContactManager.Instance.WriteToDisk();
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Warning("The 'Real Time' pandemic manager failed to persist 30-day auto-stop output: " + ex);
-                    }
+                    PersistRunSnapshot(terminalReason == PandemicCompletionReason.DurationReached, "final");
 
-                    // 30 simulation days elapsed — auto-stop.
-                    active = false;
-                    lifecycleState = PandemicLifecycleState.Finished;
-                    pandemicRunFinishedAt = currentDateTime;
-                    Log.Info("The 'Real Time' pandemic manager auto-stopped after 30 simulation days and saved CSV data.");
-                }
-                else if (Observer.GetSickCitizens() == 0 && initialPopulationExposed.Count == 0 && hadAnySickCitizens)
-                {
-                    try
+                    FreezeRun(terminalReason);
+                    if (terminalReason == PandemicCompletionReason.DurationReached)
                     {
-                        Observer.WriteToDisc(false);
-                        ContactManager.Instance.WriteToDisk();
+                        Log.Info("The 'Real Time' pandemic manager reached its configured simulation duration.");
                     }
-                    catch (Exception ex)
-                    {
-                        Log.Warning("The 'Real Time' pandemic manager failed to persist final observer output: " + ex);
-                    }
-
-                    // No active infections left. Stop pandemic processing, but never pause the whole simulation.
-                    active = false;
-                    lifecycleState = PandemicLifecycleState.Finished;
-                    pandemicRunFinishedAt = currentDateTime;
                 }
             }
             catch (Exception ex)
@@ -1967,15 +2157,46 @@ namespace RealTime.Pandemic
 
         internal Config.RealTimeConfig RuntimeConfig => Config;
 
+        internal PandemicRunContext CurrentRunContext => runContext;
+
+        internal PandemicCompletionReason CompletionReason => completionReason;
+
+        internal bool IsBatchRunOwned => runContext != null && runContext.IsBatch;
+
+        internal bool IsAwaitingBatchFinalization => IsBatchRunOwned
+            && lifecycleState == PandemicLifecycleState.Finished
+            && frozenForFinalization;
+
+        internal DateTime GetRunTargetSimulationTime()
+        {
+            return runContext != null && pandemicRunStartedAt != default(DateTime)
+                ? runContext.Policy.CalculateTarget(pandemicRunStartedAt)
+                : default(DateTime);
+        }
+
+        internal string BuildObserverCsv() => Observer?.BuildCsv() ?? string.Empty;
+
+        internal string BuildContactsCsv() => ContactManager.Instance.BuildCsv();
+
         /// <summary>Forces the mask state for a single citizen, overriding random assignment.</summary>
         public void ForceSetCitizenMask(uint citizenId, bool masked)
         {
+            if (ExperimentControlGate.IsControlLocked)
+            {
+                return;
+            }
+
             Masks?.SetMaskForCitizen(citizenId, masked);
         }
 
         /// <summary>Toggles quarantine for a single citizen. Adding quarantine also schedules a 14-day fate.</summary>
         public void ToggleCitizenQuarantine(uint citizenId)
         {
+            if (ExperimentControlGate.IsControlLocked)
+            {
+                return;
+            }
+
             if (simulation != null)
             {
                 currentDateTime = simulation.m_currentGameTime;
@@ -1997,6 +2218,7 @@ namespace RealTime.Pandemic
 
         public bool ToggleMasks()
         {
+            if (ExperimentControlGate.IsControlLocked) return IsMasksEnabled();
             if (Config == null) return false;
             Config.MaskBehavior = Config.MaskBehavior == RealTime.Config.MaskBehavior.None
                 ? RealTime.Config.MaskBehavior.Full
@@ -2008,6 +2230,7 @@ namespace RealTime.Pandemic
 
         public bool ToggleQuarantine()
         {
+            if (ExperimentControlGate.IsControlLocked) return IsQuarantineEnabled();
             if (Config == null) return false;
             Config.QuarantineBehavior = Config.QuarantineBehavior == RealTime.Config.QuarantineBehavior.None
                 ? RealTime.Config.QuarantineBehavior.Contacts
@@ -2017,6 +2240,7 @@ namespace RealTime.Pandemic
 
         public bool ToggleLockdown()
         {
+            if (ExperimentControlGate.IsControlLocked) return IsLockdownEnabled();
             QuarantineManager.Instance.InLockDown = !QuarantineManager.Instance.InLockDown;
             bool enabled = QuarantineManager.Instance.InLockDown;
             RecordPolicyTimelineEntry(PandemicPolicyMarkerType.Lockdown, enabled);
@@ -2131,6 +2355,7 @@ namespace RealTime.Pandemic
 
         public void ManuallyInfectCitizen(uint citizenId)
         {
+            if (ExperimentControlGate.IsControlLocked) return;
             if (activeInfections.ContainsKey(citizenId)) return;
             if (CitizenMgr == null || CitizenProxy == null) return;
             Citizen[] citizens = CitizenMgr.GetCitizensArray();
@@ -2171,6 +2396,11 @@ namespace RealTime.Pandemic
 
         internal PandemicLiveSnapshot GetLiveSnapshot()
         {
+            if (frozenForFinalization && liveSnapshotCache != null)
+            {
+                return liveSnapshotCache;
+            }
+
             if (liveSnapshotCache == null)
             {
                 liveSnapshotCache = new PandemicLiveSnapshot();
@@ -3338,116 +3568,117 @@ namespace RealTime.Pandemic
             hadAnySickCitizens = false;
         }
 
-        private void EnsureRuntimeConfigDefaults()
+        /// <summary>Normalizes the pandemic values that managers cache or assume are valid at runtime.</summary>
+        internal static void NormalizeRuntimeConfiguration(Config.RealTimeConfig config)
         {
-            if (Config == null)
+            if (config == null)
             {
                 return;
             }
 
             bool changed = false;
 
-            if (Config.DiseaseDuration == 0)
+            if (config.DiseaseDuration == 0)
             {
-                Config.DiseaseDuration = 14;
+                config.DiseaseDuration = 14;
                 changed = true;
             }
 
-            if (Config.StartInfection == 0 && Config.EndInfection == 0)
+            if (config.StartInfection == 0 && config.EndInfection == 0)
             {
-                Config.StartInfection = 1;
-                Config.EndInfection = Math.Min(10u, Config.DiseaseDuration);
+                config.StartInfection = 1;
+                config.EndInfection = Math.Min(10u, config.DiseaseDuration);
                 changed = true;
             }
 
-            if (Config.EndInfection == 0)
+            if (config.EndInfection == 0)
             {
-                Config.EndInfection = Math.Min(10u, Config.DiseaseDuration);
+                config.EndInfection = Math.Min(10u, config.DiseaseDuration);
                 changed = true;
             }
 
-            if (Config.EndInfection > Config.DiseaseDuration)
+            if (config.EndInfection > config.DiseaseDuration)
             {
-                Config.EndInfection = Config.DiseaseDuration;
+                config.EndInfection = config.DiseaseDuration;
                 changed = true;
             }
 
-            if (Config.StartInfection > Config.EndInfection)
+            if (config.StartInfection > config.EndInfection)
             {
-                Config.StartInfection = Config.EndInfection;
+                config.StartInfection = config.EndInfection;
                 changed = true;
             }
 
-            if (Config.StartSymptoms == 0 && Config.EndSymptoms == 0)
+            if (config.StartSymptoms == 0 && config.EndSymptoms == 0)
             {
-                Config.StartSymptoms = Math.Min(3u, Config.DiseaseDuration);
-                Config.EndSymptoms = Config.DiseaseDuration;
+                config.StartSymptoms = Math.Min(3u, config.DiseaseDuration);
+                config.EndSymptoms = config.DiseaseDuration;
                 changed = true;
             }
 
-            if (Config.EndSymptoms == 0)
+            if (config.EndSymptoms == 0)
             {
-                Config.EndSymptoms = Config.DiseaseDuration;
+                config.EndSymptoms = config.DiseaseDuration;
                 changed = true;
             }
 
-            if (Config.EndSymptoms > Config.DiseaseDuration)
+            if (config.EndSymptoms > config.DiseaseDuration)
             {
-                Config.EndSymptoms = Config.DiseaseDuration;
+                config.EndSymptoms = config.DiseaseDuration;
                 changed = true;
             }
 
-            if (Config.StartSymptoms > Config.EndSymptoms)
+            if (config.StartSymptoms > config.EndSymptoms)
             {
-                Config.StartSymptoms = Config.EndSymptoms;
+                config.StartSymptoms = config.EndSymptoms;
                 changed = true;
             }
 
-            if (Config.IndoorDiseaseTransmissionProbability <= 0f)
+            if (config.IndoorDiseaseTransmissionProbability <= 0f)
             {
-                Config.IndoorDiseaseTransmissionProbability = 1.5f;
+                config.IndoorDiseaseTransmissionProbability = 1.5f;
                 changed = true;
             }
 
-            if (Config.OutdoorDiseaseTransmissionProbability <= 0f)
+            if (config.OutdoorDiseaseTransmissionProbability <= 0f)
             {
-                Config.OutdoorDiseaseTransmissionProbability = 0.3f;
+                config.OutdoorDiseaseTransmissionProbability = 0.3f;
                 changed = true;
             }
 
-            if (Config.DiseaseTransmissionRange <= 0f)
+            if (config.DiseaseTransmissionRange <= 0f)
             {
-                Config.DiseaseTransmissionRange = 1.5f;
+                config.DiseaseTransmissionRange = 1.5f;
                 changed = true;
             }
 
-            if (Config.DiseaseStartInfectionRatio <= 0f)
+            if (config.DiseaseStartInfectionRatio <= 0f)
             {
-                Config.DiseaseStartInfectionRatio = 5f;
+                config.DiseaseStartInfectionRatio = 5f;
                 changed = true;
             }
 
-            if (Config.SymptomProbability <= 0f)
+            if (config.SymptomProbability <= 0f)
             {
-                Config.SymptomProbability = 50f;
+                config.SymptomProbability = 50f;
                 changed = true;
             }
 
-            if (Config.HubHighlightThreshold < 2)
+            if (config.HubHighlightThreshold < 2)
             {
-                Config.HubHighlightThreshold = 6;
+                config.HubHighlightThreshold = 6;
                 changed = true;
             }
 
-            if (Config.SuperspreaderCitizenThreshold < 2)
+            if (config.SuperspreaderCitizenThreshold < 2)
             {
-                Config.SuperspreaderCitizenThreshold = 5;
+                config.SuperspreaderCitizenThreshold = 5;
                 changed = true;
             }
 
-            if (Config.SuperspreaderLocationThreshold < 2)
+            if (config.SuperspreaderLocationThreshold < 2)
             {
-                Config.SuperspreaderLocationThreshold = 10;
+                config.SuperspreaderLocationThreshold = 10;
                 changed = true;
             }
 
@@ -3589,7 +3820,7 @@ namespace RealTime.Pandemic
 
         internal void OnCitizenVisitedHealthcare(uint citizenId)
         {
-            if (!activeInfections.ContainsKey(citizenId))
+            if (lifecycleState != PandemicLifecycleState.Running || !activeInfections.ContainsKey(citizenId))
             {
                 return;
             }
@@ -3618,7 +3849,7 @@ namespace RealTime.Pandemic
 
         internal void OnHospitalUnavailable(uint citizenId)
         {
-            if (!activeInfections.ContainsKey(citizenId))
+            if (lifecycleState != PandemicLifecycleState.Running || !activeInfections.ContainsKey(citizenId))
             {
                 return;
             }
@@ -4063,6 +4294,12 @@ namespace RealTime.Pandemic
 
         public bool ShouldBeInQuarantine(uint citizenID)
         {
+            if (lifecycleState != PandemicLifecycleState.Running)
+            {
+                return lifecycleState == PandemicLifecycleState.Finished
+                    && QuarantineManager.Instance.IsInQuarantineReadOnly(citizenID, currentDateTime);
+            }
+
             if (simulation != null)
             {
                 currentDateTime = simulation.m_currentGameTime;
@@ -4232,6 +4469,38 @@ namespace RealTime.Pandemic
         /// Gets or sets the configuration.
         /// </summary>
         private Config.RealTimeConfig Config { get; set; }
+
+        private void OnDestroy()
+        {
+            // Unity destroys the previous component asynchronously during level reload. Never let that
+            // stale callback clear the freshly-created manager or its process-wide service state.
+            if (!ReferenceEquals(Instance, this))
+            {
+                return;
+            }
+
+            try
+            {
+                RestorePublicTransportService();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("The 'Real Time' pandemic manager could not restore public transport while unloading: " + ex);
+            }
+
+            ContactManager.Instance.ResetForLevelUnload();
+            TestManager.Instance.ResetForLevelUnload();
+            QuarantineManager.Instance.ResetForLevelUnload();
+            runContext = null;
+            Config = null;
+            CitizenMgr = null;
+            CitizenProxy = null;
+            BuildingMgr = null;
+            simulation = null;
+            Observer = null;
+            Instance = null;
+        }
+
         public static PandemicManager Instance { get; set; }
     }
 }

@@ -43,3 +43,10 @@ C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\RealTimeTests\obj\Release\
 C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.csproj.CoreCompileInputs.cache
 C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTimeTests.sourcelink.json
 C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\RealTimeTests\obj\Release\RealTime.3435642E.Up2Date
+C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\bin\Tests\Release\.msCoverageSourceRootsMapping_RealTimeTests
+C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\bin\Tests\Release\NUnit3.TestAdapter.dll
+C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\bin\Tests\Release\NUnit3.TestAdapter.pdb
+C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\bin\Tests\Release\nunit.engine.dll
+C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\bin\Tests\Release\nunit.engine.api.dll
+C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\bin\Tests\Release\nunit.engine.core.dll
+C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\bin\Tests\Release\testcentric.engine.metadata.dll

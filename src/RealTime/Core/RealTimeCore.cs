@@ -14,6 +14,7 @@ namespace RealTime.Core
     using RealTime.CustomAI;
     using RealTime.Events;
     using RealTime.Events.Storage;
+    using RealTime.Experiments;
     using RealTime.GameConnection;
     using RealTime.GameConnection.Patches;
     using RealTime.Pandemic;
@@ -43,6 +44,12 @@ namespace RealTime.Core
         private readonly RealTimeEventManager eventManager;
         private readonly MethodPatcher patcher;
         private readonly VanillaEvents vanillaEvents;
+        private readonly RealTimeConfig configuration;
+
+        private GameObject pandemicManagerObject;
+        private StorageBase levelStorage;
+        private SpareTimeBehavior spareTimeBehavior;
+        private WorkBehavior workBehavior;
 
         private bool isEnabled;
 
@@ -53,7 +60,8 @@ namespace RealTime.Core
             StaticBaselineController staticBaselineController,
             RealTimeEventManager eventManager,
             MethodPatcher patcher,
-            VanillaEvents vanillaEvents)
+            VanillaEvents vanillaEvents,
+            RealTimeConfig configuration)
         {
             this.timeAdjustment = timeAdjustment;
             this.timeBar = timeBar;
@@ -62,11 +70,29 @@ namespace RealTime.Core
             this.eventManager = eventManager;
             this.patcher = patcher;
             this.vanillaEvents = vanillaEvents;
+            this.configuration = configuration;
             isEnabled = true;
         }
 
         /// <summary>Gets a value indicating whether the mod is running in a restricted mode due to method patch failures.</summary>
         public bool IsRestrictedMode { get; private set; }
+
+        /// <summary>Gets the mutable configuration instance retained by all level services.</summary>
+        internal RealTimeConfig Configuration => configuration;
+
+        /// <summary>Gets the Pandemic manager owned by this level, if it is still alive.</summary>
+        internal PandemicManager PandemicManager => pandemicManagerObject == null
+            ? null
+            : pandemicManagerObject.GetComponent<PandemicManager>();
+
+        /// <summary>Gets the live Pandemic panel so the experiment UI can be attached without replacing it.</summary>
+        internal PandemicLivePanel PandemicLivePanel => pandemicLivePanel;
+
+        /// <summary>Gets whether all level-owned services needed by an experiment are ready.</summary>
+        internal bool IsExperimentReady => isEnabled
+            && configuration != null
+            && PandemicManager != null
+            && SimulationManager.instance != null;
 
         /// <summary>
         /// Runs the mod by activating its parts.
@@ -154,7 +180,15 @@ namespace RealTime.Core
                 timeInfo,
                 Constants.MaxTravelTime);
 
-            if (!SetupCustomAI(timeInfo, configProvider.Configuration, gameConnections, eventManager, compatibility))
+            if (!SetupCustomAI(
+                timeInfo,
+                configProvider.Configuration,
+                gameConnections,
+                eventManager,
+                compatibility,
+                out GameObject pandemicManagerObject,
+                out SpareTimeBehavior spareTimeBehavior,
+                out WorkBehavior workBehavior))
             {
                 Log.Error("The 'Real Time' mod failed to setup the customized AI and will now be deactivated.");
                 patcher.Revert();
@@ -186,7 +220,18 @@ namespace RealTime.Core
 
             var vanillaEvents = VanillaEvents.Customize();
 
-            var result = new RealTimeCore(timeAdjustment, customTimeBar, pandemicLivePanel, staticBaselineController, eventManager, patcher, vanillaEvents);
+            var result = new RealTimeCore(
+                timeAdjustment,
+                customTimeBar,
+                pandemicLivePanel,
+                staticBaselineController,
+                eventManager,
+                patcher,
+                vanillaEvents,
+                configProvider.Configuration);
+            result.pandemicManagerObject = pandemicManagerObject;
+            result.spareTimeBehavior = spareTimeBehavior;
+            result.workBehavior = workBehavior;
             eventManager.EventsChanged += result.CityEventsChanged;
 
             var statistics = new Statistics(timeInfo, localizationProvider);
@@ -237,8 +282,9 @@ namespace RealTime.Core
             result.storageData.Add(eventManager);
             if (StorageBase.CurrentLevelStorage != null)
             {
-                StorageBase.CurrentLevelStorage.GameSaving += result.GameSaving;
-                LoadStorageData(result.storageData, StorageBase.CurrentLevelStorage);
+                result.levelStorage = StorageBase.CurrentLevelStorage;
+                result.levelStorage.GameSaving += result.GameSaving;
+                LoadStorageData(result.storageData, result.levelStorage);
             }
 
             result.storageData.Add(configProvider);
@@ -246,6 +292,23 @@ namespace RealTime.Core
             result.IsRestrictedMode = appliedPatches.Count != patches.Count;
 
             return result;
+        }
+
+        /// <summary>Refreshes Real Time caches after an experiment scenario is copied into the live configuration.</summary>
+        internal void RefreshExperimentConfiguration()
+        {
+            if (!isEnabled || configuration == null)
+            {
+                return;
+            }
+
+            configuration.Validate();
+            timeAdjustment.Update(force: true);
+            spareTimeBehavior?.RefreshConfiguration();
+            workBehavior?.BeginNewDay();
+            SimulationHandler.CitizenProcessor?.UpdateFrameDuration();
+            SimulationHandler.Buildings?.UpdateFrameDuration();
+            staticBaselineController?.RefreshConfiguration();
         }
 
         /// <summary>
@@ -284,6 +347,12 @@ namespace RealTime.Core
             timeBar.CityEventClick -= CustomTimeBarCityEventClick;
             timeBar.Disable();
             pandemicLivePanel?.Disable();
+            if (pandemicManagerObject != null)
+            {
+                GameObject.Destroy(pandemicManagerObject);
+                pandemicManagerObject = null;
+            }
+
             if (staticBaselineController != null)
             {
                 GameObject.Destroy(staticBaselineController.gameObject);
@@ -295,7 +364,11 @@ namespace RealTime.Core
 
             AwakeSleepSimulation.Uninstall();
 
-            StorageBase.CurrentLevelStorage.GameSaving -= GameSaving;
+            if (levelStorage != null)
+            {
+                levelStorage.GameSaving -= GameSaving;
+                levelStorage = null;
+            }
 
             WorldInfoPanelPatch.CitizenInfoPanel?.Disable();
             WorldInfoPanelPatch.CitizenInfoPanel = null;
@@ -305,6 +378,9 @@ namespace RealTime.Core
 
             WorldInfoPanelPatch.CampusWorldInfoPanel?.Disable();
             WorldInfoPanelPatch.CampusWorldInfoPanel = null;
+
+            WorldInfoPanelPatch.BuildingInfoPanel?.Disable();
+            WorldInfoPanelPatch.BuildingInfoPanel = null;
 
             isEnabled = false;
         }
@@ -434,8 +510,14 @@ namespace RealTime.Core
             RealTimeConfig config,
             GameConnections<Citizen> gameConnections,
             RealTimeEventManager eventManager,
-            Compatibility compatibility)
+            Compatibility compatibility,
+            out GameObject pandemicManagerObject,
+            out SpareTimeBehavior spareTimeBehavior,
+            out WorkBehavior workBehavior)
         {
+            pandemicManagerObject = null;
+            spareTimeBehavior = null;
+            workBehavior = null;
             var residentAIConnection = ResidentAIPatch.GetResidentAIConnection();
             if (residentAIConnection == null)
             {
@@ -446,9 +528,9 @@ namespace RealTime.Core
                 ? Constants.AverageTravelDistancePerCycle * 0.583f
                 : Constants.AverageTravelDistancePerCycle;
 
-            var spareTimeBehavior = new SpareTimeBehavior(config, timeInfo);
+            spareTimeBehavior = new SpareTimeBehavior(config, timeInfo);
             var travelBehavior = new TravelBehavior(gameConnections.BuildingManager, travelDistancePerCycle);
-            var workBehavior = new WorkBehavior(config, gameConnections.Random, gameConnections.BuildingManager, timeInfo, travelBehavior);
+            workBehavior = new WorkBehavior(config, gameConnections.Random, gameConnections.BuildingManager, timeInfo, travelBehavior);
 
             ParkPatch.SpareTimeBehavior = spareTimeBehavior;
             OutsideConnectionAIPatch.SpareTimeBehavior = spareTimeBehavior;
@@ -500,7 +582,7 @@ namespace RealTime.Core
             {
                 GameObject.Destroy(GameObject.Find("PandemicManager"));
             }
-            var pandemicManagerObject = new GameObject("PandemicManager");
+            pandemicManagerObject = new GameObject("PandemicManager");
             var pandemicManager = pandemicManagerObject.AddComponent<PandemicManager>();
             pandemicManager.Init(config, gameConnections);
             pandemicManagerObject.AddComponent<InfectedCitizenTrailBehavior>();
@@ -591,6 +673,12 @@ namespace RealTime.Core
             var storage = (StorageBase)sender;
             foreach (var item in storageData)
             {
+                if (ExperimentControlGate.IsControlLocked && item is ConfigurationProvider<RealTimeConfig>)
+                {
+                    Log.Info("[TENUS Batch] Skipping temporary experiment configuration during game saving.");
+                    continue;
+                }
+
                 storage.Serialize(item);
                 Log.Debug(LogCategory.Generic, "The 'Real Time' mod stored its data in the current game for container " + item.StorageDataId);
             }

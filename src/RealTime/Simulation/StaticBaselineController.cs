@@ -159,6 +159,20 @@ namespace RealTime.Simulation
         /// </summary>
         public bool IsStableCitySandboxEnabled => config?.StaticBaselineStableCityEnabled == true;
 
+        /// <summary>Resets demand bookkeeping after experiment settings change in place.</summary>
+        public void RefreshConfiguration()
+        {
+            ZoneManager zoneManager = ZoneManager.instance;
+            if (zoneManager != null && lastRuntimeState != RuntimeState.Off)
+            {
+                RestoreVanillaDemand(zoneManager);
+            }
+
+            lastRuntimeState = RuntimeState.Off;
+            hasVanillaDemandSnapshot = false;
+            nextStableCityBuildingId = 1;
+        }
+
         /// <summary>
         /// Determines whether a building can currently be constructed or upgraded.
         /// </summary>

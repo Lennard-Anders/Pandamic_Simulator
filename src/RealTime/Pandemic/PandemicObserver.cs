@@ -15,6 +15,7 @@ namespace RealTime.Pandemic
         List<PandemicObservation> observations = new List<PandemicObservation>();
         Dictionary<PandemicInfectionOriginCategory, int> totalOriginCounts = new Dictionary<PandemicInfectionOriginCategory, int>();
         DateTime ignored;
+        bool frozen;
 
         bool exported = false;
         int totalIndoorInfections;
@@ -25,6 +26,7 @@ namespace RealTime.Pandemic
         {
             observations.Clear();
             ignored = default;
+            frozen = false;
             exported = false;
             totalIndoorInfections = 0;
             totalOutdoorInfections = 0;
@@ -50,6 +52,39 @@ namespace RealTime.Pandemic
                 return;
             }
 
+            WriteToDisc(force, Path.Combine(modRoot, "data.csv"));
+        }
+
+        /// <summary>Writes the retained raw observations to an explicit run-owned destination.</summary>
+        internal void WriteToDisc(bool force, string outputFile)
+        {
+            if (!force && exported)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(outputFile))
+            {
+                return;
+            }
+
+            string directory = Path.GetDirectoryName(outputFile);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(outputFile, BuildCsv());
+
+            if (!force)
+            {
+                exported = true;
+            }
+        }
+
+        /// <summary>Builds the legacy observer CSV without performing any file-system IO.</summary>
+        internal string BuildCsv()
+        {
             var csv = new StringBuilder();
             csv.AppendLine("time_ms;healthy;sick;recovered;dead");
 
@@ -81,18 +116,18 @@ namespace RealTime.Pandemic
                 }
             }
 
-            string outputFile = Path.Combine(modRoot, "data.csv");
-            File.WriteAllText(outputFile, csv.ToString());
-
-            if (!force)
-            {
-                exported = true;
-            }
+            return csv.ToString();
         }
 
         internal void FinishObservations(DateTime currentDateTime)
         {
             ignored = currentDateTime;
+        }
+
+        /// <summary>Prevents any mutation after a controller-owned terminal snapshot has been reached.</summary>
+        internal void Freeze()
+        {
+            frozen = true;
         }
 
         public uint GetRecoveredCitizens()
@@ -137,7 +172,7 @@ namespace RealTime.Pandemic
 
         public void AddSickCitizen(DateTime simulationTime)
         {
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -147,7 +182,7 @@ namespace RealTime.Pandemic
 
         public void AddSickCitizens(DateTime simulationTime, int count)
         {
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -157,7 +192,7 @@ namespace RealTime.Pandemic
 
         public void AddExposedCitizens(DateTime simulationTime, int count)
         {
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -167,7 +202,7 @@ namespace RealTime.Pandemic
 
         public void AddLocationSnapshot(DateTime simulationTime, int atHome, int atWork, int visiting, int inTransit, int onFoot)
         {
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -182,7 +217,7 @@ namespace RealTime.Pandemic
         public void AddRecoveredCitizen(DateTime simulationTime)
         {
 
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -193,7 +228,7 @@ namespace RealTime.Pandemic
         public void AddRecoveredCitizens(DateTime simulationTime, int count)
         {
 
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -204,7 +239,7 @@ namespace RealTime.Pandemic
         public void AddDeadCitizen(DateTime simulationTime)
         {
 
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -214,7 +249,7 @@ namespace RealTime.Pandemic
 
         public void AddDeadCitizens(DateTime simulationTime, int count)
         {
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -225,7 +260,7 @@ namespace RealTime.Pandemic
         public void AddHealthyCitizen(DateTime simulationTime)
         {
 
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -236,7 +271,7 @@ namespace RealTime.Pandemic
         public void AddHealthyCitizens(DateTime simulationTime, int count)
         {
 
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -246,12 +281,17 @@ namespace RealTime.Pandemic
 
         public void AddInfectiousCitizen(uint infectingCitizenId)
         {
+            if (frozen)
+            {
+                return;
+            }
+
             GeneralObservation.AddInfectiousCitizen(infectingCitizenId);
         }
 
         public void AddCitizenInfection(uint infectingCitizenId, uint infectedCitizenId, DateTime simulationTime, PandemicInfectionOriginInfo origin)
         {
-            if (simulationTime.Ticks == ignored.Ticks)
+            if (ShouldIgnore(simulationTime))
             {
                 return;
             }
@@ -357,6 +397,11 @@ namespace RealTime.Pandemic
                 observations.Add(observation);
                 return observation;
             }
+        }
+
+        private bool ShouldIgnore(DateTime simulationTime)
+        {
+            return frozen || simulationTime.Ticks == ignored.Ticks;
         }
 
         private void CountInfection(InfectionType type)

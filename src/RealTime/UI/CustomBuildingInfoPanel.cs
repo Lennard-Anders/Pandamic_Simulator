@@ -21,6 +21,16 @@ namespace RealTime.UI
         /// <summary>Creates and returns an instance; always succeeds (initialization is lazy).</summary>
         public static CustomBuildingInfoPanel Enable() => new CustomBuildingInfoPanel();
 
+        /// <summary>Removes the injected label and releases the recycled panel reference.</summary>
+        public void Disable()
+        {
+            if (infectedLabel != null)
+            {
+                Object.Destroy(infectedLabel.gameObject);
+                infectedLabel = null;
+            }
+        }
+
         /// <summary>Called each frame while the building info panel is visible.</summary>
         public void UpdateCustomInfo(ref InstanceID instance)
         {

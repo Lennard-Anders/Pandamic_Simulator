@@ -20,8 +20,11 @@
 10. [Detail Sections (Scrollable Area)](#10-detail-sections-scrollable-area)
 11. [In-Dashboard Settings — Every Setting Explained](#11-in-dashboard-settings--every-setting-explained)
 12. [Visual Overlays in the City](#12-visual-overlays-in-the-city)
-13. [Data Export Files](#13-data-export-files)
-14. [Frequently Asked Questions](#14-frequently-asked-questions)
+13. [Automated Experiment Batch Runner](#13-automated-experiment-batch-runner)
+14. [Data Export Files](#14-data-export-files)
+15. [Optional Analytics Dashboard](#15-optional-analytics-dashboard)
+16. [In-Game Verification Checklist](#16-in-game-verification-checklist)
+17. [Frequently Asked Questions](#17-frequently-asked-questions)
 
 ---
 
@@ -301,7 +304,7 @@ The panel is divided into three main zones:
 │  TITLE BAR  (click to collapse/expand)                  │
 ├──────────────────────── HEADER ─────────────────────────┤
 │  [Start] [Stop] [Masks] [Quarantine] [Lockdown]   (row1)│
-│  [Overlays] [X-Ray] [Type] [Basis]                (row2)│
+│  [Overlays] [X-Ray] [Type] [Basis] [Experiments]  (row2)│
 │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐         │
 │  │Metric│ │Metric│ │Metric│ │Metric│ │Metric│   (cards) │
 │  └──────┘ └──────┘ └──────┘ └──────┘ └──────┘         │
@@ -400,7 +403,7 @@ The per-family threshold sliders in Settings let you set automatic triggers — 
 
 ## 7. Visualization Buttons — Row 2
 
-These four buttons control how the outbreak is displayed visually in the city view.
+The first four buttons control how the outbreak is displayed visually in the city view. The fifth opens the separate Experiment Batch Runner.
 
 ---
 
@@ -456,6 +459,14 @@ Cycles through the **location basis** used for the heatmap:
 The current mode is displayed in the button label, e.g. **"Basis: Live"**.
 
 > The `Type` and `Basis` buttons are **greyed out** when X-Ray is off.
+
+---
+
+### `Experiments`
+
+Opens the dedicated Experiment Batch Runner. The experiment editor is a separate, draggable window so the live monitor keeps its existing layout. Closing the experiment window does **not** pause, abort, or otherwise cancel an active batch; click **Experiments** again to reopen it.
+
+While a batch owns the current run, controls that could change experimental state are locked. Charts, metrics, overlays, X-Ray, camera-focus actions, scrolling, and panel collapse remain available. See Section 13 for the complete workflow.
 
 ---
 
@@ -743,9 +754,134 @@ A terrain-following semi-transparent mesh covers the entire city map. It glows r
 
 ---
 
-## 13. Data Export Files
+## 13. Automated Experiment Batch Runner
 
-When a pandemic run finishes (or is stopped), the mod writes two CSV files to its mod folder:
+The Experiment Batch Runner executes repeated scientific scenarios entirely inside the mod. It does not require the Python dashboard, a command-line script, or another controller process. Each repetition starts by loading the same selected baseline save, applies a captured scenario and deterministic seed, runs for the configured amount of simulation time, exports into a unique directory, and then reloads the baseline for the next repetition.
+
+### Baseline safety
+
+- Select the baseline from the in-game save catalog; never type a filesystem path.
+- The selector shows identifying save metadata and stores the save asset's stable identity, not only its display name.
+- **Run 1 is reloaded from disk too.** The currently loaded in-memory city is never assumed to equal the saved baseline.
+- Starting a batch warns that unsaved changes in the current city will be discarded and requires explicit confirmation.
+- TENUS never calls `SaveLevel` for an experiment and never overwrites or silently updates the baseline `.crp`.
+- If the exact stored asset or its validated fingerprint cannot be resolved, the batch stops. It never falls back to the latest save or another save with the same visible name.
+
+The stored identity includes the metadata asset `fullName`, checksum, size, asset type and enabled state; package name, path, version and published-file ID; city timestamp, environment and map theme; the corresponding data-asset identity; and, for a local file, length, last-write time in UTC and SHA-256. These values let TENUS detect a missing or changed baseline before mixing results from different city states.
+
+### Exact save catalog and load path
+
+The normal Cities: Skylines saved-game API is used. TENUS enumerates metadata assets with:
+
+```csharp
+PackageManager.FilterAssets(new[] { UserAssetType.SaveGameMetaData })
+```
+
+It resolves the selected asset on every run by its stored full name:
+
+```csharp
+PackageManager.FindAssetByName(fullName, UserAssetType.SaveGameMetaData)
+```
+
+After validating the metadata, package, data asset and available file fingerprints, it requests the normal game load with this API shape:
+
+```csharp
+LoadingManager.instance.LoadLevel(
+    metadataAsset,
+    "Game",
+    "InGame",
+    new SimulationMetaData
+    {
+        m_CityName = saveMetadata.cityName,
+        m_updateMode = SimulationManager.UpdateMode.LoadGame,
+        m_MapThemeMetaData = resolvedMapThemeMetadata,
+        m_disableAchievements = disableAchievementsForPublishedPackage
+    },
+    false);
+```
+
+The map-theme metadata and published-package achievement flag are resolved in the same way as the stock Load Game panel. TENUS does not call `UnloadLevel` first, does not use editor modes, and does not use `GetLatestSaveGame()`.
+
+### Create a batch
+
+1. Configure TENUS and the pandemic policies for the first scenario in the normal UI.
+2. Click **Experiments** and enter a batch name.
+3. Select a baseline save. Use **Refresh** if the save list changed; **Use currently loaded save** is offered only when its originating saved-game asset can be resolved exactly.
+4. Click **Add current settings as scenario**. This captures values, not a reference to the live configuration.
+5. Give the scenario a name and choose its run count, duration, end mode and seed strategy.
+6. Repeat for additional scenarios. Scenarios can be duplicated, removed, updated from current settings, or moved up and down.
+7. Review the scenario count, total runs, total configured simulation days, output path, execution speed and **Return to baseline after completion** option.
+8. Click **Start Batch**, pass preflight validation, read the unsaved-city warning, and confirm.
+
+Scenario order is deterministic and never interleaved: all runs of Scenario 1 execute before Scenario 2. Run numbers shown in the UI and output are one-based.
+
+### What a scenario captures
+
+A scenario is an immutable typed snapshot of simulation-affecting RealTime and Pandemic settings. It includes disease timing and transmission, initial infection ratio, masks, testing, contact tracing, quarantine, lockdown and family closures, transport intervention state, healthcare parameters, movement/time/weekend behavior, stable-city controls, and the initial runtime policy state. Presentation preferences such as language, notifications, panel layout, chart range, overlay selection and X-Ray selection are not experimental inputs.
+
+After each baseline reload, TENUS waits for the level, `RealTimeCore`, `PandemicManager`, `SimulationManager` and required game connections to become ready. It pauses the simulation, applies the scenario, reinitializes cached manager values, applies runtime policies and seeds, and verifies every effective value before starting. A mismatch fails safely; the pandemic is not started with a partial scenario.
+
+Temporary scenario values are experiment overrides. The original user configuration is captured before the batch, is not saved as the user's default during reloads, and is restored on completion or abort.
+
+### Duration and end modes
+
+Duration is Cities: Skylines simulation time, not wall-clock time or frame count. The target is calculated from the actual run start:
+
+```text
+target game time = run start game time + configured simulation days
+```
+
+Positive decimal durations are accepted, which makes short integration tests such as `0.05` day practical. The default is 30 days.
+
+- **Fixed duration** (default): runs to the target time even if exposed and infectious counts reach zero early. Observation data continues through the configured endpoint.
+- **Duration or epidemic extinction**: finishes when either the target time is reached or the epidemic becomes extinct.
+
+The legacy manual workflow keeps its existing approximately 30-day limit and natural-burnout behavior. Batch duration policy does not replace manual policy.
+
+The execution-speed setting either preserves the current supported game-speed behavior or requests a supported Cities: Skylines simulation speed after each reload. Speed is recorded as execution metadata, not treated as an epidemiological parameter. Preparation, finalization, export and reload happen while paused.
+
+### Seeds and reproducibility
+
+- **Fixed** uses the configured master seed for every repetition.
+- **Sequential** uses `first seed + zero-based run offset`, so a first seed of `10001` produces `10001`, `10002`, and so on.
+- Each TENUS random component receives a stable FNV-1a-derived seed from the run's master seed and one of the identifiers `pandemic`, `mask`, `testing`, `contact-tracing`, or `quarantine`.
+- Retrying an incomplete run reuses the same scenario/run index and seed.
+
+Completed manifests record the master and component seeds. Identical TENUS seeds reproduce stochastic decisions controlled by TENUS as far as the mod controls them. Bit-identical whole-game execution is **not** guaranteed: Cities: Skylines and other mods can contain independent random generators, update ordering and state that TENUS cannot seed.
+
+### Progress, pause, abort and recovery
+
+The panel shows batch/scenario/run progress, simulation day versus target, seed, baseline, output path, last completed run and any error. Closing the panel never stops the controller.
+
+- **Pause Batch** pauses the game and preserves the current run exactly; **Resume Batch** continues it.
+- **Abort Batch** requires confirmation, preserves completed output, leaves the current run incomplete, restores the original configuration and control availability, and follows the selected return-to-baseline behavior.
+- A failed export leaves the game paused and offers **Retry export** or **Abort batch**. A failed baseline load offers **Retry load** or **Abort batch**. Runs are never skipped silently.
+- A planned reload is identified by a persisted reload token/generation. Loading another city, returning to the menu, or another unexpected unload marks the batch **Interrupted** instead of applying experiment settings to the wrong city.
+- After a normal batch-requested reload, execution resumes automatically when the exact baseline is ready.
+- After the whole application restarts, an unfinished batch is detected but does not run automatically. The recovery prompt offers **Resume from baseline** or **Abort**; resuming restarts the incomplete run from the baseline with the same seed.
+- Corrupt or incompatible persisted state is reported and never guessed. Existing completed result directories remain untouched.
+
+While a batch owns a run, Start/Restart, Stop, intervention toggles, per-citizen mutation actions and simulation-affecting settings are locked with a `Controlled by active experiment batch` explanation. Read-only analytics and visual controls remain usable. Normal controls are restored when the batch completes or is aborted.
+
+---
+
+## 14. Data Export Files
+
+Manual runs keep the established rich and raw export formats. Batch runs use the same scientific data in isolated per-run directories and add versioned manifests and a batch summary.
+
+### Manual rich CSV
+
+Each completed or manually stopped run writes a uniquely timestamped file beneath:
+
+```text
+...\Addons\Mods\RealTime\Pandemic Data\pandemic_run_<timestamp>.csv
+```
+
+The sectioned CSV remains compatible with existing analysis. Its source-authoritative sections include `RUN METADATA`, `CORE METRICS`, `POLICY STATE`, `AGE GROUPS`, `LOCKDOWN FAMILIES`, `INFECTION ORIGINS`, `DISTRICT INFECTION RATES`, `TOP SPREADERS`, `TOP ORIGIN LOCATIONS`, `SEIRD TIME SERIES`, `POLICY TIMELINE`, `HEALTHCARE TIME SERIES`, `PEAK STATISTICS`, `PANDEMIC SETTINGS`, `INFECTION ORIGINS TIME SERIES`, and `CITIZEN LOCATIONS TIME SERIES`. Additive experiment metadata does not rename or remove these sections.
+
+### Legacy raw manual files
+
+The following root-level files remain available for backward compatibility.
 
 ### `data.csv`
 
@@ -785,9 +921,100 @@ Plus summary statistics at the bottom:
 
 These files can be opened in Excel, Google Sheets, or analysed with Python/R to study the spread patterns after a run.
 
+### Batch output layout
+
+Every batch has a unique ID in addition to its readable name. Every scenario also has an internal ID, and every run has its own directory. Internal IDs, rather than timestamps alone, provide collision resistance.
+
+```text
+Pandemic Data/
+└── Experiments/
+    └── MasterThesis_Main__<batch-id>/
+        ├── batch_manifest.json
+        ├── batch_state.json
+        ├── batch_runs.csv
+        ├── 001_Baseline__<scenario-id>/
+        │   ├── scenario.json
+        │   ├── run_0001_seed_10001/
+        │   │   ├── run_manifest.json
+        │   │   ├── pandemic_run_Baseline_run_0001_seed_10001.csv
+        │   │   ├── data.csv
+        │   │   └── contacts.csv
+        │   └── run_0002_seed_10002/
+        └── 002_Masks__<scenario-id>/
+            └── ...
+```
+
+The rich CSV is the primary analytical output. `data.csv` preserves Observer raw data and `contacts.csv` preserves ContactManager raw data for that run. No run overwrites another run, another scenario, or an older batch.
+
+`batch_manifest.json`, `scenario.json`, `batch_state.json` and `run_manifest.json` are versioned machine-readable records. A completed run manifest identifies the baseline and validated fingerprints, batch and scenario, run numbers, settings and initial policy state, configured duration and end mode, master/component seeds, simulation and UTC times, mod/game/config versions, execution speed, status and generated files. `batch_runs.csv` receives one row only after a run exports successfully and provides compact outcomes and the relative rich-CSV path for later statistics.
+
+Important state and metadata files are written through a temporary file and atomically published. A run stays in an internal `.in-progress` directory until every mandatory export is closed and verified. A crash or export error therefore cannot make a partial run look completed. Recovery repeats that incomplete run with the same seed; it never overwrites a previously completed directory.
+
 ---
 
-## 14. Frequently Asked Questions
+## 15. Optional Analytics Dashboard
+
+The external Dash application is optional analysis software. It is never required to create, start, pause, resume, recover or complete a batch.
+
+From the repository's `dashboard` directory, install the pinned packages in `requirements.txt` and run:
+
+```powershell
+.\run_dashboard.ps1
+```
+
+Then open `http://localhost:8050`. By default the application reads:
+
+```text
+%LOCALAPPDATA%\Colossal Order\Cities_Skylines\Addons\Mods\RealTime\Pandemic Data
+```
+
+Set `PANDEMIC_DATA_DIR` before launch to analyse a different root. The dashboard recursively discovers both top-level manual `pandemic_run_*.csv` files and completed files nested under `Experiments`. Temporary and in-progress paths are ignored. When a sibling `run_manifest.json` is available, selectors use a label such as `MasterThesis_Main / Masks / Run 7`; malformed or missing optional label metadata falls back to a readable relative path.
+
+Direct CSV drag-and-drop/upload remains supported, as do the existing charts, full summary and multi-run comparison. The parser continues to accept old manual files that do not contain Batch metadata.
+
+---
+
+## 16. In-Game Verification Checklist
+
+Because saved-game loading, Unity lifecycle callbacks and other mods exist only inside Cities: Skylines, complete acceptance includes an in-game pass.
+
+### Legacy/manual regression
+
+- Load a normal city and verify the Experiment button is the only intended live-panel layout addition.
+- Start, restart and stop a manual pandemic; toggle masks, quarantine and lockdown.
+- Exercise overlays, X-Ray, chart ranges, citizen/location focus and the in-panel settings editor.
+- Confirm the existing manual 30-day endpoint and natural-burnout behavior.
+- Confirm the manual rich CSV and legacy `data.csv`/`contacts.csv` load in existing analysis workflows.
+
+### Short deterministic batch
+
+Create Scenario A and Scenario B with two runs each and a duration of `0.05` simulation day. Verify this exact order:
+
+```text
+A / Run 1 -> baseline reload
+A / Run 2 -> baseline reload
+B / Run 1 -> baseline reload
+B / Run 2 -> complete
+```
+
+Confirm that Run 1 also began with a fresh baseline load, all four runs began from the same saved city state, A settings were reapplied for A2, B settings were applied for B1/B2, seeds match the configured strategy, and four unique completed run directories exist.
+
+### Safety and recovery
+
+- Close and reopen the Experiment panel during a run; execution must continue exactly once.
+- Pause and resume without advancing or resetting the run.
+- Attempt every locked mutation control and verify read-only analytics remain usable.
+- Abort midway and verify completed runs remain valid while the current run is not counted.
+- Interrupt a run with an unexpected load and verify **Interrupted**, then resume from the designated baseline.
+- Restart the whole game and verify the recovery prompt appears without automatically loading or starting a city.
+- Test a missing or changed baseline and verify no latest/name-only fallback occurs.
+- Cause an export failure where practical; verify the game stays paused and Retry/Abort is offered.
+- Complete a batch with return-to-baseline enabled and verify no pandemic starts after the final clean reload.
+- Load both manual and nested batch CSVs in the optional dashboard; confirm in-progress output is absent.
+
+---
+
+## 17. Frequently Asked Questions
 
 ### "I can't see the Pandemic panel in the game."
 
@@ -826,16 +1053,24 @@ These files can be opened in Excel, Google Sheets, or analysed with Python/R to 
 
 ### "Where are the CSV files after a run?"
 
-- `data.csv` and `contacts.csv` are written to the mod's installation folder:
-  `C:\Users\<YourUsername>\AppData\Local\Colossal Order\Cities_Skylines\Addons\Mods\RealTime\`
-- They are overwritten each time a pandemic run ends, so copy them elsewhere if you want to keep them.
+- Manual rich CSVs are stored in `RealTime\Pandemic Data\` with unique timestamped names.
+- Legacy manual `data.csv` and `contacts.csv` remain in the `RealTime` mod root and may be replaced by a later manual run.
+- Batch results are isolated below `RealTime\Pandemic Data\Experiments\<batch>\<scenario>\run_NNNN_seed_<seed>\` and are never intentionally overwritten.
 
 ### "Can I run multiple pandemic scenarios and compare them?"
 
-- Yes. After each run ends (or you click Stop), copy `data.csv` and `contacts.csv` to a different folder with a descriptive name.
-- Then change your settings, click Restart, run the scenario again, and copy the new files.
-- Compare the SIDR time series across runs in Excel or any analysis tool.
+- Yes. Capture each configuration as a scenario in **Experiments**, choose its repetitions, duration and seeds, and press **Start Batch** once.
+- TENUS reloads the exact baseline, applies settings, runs and exports every repetition automatically.
+- Use `batch_runs.csv`, the per-run rich CSVs, or the optional dashboard's multi-run comparison afterward.
+
+### "Will a batch overwrite my baseline save?"
+
+No. The Batch Runner only loads the selected baseline. It does not silently save the current city, call `SaveLevel`, autosave experiment endpoints into the baseline, or replace the `.crp`. The confirmation warning exists because unsaved in-memory changes are discarded by the first reload.
+
+### "Why did my unfinished batch not resume automatically after restarting the game?"
+
+Automatic continuation is limited to reloads deliberately requested by the running batch. After a full application restart, TENUS requires an explicit choice in the recovery prompt. Choose **Resume from baseline** to repeat the incomplete run with its original seed, or **Abort** to preserve completed output and restore normal configuration.
 
 ---
 
-*Documentation written for the Pandemic Simulator mod — Cities: Skylines — April 2026*
+*Documentation updated for the TENUS Experiment Batch Runner — Cities: Skylines — August 2026*

@@ -47,6 +47,11 @@
       <HintPath>$(CitiesSkylinesBinaries)UnityEngine.UI.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>RealTimeTests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
   <Target Name="DeployToModsDirectory" AfterTargets="Build" DependsOnTargets="Build" Condition="'$(RealTimeDeployDir)' != ''">
     <ItemGroup>
       <TranslationFiles Include="$(ProjectDir)Localization\Translations\*.xml" />

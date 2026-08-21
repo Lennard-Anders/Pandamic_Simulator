@@ -10,6 +10,7 @@ namespace RealTime.UI
     using System.Reflection;
     using RealTime.Config;
     using RealTime.Core;
+    using RealTime.Experiments;
     using SkyTools.Configuration;
     using SkyTools.Localization;
     using SkyTools.UI;
@@ -241,17 +242,33 @@ namespace RealTime.UI
 
         private void ResetToDefaults()
         {
+            if (ExperimentControlGate.IsControlLocked)
+            {
+                return;
+            }
+
             configProvider.Configuration.ResetToDefaults();
             RefreshAllItems();
         }
 
         private void UseStaticBaselineForNewGames()
         {
+            if (ExperimentControlGate.IsControlLocked)
+            {
+                return;
+            }
+
             configProvider.Configuration.StaticBaselineSaveAsDefault = true;
             configProvider.SaveDefaultConfiguration();
         }
 
-        private void UseForNewGames() => configProvider.SaveDefaultConfiguration();
+        private void UseForNewGames()
+        {
+            if (!ExperimentControlGate.IsControlLocked)
+            {
+                configProvider.SaveDefaultConfiguration();
+            }
+        }
 
         private void NoOperation()
         {

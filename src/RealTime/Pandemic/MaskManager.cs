@@ -163,6 +163,12 @@ namespace RealTime.Pandemic
             }
         }
 
+        /// <summary>Starts a new deterministic mask-assignment random stream.</summary>
+        internal void ResetRandom(int seed)
+        {
+            random = new System.Random(seed);
+        }
+
         private int GetMaskModifier(int infectingBehavior, int candidateBehavior)
         {
             int modifier = 0;

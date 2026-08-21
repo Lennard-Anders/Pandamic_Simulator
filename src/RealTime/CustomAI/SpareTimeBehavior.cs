@@ -91,6 +91,14 @@ namespace RealTime.CustomAI
             }
         }
 
+        /// <summary>Invalidates configuration-derived probability caches and recomputes them immediately.</summary>
+        public void RefreshConfiguration()
+        {
+            lastUpdatedMinute = -1;
+            lastUpdatedDay = -1;
+            RefreshChances();
+        }
+
         /// <summary>
         /// Gets the probability whether a citizen with specified age would go shopping on current time.
         /// </summary>

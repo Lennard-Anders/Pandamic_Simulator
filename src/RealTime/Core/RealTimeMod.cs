@@ -10,6 +10,7 @@ namespace RealTime.Core
     using ColossalFramework.UI;
     using ICities;
     using RealTime.Config;
+    using RealTime.Experiments;
     using RealTime.Localization;
     using RealTime.UI;
     using SkyTools.Configuration;
@@ -30,6 +31,8 @@ namespace RealTime.Core
         private RealTimeCore core;
         private ConfigUI configUI;
         private LocalizationProvider localizationProvider;
+        private ExperimentBatchService experimentBatchService;
+        private GameObject experimentBatchHostObject;
 
 #if BENCHMARK
         /// <summary>
@@ -64,19 +67,29 @@ namespace RealTime.Core
             configProvider = new ConfigurationProvider<RealTimeConfig>(RealTimeConfig.StorageId, Name, () => new RealTimeConfig(latestVersion: true));
             configProvider.LoadDefaultConfiguration();
             localizationProvider = new LocalizationProvider(Name, currentModPath);
+            EnsureExperimentBatchHost(currentModPath);
         }
 
         /// <summary>Called when this mod is disabled.</summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Performance", "CA1822:MarkMembersAsStatic", Justification = "Must be instance method due to C:S API")]
         public void OnDisabled()
         {
-            if (string.IsNullOrEmpty(GetModPath()))
+            CloseConfigUI();
+            experimentBatchService?.Dispose();
+            experimentBatchService = null;
+            if (experimentBatchHostObject != null)
             {
-                return;
+                UnityEngine.Object.Destroy(experimentBatchHostObject);
+                experimentBatchHostObject = null;
             }
 
-            CloseConfigUI();
-            if (configProvider?.IsDefault == true)
+            if (core != null)
+            {
+                core.Stop();
+                core = null;
+            }
+
+            if (!ExperimentControlGate.IsControlLocked && configProvider?.IsDefault == true)
             {
                 configProvider.SaveDefaultConfiguration();
             }
@@ -99,6 +112,13 @@ namespace RealTime.Core
 
             if (helper == null || configProvider == null)
             {
+                return;
+            }
+
+            if (ExperimentControlGate.IsControlLocked)
+            {
+                CloseConfigUI();
+                helper.AddGroup("Controlled by active experiment batch. Simulation-affecting settings are read-only until the batch completes or is aborted.");
                 return;
             }
 
@@ -167,6 +187,8 @@ namespace RealTime.Core
                 localizationProvider = new LocalizationProvider(Name, currentModPath);
             }
 
+            EnsureExperimentBatchHost(currentModPath);
+
             var compatibility = Compatibility.Create(localizationProvider);
 
             bool isNewGame = mode == LoadMode.NewGame || mode == LoadMode.NewGameFromScenario;
@@ -183,7 +205,12 @@ namespace RealTime.Core
                 CheckCompatibility(compatibility);
             }
 
-            configProvider.SaveDefaultConfiguration();
+            if (!ExperimentControlGate.IsControlLocked)
+            {
+                configProvider.SaveDefaultConfiguration();
+            }
+
+            experimentBatchService?.AttachLevel(core);
         }
 
         /// <summary>
@@ -192,11 +219,7 @@ namespace RealTime.Core
         /// </summary>
         public override void OnLevelUnloading()
         {
-            if (string.IsNullOrEmpty(GetModPath()))
-            {
-                return;
-            }
-
+            experimentBatchService?.OnLevelUnloading(core);
             if (core != null)
             {
                 Log.Info("The 'Real Time' mod stops.");
@@ -205,6 +228,20 @@ namespace RealTime.Core
             }
 
             configProvider?.LoadDefaultConfiguration();
+        }
+
+        private void EnsureExperimentBatchHost(string currentModPath)
+        {
+            if (experimentBatchService != null)
+            {
+                return;
+            }
+
+            experimentBatchService = new ExperimentBatchService(currentModPath, modVersion);
+            experimentBatchHostObject = new GameObject("TENUS Experiment Batch Host");
+            UnityEngine.Object.DontDestroyOnLoad(experimentBatchHostObject);
+            ExperimentBatchHost host = experimentBatchHostObject.AddComponent<ExperimentBatchHost>();
+            host.Initialize(experimentBatchService);
         }
 
         private string GetModPath()

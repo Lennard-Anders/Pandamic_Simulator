@@ -1,8 +1,5 @@
 is_global = true
 build_property.RootNamespace = RealTimeTests
-build_property.ProjectDir = C:\Users\mail\pandemic-skylines\src\RealTimeTests\
+build_property.ProjectDir = C:\Users\mail\Documents\GitHub\Pandamic_Simulator\src\RealTimeTests\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
-build_property.CsWinRTUseWindowsUIXamlProjections = false
-build_property.EffectiveAnalysisLevelStyle = 
-build_property.EnableCodeStyleSeverity = 

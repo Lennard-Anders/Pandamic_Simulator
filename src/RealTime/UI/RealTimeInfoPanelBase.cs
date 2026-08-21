@@ -6,6 +6,7 @@ namespace RealTime.UI
     using System.Text;
     using ColossalFramework.UI;
     using RealTime.CustomAI;
+    using RealTime.Experiments;
     using RealTime.Pandemic;
     using SkyTools.Localization;
     using SkyTools.UI;
@@ -304,6 +305,7 @@ namespace RealTime.UI
 
         private void OnMaskToggleClicked()
         {
+            if (ExperimentControlGate.IsControlLocked) return;
             if (currentViewedCitizenId == 0) return;
             var mgr = PandemicManager.Instance;
             if (mgr == null) return;
@@ -317,6 +319,7 @@ namespace RealTime.UI
 
         private void OnQuarantineToggleClicked()
         {
+            if (ExperimentControlGate.IsControlLocked) return;
             if (currentViewedCitizenId == 0) return;
             var mgr = PandemicManager.Instance;
             if (mgr == null) return;
@@ -331,7 +334,15 @@ namespace RealTime.UI
         private void RefreshCitizenPandemicButtons(uint citizenId, bool inQuarantine, bool masked, bool infected = false)
         {
             if (maskToggleButton == null || quarantineToggleButton == null) return;
+            bool controlsEnabled = !ExperimentControlGate.IsControlLocked;
             if (infectButton != null) infectButton.isVisible = !infected;
+            if (infectButton != null) infectButton.isEnabled = controlsEnabled;
+            maskToggleButton.isEnabled = controlsEnabled;
+            quarantineToggleButton.isEnabled = controlsEnabled;
+            string controlledTooltip = controlsEnabled ? string.Empty : "Controlled by active experiment batch";
+            maskToggleButton.tooltip = controlledTooltip;
+            quarantineToggleButton.tooltip = controlledTooltip;
+            if (infectButton != null) infectButton.tooltip = controlledTooltip;
             maskToggleButton.text = "Mask: " + (masked ? "ON" : "OFF");
             maskToggleButton.color = masked
                 ? new Color32(30, 160, 30, 255)
@@ -411,6 +422,7 @@ namespace RealTime.UI
 
         private void OnInfectClicked()
         {
+            if (ExperimentControlGate.IsControlLocked) return;
             if (currentViewedCitizenId == 0) return;
             var mgr = PandemicManager.Instance;
             if (mgr == null) return;
