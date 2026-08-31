@@ -184,10 +184,23 @@ namespace RealTime.Experiments
         {
             EnsurePosition(plan, state);
             ExperimentScenario scenario = plan.Scenarios[state.ScenarioIndex];
-            int masterSeed = seedProvider.GetMasterSeed(scenario, state.RunIndex);
+            int pairId = 0;
+            int masterSeed;
+            if (plan.PairedSeedMode)
+            {
+                ExperimentScenario referenceScenario = plan.Scenarios[0];
+                masterSeed = checked(referenceScenario.FirstSeed + state.RunIndex);
+                pairId = checked(state.RunIndex + 1);
+            }
+            else
+            {
+                masterSeed = seedProvider.GetMasterSeed(scenario, state.RunIndex);
+            }
+
             string runId = CreateRunId(scenario.ScenarioId, state.RunIndex);
 
             state.CurrentMasterSeed = masterSeed;
+            state.CurrentPairId = pairId;
             state.CurrentRunId = runId;
 
             return new ExperimentRunDescriptor
@@ -197,6 +210,7 @@ namespace RealTime.Experiments
                 RunIndex = state.RunIndex,
                 Scenario = scenario,
                 MasterSeed = masterSeed,
+                PairId = pairId,
                 Seeds = seedProvider.DeriveSeeds(masterSeed),
             };
         }
@@ -233,11 +247,51 @@ namespace RealTime.Experiments
                 ScenarioIndex = run.ScenarioIndex,
                 RunIndex = run.RunIndex,
                 MasterSeed = run.MasterSeed,
+                PairId = run.PairId,
                 CompletedUtc = completedUtc,
                 OutputDirectory = outputDirectory,
             });
 
+            return AdvancePastCurrentRun(plan, state, run);
+        }
+
+        public bool RecordInvalidRun(
+            ExperimentBatchPlan plan,
+            ExperimentBatchState state,
+            ExperimentRunDescriptor run,
+            ExperimentInvalidRun invalidRun)
+        {
+            if (run == null || invalidRun == null)
+            {
+                throw new ArgumentNullException(run == null ? "run" : "invalidRun");
+            }
+
+            EnsureCollections(state);
+            if (!string.Equals(state.CurrentRunId, run.RunId, StringComparison.Ordinal)
+                || state.ScenarioIndex != run.ScenarioIndex
+                || state.RunIndex != run.RunIndex)
+            {
+                throw new InvalidOperationException("The invalid run does not match the durable current run.");
+            }
+
+            bool alreadyRecorded = state.InvalidRuns.Exists(item => item != null
+                && string.Equals(item.AttemptId, invalidRun.AttemptId, StringComparison.Ordinal));
+            if (!alreadyRecorded)
+            {
+                state.InvalidRuns.Add(invalidRun);
+            }
+
+            return AdvancePastCurrentRun(plan, state, run);
+        }
+
+        private static bool AdvancePastCurrentRun(
+            ExperimentBatchPlan plan,
+            ExperimentBatchState state,
+            ExperimentRunDescriptor run)
+        {
+
             state.CurrentRunId = null;
+            state.CurrentPairId = 0;
             state.RunStartedUtc = null;
             state.TargetSimulationTimeUtc = null;
 
@@ -318,6 +372,11 @@ namespace RealTime.Experiments
             if (state.CompletedRuns == null)
             {
                 state.CompletedRuns = new List<ExperimentCompletedRun>();
+            }
+
+            if (state.InvalidRuns == null)
+            {
+                state.InvalidRuns = new List<ExperimentInvalidRun>();
             }
         }
 

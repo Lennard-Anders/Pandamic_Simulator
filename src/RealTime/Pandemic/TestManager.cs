@@ -1,179 +1,137 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using UnityEngine;
+// <copyright file="TestManager.cs" company="dymanoid">
+// Copyright (c) dymanoid. All rights reserved.
+// </copyright>
 
 namespace RealTime.Pandemic
 {
-    class TestManager
+    using System;
+    using RealTime.Config;
+
+    /// <summary>Game-facing facade over the Unity-independent testing state machine.</summary>
+    internal sealed class TestManager
     {
+        private Random random = new Random(13337);
+        private RealTimeConfig config;
+        private TestingEngine engine;
+
+        private TestManager()
+        {
+        }
+
         public static TestManager Instance { get; } = new TestManager();
 
-        private System.Random random = new System.Random(13337);
-
-        private bool sendTestedCitizensToQuarantine = true;
-
-        private Dictionary<uint, DateTime> positive = new Dictionary<uint, DateTime>();
-        private Dictionary<uint, DateTime> testedCitizens = new Dictionary<uint, DateTime>();
-
-        private double falsePositiveRate = 0;
-        private double falseNegativeRate = 0;
-
-        private Config.RealTimeConfig config;
-        private int population;
-
-        private DateTime lastPerformedTestSick = default;
-        private DateTime lastPerformedTestNonSick = default;
+        internal TestingEngine Engine => engine;
 
         internal void Reset()
         {
-            positive.Clear();
-            testedCitizens.Clear();
-            population = 0;
-            lastPerformedTestSick = default;
-            lastPerformedTestNonSick = default;
+            engine = null;
+            config = null;
         }
 
         /// <summary>Starts a new deterministic testing random stream.</summary>
         internal void ResetRandom(int seed)
         {
-            random = new System.Random(seed);
+            random = new Random(seed);
         }
 
         /// <summary>Clears references and cached state retained by this process-wide singleton.</summary>
         internal void ResetForLevelUnload()
         {
             Reset();
-            config = null;
         }
 
-        public void Init(Config.RealTimeConfig config, int population, DateTime initialTime)
+        public void Init(RealTimeConfig newConfig, int population, DateTime initialTime)
         {
-            Reset();
-            this.config = config;
-            this.population = population;
-
-            lastPerformedTestSick = initialTime;
-            lastPerformedTestNonSick = initialTime;
+            config = newConfig ?? throw new ArgumentNullException(nameof(newConfig));
+            engine = new TestingEngine(CreatePolicy(config, population), random, initialTime);
         }
 
         public DateTime GetLastTestDate(uint citizenId)
         {
-            if (testedCitizens.ContainsKey(citizenId))
-            {
-                return testedCitizens[citizenId];
-            }
-            return default;
+            PandemicTestRecord record = engine?.GetLatestRecord(citizenId);
+            return record?.SampleTakenAt
+                ?? record?.ScheduledAt
+                ?? record?.RequestedAt
+                ?? default(DateTime);
         }
 
         public DateTime GetPositiveDate(uint citizenId)
         {
-            if (positive.ContainsKey(citizenId))
-            {
-                return positive[citizenId];
-            }
-            return default;
+            PandemicTestRecord record = engine?.GetLatestRecord(citizenId);
+            return record != null
+                && record.State == PandemicTestState.ResultAvailable
+                && record.Result == PandemicTestResult.Positive
+                && record.ResultAvailableAt.HasValue
+                    ? record.ResultAvailableAt.Value
+                    : default(DateTime);
         }
 
+        /// <summary>Queues a citizen for testing; disease truth is deliberately not evaluated until sampling.</summary>
         public void TestCitizen(uint citizenId, bool sick, bool knownSick, DateTime currentDate)
         {
-            if (!testedCitizens.ContainsKey(citizenId) || ((currentDate.Ticks - testedCitizens[citizenId].Ticks) > 7 * TimeSpan.TicksPerDay && !positive.ContainsKey(citizenId)))
+            if (engine == null)
             {
-                bool scheduleAsSick = false;
-                DateTime plannedDate = default;
-                if (ShouldBeTested(citizenId, knownSick, currentDate, out plannedDate, out scheduleAsSick))
-                {
-                    Test(citizenId, sick, plannedDate, scheduleAsSick);
-                }
+                return;
             }
+
+            engine.RequestTest(
+                citizenId,
+                currentDate,
+                knownSick ? PandemicTestPriority.Symptomatic : PandemicTestPriority.Routine,
+                knownSick ? PandemicTestReason.Symptoms : PandemicTestReason.Screening);
+        }
+
+        public void ProcessPendingTests(DateTime currentDate, Func<uint, PandemicTestSampleContext> sampleContextProvider)
+        {
+            engine?.Advance(currentDate, sampleContextProvider);
         }
 
         public bool IsTestedPositive(uint citizenId, DateTime currentDate)
         {
-            return positive.ContainsKey(citizenId) && positive[citizenId] <= currentDate
-                    && new DateTime(positive[citizenId].Ticks + config.DiseaseDuration * TimeSpan.TicksPerDay) > currentDate;
+            return engine != null && engine.IsPositiveResultAvailable(citizenId, currentDate);
         }
 
         public bool IsBlocked(uint citizenId, DateTime currentDate)
         {
-            if (testedCitizens.ContainsKey(citizenId))
-            {
-                return positive.ContainsKey(citizenId)
-                    && ((positive[citizenId] <= currentDate && new DateTime(positive[citizenId].Ticks + config.DiseaseDuration * TimeSpan.TicksPerDay) > currentDate)
-                    || (sendTestedCitizensToQuarantine && testedCitizens[citizenId] < currentDate));
-            }
-            return false;
+            return engine != null && engine.ShouldBlockCitizen(citizenId, currentDate);
+        }
+
+        public bool IsAwaitingResult(uint citizenId)
+        {
+            return engine != null && engine.IsAwaitingResult(citizenId);
         }
 
         public int GetTrackedTestsCount()
         {
-            return testedCitizens.Count;
+            return engine?.Count ?? 0;
         }
 
         public int GetCurrentPositiveCount(DateTime currentDate)
         {
-            if (config == null)
-            {
-                return 0;
-            }
-
-            return positive.Count(p => p.Value <= currentDate && new DateTime(p.Value.Ticks + config.DiseaseDuration * TimeSpan.TicksPerDay) > currentDate);
+            return engine?.GetCurrentPositiveCount(currentDate) ?? 0;
         }
 
-        private void Test(uint citizenId, bool sick, DateTime plannedDate, bool scheduledAsSick)
+        public void CancelCitizen(uint citizenId)
         {
-            testedCitizens[citizenId] = plannedDate;
-            if ((sick && random.NextDouble() >= falseNegativeRate) || (!sick && random.NextDouble() < falsePositiveRate))
-            {
-                positive[citizenId] = new DateTime(plannedDate.Ticks + TimeSpan.TicksPerDay * config.MinimumTestDuration);
-            }
-            
-            if (scheduledAsSick)
-            {
-                lastPerformedTestSick = plannedDate;
-            } else
-            {
-                lastPerformedTestNonSick = plannedDate;
-            }
+            engine?.CancelCitizen(citizenId);
         }
 
-        private bool ShouldBeTested(uint citizenId, bool knownSick, DateTime currentDate, out DateTime plannedDate, out bool scheduleAsSick)
+        private static PandemicTestingPolicy CreatePolicy(RealTimeConfig source, int population)
         {
-            plannedDate = default;
-            scheduleAsSick = false;
-            if (testedCitizens.ContainsKey(citizenId) && (currentDate.Ticks - testedCitizens[citizenId].Ticks) < 7 * TimeSpan.TicksPerDay ||  positive.ContainsKey(citizenId))
+            return new PandemicTestingPolicy
             {
-                return false;
-            }
-
-            double allowedTestsSick = Math.Ceiling((config.RelativeTestCapacity / 100.0) * (config.PercentageOfTestsReservedForSickCitizens / 100.0) * population);
-            double allowedTestsNonSick = Math.Floor((config.RelativeTestCapacity / 100.0) * (1 - config.PercentageOfTestsReservedForSickCitizens / 100.0) * population);
-
-            if (knownSick)
-            {
-                if (allowedTestsSick > 0)
-                {
-                    long durationBetweenTests = (long) (TimeSpan.TicksPerDay * 7L / allowedTestsSick);
-                    plannedDate = new DateTime(Math.Max(lastPerformedTestSick.Ticks + durationBetweenTests, currentDate.Ticks - TimeSpan.TicksPerDay));
-                    scheduleAsSick = true;
-                    if ((plannedDate.Ticks - currentDate.Ticks) / TimeSpan.TicksPerDay <= config.MaximumTestDuration) {
-                        return true;
-                    }
-                }
-            }
-            if (allowedTestsNonSick > 0)
-            {
-                long durationBetweenTests = (long)(TimeSpan.TicksPerDay * 7L / allowedTestsNonSick);
-                plannedDate = new DateTime(Math.Max(lastPerformedTestNonSick.Ticks + durationBetweenTests, currentDate.Ticks - TimeSpan.TicksPerDay));
-                scheduleAsSick = false;
-                if ((plannedDate.Ticks - currentDate.Ticks) / TimeSpan.TicksPerDay <= config.MaximumTestDuration)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+                Population = population,
+                RelativeCapacityPercentPerSevenDays = source.RelativeTestCapacity,
+                ReservedForSymptomaticPercent = source.PercentageOfTestsReservedForSickCitizens,
+                MaximumRequestToSampleDays = source.MaximumTestDuration,
+                ResultDelayDays = source.MinimumTestDuration,
+                DetectionTimeDays = source.DetectionTime,
+                SensitivityPercent = source.TestSensitivityPercent,
+                SpecificityPercent = source.TestSpecificityPercent,
+                RetestIntervalDays = source.RetestIntervalDays,
+                PositiveBlockingDays = QuarantineManager.RestrictionDurationDays,
+                QuarantineWhileAwaitingResult = source.QuarantineWhileAwaitingTestResult,
+            };
         }
     }
 }

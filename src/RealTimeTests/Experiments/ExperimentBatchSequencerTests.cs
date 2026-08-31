@@ -73,6 +73,69 @@ namespace RealTimeTests.Experiments
         }
 
         [Test]
+        public void PairedModeUsesSameMasterSeedAndPairIdAcrossScenarios()
+        {
+            ExperimentBatchPlan plan = CreatePlan();
+            plan.PairedSeedMode = true;
+            plan.Scenarios[0].RunCount = 2;
+            plan.Scenarios[1].RunCount = 2;
+            ExperimentBatchSequencer sequencer = new ExperimentBatchSequencer(new FnvExperimentSeedProvider());
+            ExperimentBatchState state = sequencer.CreateInitialState(plan, "session", "now");
+
+            ExperimentRunDescriptor a1 = sequencer.SelectCurrentRun(plan, state);
+            sequencer.RecordCompletion(plan, state, a1, "later", "a1");
+            ExperimentRunDescriptor a2 = sequencer.SelectCurrentRun(plan, state);
+            sequencer.RecordCompletion(plan, state, a2, "later", "a2");
+            ExperimentRunDescriptor b1 = sequencer.SelectCurrentRun(plan, state);
+            sequencer.RecordCompletion(plan, state, b1, "later", "b1");
+            ExperimentRunDescriptor b2 = sequencer.SelectCurrentRun(plan, state);
+
+            Assert.That(a1.MasterSeed, Is.EqualTo(11));
+            Assert.That(b1.MasterSeed, Is.EqualTo(a1.MasterSeed));
+            Assert.That(a2.MasterSeed, Is.EqualTo(12));
+            Assert.That(b2.MasterSeed, Is.EqualTo(a2.MasterSeed));
+            Assert.That(new[] { a1.PairId, a2.PairId, b1.PairId, b2.PairId }, Is.EqualTo(new[] { 1, 2, 1, 2 }));
+        }
+
+        [Test]
+        public void NonPairedModeDoesNotAssignPairIds()
+        {
+            ExperimentBatchPlan plan = CreatePlan();
+            ExperimentBatchSequencer sequencer = new ExperimentBatchSequencer(new FnvExperimentSeedProvider());
+            ExperimentBatchState state = sequencer.CreateInitialState(plan, "session", "now");
+
+            ExperimentRunDescriptor run = sequencer.SelectCurrentRun(plan, state);
+
+            Assert.That(run.PairId, Is.Zero);
+            Assert.That(state.CurrentPairId, Is.Zero);
+        }
+
+        [Test]
+        public void InvalidRunIsArchivedSeparatelyAndAdvancesWithoutBecomingCompleted()
+        {
+            ExperimentBatchPlan plan = CreatePlan();
+            ExperimentBatchSequencer sequencer = new ExperimentBatchSequencer(new FnvExperimentSeedProvider());
+            ExperimentBatchState state = sequencer.CreateInitialState(plan, "session", "now");
+            ExperimentRunDescriptor run = sequencer.SelectCurrentRun(plan, state);
+
+            bool hasMore = sequencer.RecordInvalidRun(plan, state, run, new ExperimentInvalidRun
+            {
+                RunId = run.RunId,
+                AttemptId = "attempt-1",
+                ScenarioId = run.Scenario.ScenarioId,
+                ScenarioIndex = run.ScenarioIndex,
+                RunIndex = run.RunIndex,
+                MasterSeed = run.MasterSeed,
+                OutputDirectory = "invalid",
+            });
+
+            Assert.That(hasMore, Is.True);
+            Assert.That(state.CompletedRuns, Is.Empty);
+            Assert.That(state.InvalidRuns, Has.Count.EqualTo(1));
+            Assert.That(state.RunIndex, Is.EqualTo(1));
+        }
+
+        [Test]
         public void StateMachineRejectsSkippedPhases()
         {
             Assert.That(ExperimentBatchStateMachine.CanTransition(

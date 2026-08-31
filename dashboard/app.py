@@ -8,6 +8,7 @@ import os
 import io
 import csv
 import base64
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -21,8 +22,18 @@ import dash_bootstrap_components as dbc
 
 try:
     from .run_discovery import discover_run_csvs, run_display_label
+    from .run_aggregation import (
+        aggregate_paired_differences,
+        aggregate_scenarios,
+        load_completed_runs,
+    )
 except ImportError:
     from run_discovery import discover_run_csvs, run_display_label
+    from run_aggregation import (
+        aggregate_paired_differences,
+        aggregate_scenarios,
+        load_completed_runs,
+    )
 
 # ?????? Default data directory ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 DEFAULT_DATA_DIR = Path(
@@ -83,18 +94,23 @@ NUMERIC_COLS = {
         "transmissions_vehicle", "hotspot_buildings", "hub_buildings",
         "hospital_usage_pct", "ambulance_usage_pct", "observation_count",
     ],
-    "AGE GROUPS":             ["infected_count", "infected_percent"],
-    "LOCKDOWN FAMILIES":      ["is_closed", "infected_pct", "threshold_pct", "manual_closed"],
+    "AGE GROUPS":             ["infected_count", "population_count", "share_of_infections_pct",
+                                 "infection_prevalence_within_age_group_pct", "infected_percent"],
+    "LOCKDOWN FAMILIES":      ["is_closed", "metric_value_pct", "close_threshold_pct",
+                                 "reopen_threshold_pct", "minimum_closure_days", "cooldown_days",
+                                 "manual_closed", "infected_pct", "threshold_pct"],
     "INFECTION ORIGINS":      ["count", "percent"],
     "DISTRICT INFECTION RATES": ["district_id", "infected_residents", "resident_count", "infected_percent"],
     "TOP SPREADERS":          ["rank", "infection_count", "is_superspreader"],
     "TOP ORIGIN LOCATIONS":   ["rank", "infection_count", "is_superspreader"],
-    "SEIRD TIME SERIES":      ["pandemic_day", "healthy", "exposed", "sick", "recovered",
-                               "dead", "total", "delta_sick", "delta_dead"],
+    "SEIRD TIME SERIES":      ["pandemic_day", "susceptible", "healthy", "exposed", "infectious",
+                               "post_infectious_ill", "symptomatic", "sick", "recovered", "dead",
+                               "total", "new_exposures", "delta_sick", "delta_dead"],
     "HEALTHCARE TIME SERIES": ["pandemic_day", "hospital_usage_pct", "ambulance_usage_pct"],
     "PEAK STATISTICS":        ["peak_sick_count", "peak_sick_day", "final_exposed",
                                "final_sick", "final_recovered", "final_dead", "total_tracked",
-                               "attack_rate_pct", "case_fatality_rate_pct"],
+                               "attack_rate_pct", "case_fatality_rate_pct",
+                               "resolved_case_fatality_ratio_pct"],
     "POLICY TIMELINE":        ["pandemic_day", "enabled"],
     "POLICY STATE":           ["enabled"],
     "INFECTION ORIGINS TIME SERIES": [
@@ -173,6 +189,16 @@ def load_csv(path_or_text: str, is_text: bool = False) -> dict:
     return _coerce(parse_pandemic_csv(text))
 
 
+def _settings_dict(data: dict) -> dict:
+    settings = data.get("PANDEMIC SETTINGS", pd.DataFrame())
+    if settings.empty or "parameter" not in settings.columns or "value" not in settings.columns:
+        return {}
+    return {
+        str(row["parameter"]).strip(): str(row["value"]).strip()
+        for _, row in settings.iterrows()
+    }
+
+
 def list_csvs() -> list:
     return discover_run_csvs(DEFAULT_DATA_DIR)
 
@@ -212,7 +238,10 @@ def extract_kpis(data: dict) -> dict:
         def _pct(k):  return f"{float(r.get(k, 0)):.1f}%"
         def _int(k):  return f"{int(float(r.get(k, 0))):,}"
         kpis["attack_rate"]     = _pct("attack_rate_pct")
-        kpis["cfr"]             = _pct("case_fatality_rate_pct")
+        cfr_column = "resolved_case_fatality_ratio_pct" \
+            if "resolved_case_fatality_ratio_pct" in peak.columns \
+            else "case_fatality_rate_pct"
+        kpis["cfr"]             = _pct(cfr_column)
         kpis["peak_sick"]       = _int("peak_sick_count")
         kpis["peak_day"]        = f"Day {int(float(r.get('peak_sick_day', 0)))}"
         kpis["total_dead"]      = _int("final_dead")
@@ -247,11 +276,13 @@ def fig_epidemic_curve(data: dict) -> go.Figure:
         return fig
 
     x = seird["pandemic_day"]
+    susceptible_col = "susceptible" if "susceptible" in seird.columns else "healthy"
+    infectious_col = "infectious" if "infectious" in seird.columns else "sick"
     fig.add_trace(go.Scatter(
-        x=x, y=seird["healthy"], name="Healthy (S)",
+        x=x, y=seird[susceptible_col], name="Susceptible (S)",
         line=dict(color=C["healthy"], width=1.8),
         fill="tozeroy", fillcolor="rgba(88,166,255,0.07)",
-        hovertemplate="Day %{x}: %{y:,.0f} Healthy<extra></extra>",
+        hovertemplate="Day %{x}: %{y:,.0f} Susceptible<extra></extra>",
     ))
     # SEIR: show Exposed (E) — latent / not yet infectious
     if "exposed" in seird.columns:
@@ -262,11 +293,17 @@ def fig_epidemic_curve(data: dict) -> go.Figure:
             hovertemplate="Day %{x}: %{y:,.0f} Exposed (latent)<extra></extra>",
         ))
     fig.add_trace(go.Scatter(
-        x=x, y=seird["sick"], name="Infectious (I)",
+        x=x, y=seird[infectious_col], name="Infectious (I)",
         line=dict(color=C["sick"], width=2.5),
         fill="tozeroy", fillcolor="rgba(248,81,73,0.14)",
         hovertemplate="Day %{x}: %{y:,.0f} Infectious<extra></extra>",
     ))
+    if "post_infectious_ill" in seird.columns:
+        fig.add_trace(go.Scatter(
+            x=x, y=seird["post_infectious_ill"].fillna(0), name="Post-infectious ill",
+            line=dict(color=C["hospital"], width=1.7, dash="dash"),
+            hovertemplate="Day %{x}: %{y:,.0f} Post-infectious ill<extra></extra>",
+        ))
     fig.add_trace(go.Scatter(
         x=x, y=seird["recovered"], name="Recovered (R)",
         line=dict(color=C["recovered"], width=2),
@@ -346,14 +383,23 @@ def fig_healthcare(data: dict) -> go.Figure:
             line=dict(color=C["ambulance"], width=2),
             hovertemplate="Day %{x}: Ambulance %{y:.1f}%<extra></extra>",
         ), secondary_y=False)
-        fig.add_hline(y=80, line_dash="dot", line_color="rgba(248,81,73,0.45)",
-                      annotation_text="80% critical threshold", secondary_y=False,
-                      annotation_font_color="rgba(248,81,73,0.70)",
-                      annotation_font_size=10)
+        cfg = _settings_dict(data)
+        for key, label, color in (
+            ("HealthcareWarningThresholdPercent", "Configured warning threshold", "rgba(240,173,78,0.50)"),
+            ("HealthcareCriticalThresholdPercent", "Configured critical threshold", "rgba(248,81,73,0.50)"),
+        ):
+            try:
+                threshold = float(cfg[key])
+            except (KeyError, TypeError, ValueError):
+                continue
+            fig.add_hline(y=threshold, line_dash="dot", line_color=color,
+                          annotation_text=f"{label}: {threshold:g}%", secondary_y=False,
+                          annotation_font_color=color, annotation_font_size=10)
 
     if not seird.empty:
+        infectious_col = "infectious" if "infectious" in seird.columns else "sick"
         fig.add_trace(go.Scatter(
-            x=seird["pandemic_day"], y=seird["sick"],
+            x=seird["pandemic_day"], y=seird[infectious_col],
             name="Infectious (I, ref)", line=dict(color=C["sick"], width=1.5, dash="dot"),
             opacity=0.45,
             hovertemplate="Day %{x}: %{y:,.0f} Infectious<extra></extra>",
@@ -425,20 +471,33 @@ def fig_age(data: dict) -> go.Figure:
     if ages.empty:
         fig.update_layout(title="No age data", **_layout())
         return fig
+    prevalence_col = (
+        "infection_prevalence_within_age_group_pct"
+        if "infection_prevalence_within_age_group_pct" in ages.columns
+        else "infected_percent"
+    )
+    share_col = (
+        "share_of_infections_pct"
+        if "share_of_infections_pct" in ages.columns
+        else prevalence_col
+    )
     fig.add_trace(go.Bar(
         x=ages["infected_count"], y=ages["age_group"],
         orientation="h",
         marker=dict(
-            color=ages["infected_percent"],
+            color=ages[prevalence_col],
             colorscale=[[0, "rgba(248,81,73,0.35)"], [1, C["sick"]]],
             showscale=False,
         ),
-        text=ages["infected_percent"].apply(lambda v: f"{float(v):.1f}%"),
+        text=[
+            f"{float(prevalence):.1f}% within age · {float(share):.1f}% of infections"
+            for prevalence, share in zip(ages[prevalence_col], ages[share_col])
+        ],
         textposition="outside",
-        hovertemplate="%{y}: %{x:,.0f} infected<extra></extra>",
+        hovertemplate="%{y}: %{x:,.0f} ever infected<extra></extra>",
     ))
     fig.update_layout(
-        title="Infected by Age Group",
+        title="Ever Infected by Age Group (prevalence and infection share separated)",
         xaxis=dict(**_AXIS, title="Infected Count"),
         yaxis=dict(**_AXIS),
         **_layout(),
@@ -484,16 +543,18 @@ def fig_lockdown(data: dict) -> go.Figure:
     if ld.empty:
         fig.update_layout(title="No lockdown data", **_layout())
         return fig
+    metric_col = "metric_value_pct" if "metric_value_pct" in ld.columns else "infected_pct"
+    close_col = "close_threshold_pct" if "close_threshold_pct" in ld.columns else "threshold_pct"
     closed  = ld["is_closed"].fillna(0).astype(int)
     colors  = [C["sick"] if c == 1 else C["accent"] for c in closed]
     fig.add_trace(go.Bar(
-        x=ld["family"], y=ld["infected_pct"],
-        name="Infected %",
+        x=ld["family"], y=ld[metric_col],
+        name="Policy metric %",
         marker_color=colors,
         hovertemplate="<b>%{x}</b><br>Infected: %{y:.1f}%<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
-        x=ld["family"], y=ld["threshold_pct"],
+        x=ld["family"], y=ld[close_col],
         name="Auto-close threshold",
         mode="markers",
         marker=dict(
@@ -502,6 +563,15 @@ def fig_lockdown(data: dict) -> go.Figure:
         ),
         hovertemplate="%{x} threshold: %{y:.1f}%<extra></extra>",
     ))
+    if "reopen_threshold_pct" in ld.columns:
+        fig.add_trace(go.Scatter(
+            x=ld["family"], y=ld["reopen_threshold_pct"],
+            name="Auto-reopen threshold",
+            mode="markers",
+            marker=dict(symbol="line-ew", size=18, color=C["recovered"],
+                        line=dict(width=3, color=C["recovered"])),
+            hovertemplate="%{x} reopen threshold: %{y:.1f}%<extra></extra>",
+        ))
     fig.update_layout(
         title="Lockdown Families ??? Infected % vs Threshold  (red = closed)",
         xaxis=dict(**_AXIS, title="", tickangle=-18),
@@ -726,31 +796,26 @@ def fig_citizen_daily_rhythm(data: dict) -> go.Figure:
 
 
 def fig_r_number(data: dict) -> go.Figure:
-    """Approximate rolling R number from SEIRD time series."""
-    seird = data.get("SEIRD TIME SERIES", pd.DataFrame())
-    fig  = go.Figure()
-    if seird.empty or "sick" not in seird.columns:
-        fig.update_layout(title="No SEIRD data for R estimation", **_layout())
-        return fig
-    seird = seird.sort_values("pandemic_day").reset_index(drop=True)
-    sick  = seird["sick"].fillna(0).astype(float)
-    window = max(3, len(sick) // 20)
-    ratio  = sick.rolling(window, min_periods=2).mean().pct_change(periods=window).fillna(0) + 1
-    ratio  = ratio.clip(0, 10)
-    x = seird["pandemic_day"]
-    fig.add_trace(go.Scatter(
-        x=x, y=ratio, name="Approx R(t)",
-        line=dict(color=C["hospital"], width=2),
-        hovertemplate="Day %{x}: R ??? %{y:.2f}<extra></extra>",
-        fill="tozeroy", fillcolor="rgba(255,166,87,0.1)",
-    ))
-    fig.add_hline(y=1.0, line_dash="dot", line_color=C["recovered"],
-                  annotation_text="R=1 threshold", annotation_font_color=C["recovered"],
-                  annotation_font_size=10)
+    """Report Rt as unavailable until a documented generation-interval model exists."""
+    fig = go.Figure()
+    fig.add_annotation(
+        x=0.5,
+        y=0.55,
+        xref="paper",
+        yref="paper",
+        showarrow=False,
+        align="center",
+        text=(
+            "Rt unavailable<br>"
+            "<span style='font-size:11px'>No generation-interval distribution is configured. "
+            "TENUS does not relabel infectious-count growth as Rt.</span>"
+        ),
+        font=dict(color=C["muted"], size=16),
+    )
     fig.update_layout(
-        title="Estimated Reproduction Number R(t)  (rolling approx.)",
-        xaxis=dict(**_AXIS, title="Pandemic Day"),
-        yaxis=dict(**_AXIS, title="R(t)", range=[0, None]),
+        title="Reproduction Number Rt — unavailable",
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
         **_layout(),
     )
     return fig
@@ -833,6 +898,28 @@ _SETTINGS_GROUPS = [
         ("PercentOfTestsForSick",            "Tests Reserved for Sick",             "%",   False),
         ("MinimumTestDuration",              "Min Test Duration",                   "days",False),
         ("MaximumTestDuration",              "Max Test Duration",                   "days",False),
+        ("TestSensitivityPercent",           "Test Sensitivity",                    "pct", False),
+        ("TestSpecificityPercent",           "Test Specificity",                    "pct", False),
+        ("RetestIntervalDays",                "Retest Interval",                     "days",False),
+    ]),
+    ("Scientific Disease Model", [
+        ("ExposedDurationDistributionType",  "Exposed Duration Distribution",       "",    False),
+        ("InfectiousStartDistributionType",  "Infectious Start Distribution",       "",    False),
+        ("InfectiousEndDistributionType",    "Infectious End Distribution",         "",    False),
+        ("SymptomStartDistributionType",     "Symptom Start Distribution",          "",    False),
+        ("SymptomEndDistributionType",       "Symptom End Distribution",            "",    False),
+        ("RecoveryDistributionType",         "Recovery Distribution",               "",    False),
+        ("InfectiousnessProfileType",        "Infectiousness Profile",              "",    True),
+        ("InitialSeedSamplingStrategy",      "Initial Seed Sampling",               "",    True),
+        ("InitialInfectionAgeMode",          "Initial Infection Age Mode",          "",    False),
+        ("EpidemicStepMinutes",              "Epidemic Step",                       "min", True),
+    ]),
+    ("Mortality and Healthcare Model", [
+        ("AsymptomaticMortalityMultiplier",          "Asymptomatic Hazard Multiplier", "x", False),
+        ("HealthcareWarningThresholdPercent",        "Healthcare Warning Threshold",   "pct", False),
+        ("HealthcareCriticalThresholdPercent",       "Healthcare Critical Threshold",  "pct", True),
+        ("HealthcareWarningMortalityMultiplier",     "Warning Hazard Multiplier",      "x", False),
+        ("HealthcareCriticalMortalityMultiplier",    "Critical Hazard Multiplier",     "x", True),
     ]),
     ("???? Quarantine & Lockdown", [
         ("QuarantineBehavior",              "Quarantine Behaviour",                 "",    True),
@@ -870,6 +957,8 @@ def _fmt_val(raw: str, unit: str) -> str:
             return f"{v:.2f}??"
         elif unit == "m":
             return f"{v:.1f} m"
+        elif unit == "min":
+            return f"{v:g} min"
         else:
             return raw
     except (ValueError, TypeError):
@@ -885,10 +974,7 @@ def summary_table(data: dict) -> html.Div:
     settings = data.get("PANDEMIC SETTINGS",pd.DataFrame())
 
     # Build a flat key???value dict from pandemic settings
-    cfg: dict = {}
-    if not settings.empty and "parameter" in settings.columns and "value" in settings.columns:
-        for _, sr in settings.iterrows():
-            cfg[str(sr["parameter"]).strip()] = str(sr["value"]).strip()
+    cfg = _settings_dict(data)
 
     def _td(text, muted=False, bold=False, color=None, width=None):
         style = {
@@ -948,6 +1034,11 @@ def summary_table(data: dict) -> html.Div:
         def fp(k): return f"{float(r.get(k, 0)):.1f}%"
         hosp_pct = float(r.get("hospital_usage_pct", 0))
         amb_pct  = float(r.get("ambulance_usage_pct", 0))
+        try:
+            critical_hospital_pct = float(cfg.get("HealthcareCriticalThresholdPercent", "nan"))
+        except (TypeError, ValueError):
+            critical_hospital_pct = float("nan")
+        hospital_is_critical = not math.isnan(critical_hospital_pct) and hosp_pct >= critical_hospital_pct
         rows += [
             data_row("Tracked Population",       fi("tracked_population")),
             data_row("Total Transmissions",      fi("transmissions_total"), important=True),
@@ -959,8 +1050,8 @@ def summary_table(data: dict) -> html.Div:
             data_row("Contacts Tracked (pairs)", fi("contacts_tracked_pairs")),
             data_row("Hotspot Buildings",        fi("hotspot_buildings")),
             data_row("Hub Buildings",            fi("hub_buildings")),
-            data_row("Hospital Usage (final)",   fp("hospital_usage_pct"),  highlight=hosp_pct > 80, important=hosp_pct > 50),
-            data_row("Ambulance Usage (final)",  fp("ambulance_usage_pct"), highlight=amb_pct  > 80, important=amb_pct  > 50),
+            data_row("Hospital Usage (final)",   fp("hospital_usage_pct"),  highlight=hospital_is_critical, important=hosp_pct > 50),
+            data_row("Ambulance Usage (final)",  fp("ambulance_usage_pct"), important=amb_pct > 50),
         ]
 
     # ?????? Active Policies ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
@@ -1262,6 +1353,97 @@ def render_dashboard(stored):
 
 # ?????? Multi-run comparison callback ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
+AGGREGATE_METRICS = [
+    ("attack_rate_pct", "Attack rate %"),
+    ("final_prevalence_pct", "Final prevalence %"),
+    ("deaths_total", "Deaths"),
+    ("hospitalizations_total", "Hospitalizations"),
+    ("empirical_secondary_infections_per_infector", "Secondary infections / infector"),
+    ("actual_mask_usage_pct", "Actual mask usage %"),
+]
+
+
+def _stat_cell(value):
+    try:
+        return f"{float(value):,.3f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def scenario_statistics_table(aggregate):
+    rows = []
+    for scenario_id, scenario in aggregate.items():
+        for metric, label in AGGREGATE_METRICS:
+            statistics = scenario.get("metrics", {}).get(metric)
+            if not statistics:
+                continue
+            rows.append(html.Tr([
+                html.Td(scenario.get("scenario_name", scenario_id)),
+                html.Td(label),
+                html.Td(str(int(statistics["n"]))),
+                html.Td(_stat_cell(statistics["mean"])),
+                html.Td(_stat_cell(statistics["median"])),
+                html.Td(_stat_cell(statistics["standard_deviation"])),
+                html.Td(_stat_cell(statistics["minimum"])),
+                html.Td(_stat_cell(statistics["p05"])),
+                html.Td(_stat_cell(statistics["p25"])),
+                html.Td(_stat_cell(statistics["p75"])),
+                html.Td(_stat_cell(statistics["p95"])),
+                html.Td(_stat_cell(statistics["maximum"])),
+                html.Td(_stat_cell(statistics["iqr"])),
+            ]))
+    if not rows:
+        return html.Div(
+            "No completed scientific run_summary.csv + manifest pairs were found in this selection.",
+            style={"color": C["muted"]},
+        )
+    headers = ["Scenario", "Metric", "n", "Mean", "Median", "SD (sample)",
+               "Min", "P5", "P25", "P75", "P95", "Max", "IQR"]
+    return html.Div(
+        html.Table(
+            [html.Thead(html.Tr([html.Th(value) for value in headers])), html.Tbody(rows)],
+            style={"width": "100%", "fontSize": "11px", "color": C["text"]},
+        ),
+        style={"overflowX": "auto", "backgroundColor": C["surface"], "padding": "12px"},
+    )
+
+
+def paired_statistics_table(paired):
+    rows = []
+    for scenario_id, comparison in paired.items():
+        for metric, label in AGGREGATE_METRICS:
+            block = comparison.get("metrics", {}).get(metric)
+            if not block:
+                continue
+            statistics = block["statistics"]
+            rows.append(html.Tr([
+                html.Td(comparison.get("scenario_name", scenario_id)),
+                html.Td(comparison.get("reference_scenario_name", comparison.get("reference_scenario_id"))),
+                html.Td(label),
+                html.Td(str(int(statistics["n"]))),
+                html.Td(_stat_cell(statistics["mean"])),
+                html.Td(_stat_cell(statistics["median"])),
+                html.Td(_stat_cell(statistics["standard_deviation"])),
+                html.Td(", ".join(
+                    f"Pair {item['pair_id']}: {_stat_cell(item['difference'])}"
+                    for item in block["pairs"]
+                )),
+            ]))
+    if not rows:
+        return html.Div(
+            "No matched positive pair_id values are available for the selected scenarios.",
+            style={"color": C["muted"]},
+        )
+    headers = ["Scenario", "Reference", "Metric (scenario − reference)", "Pairs",
+               "Mean difference", "Median difference", "SD", "Per-pair differences"]
+    return html.Div(
+        html.Table(
+            [html.Thead(html.Tr([html.Th(value) for value in headers])), html.Tbody(rows)],
+            style={"width": "100%", "fontSize": "11px", "color": C["text"]},
+        ),
+        style={"overflowX": "auto", "backgroundColor": C["surface"], "padding": "12px"},
+    )
+
 @app.callback(
     Output("compare-charts", "children"),
     Input("compare-btn",      "n_clicks"),
@@ -1282,6 +1464,11 @@ def render_comparison(_, filepaths):
 
     if not runs:
         return html.Div("Could not load selected files.", style={"color": C["muted"]})
+
+    completed_records = load_completed_runs(Path(filepath) for filepath in filepaths)
+    scenario_aggregate = aggregate_scenarios(completed_records)
+    reference_id = completed_records[0].scenario_id if completed_records else None
+    paired_aggregate = aggregate_paired_differences(completed_records, reference_id)
 
     labels        = [r[0] for r in runs]
     attack_rates  = []
@@ -1318,8 +1505,9 @@ def render_comparison(_, filepaths):
     for i, (name, d) in enumerate(runs):
         seird = d.get("SEIRD TIME SERIES", pd.DataFrame())
         if not seird.empty and "pandemic_day" in seird.columns:
+            infectious_col = "infectious" if "infectious" in seird.columns else "sick"
             overlay.add_trace(go.Scatter(
-                x=seird["pandemic_day"], y=seird["sick"],
+                x=seird["pandemic_day"], y=seird[infectious_col],
                 name=name, line=dict(color=palette[i % len(palette)], width=2),
                 hovertemplate=f"{name} - Day %{{x}}: %{{y:,.0f}} infectious<extra></extra>",
             ))
@@ -1341,6 +1529,18 @@ def render_comparison(_, filepaths):
             dbc.Col(dcc.Graph(figure=bar(peak_sicks,   "Peak Infectious per Run",  C["hospital"])),width=3),
             dbc.Col(dcc.Graph(figure=bar(total_deads,  "Total Deaths per Run",     C["dead"])),    width=3),
         ], className="g-3"),
+        section_title("Scenario statistics across completed runs"),
+        html.P(
+            "Standard deviation is the sample SD. Percentiles use linear interpolation. Invalid and failed runs are excluded by manifest status.",
+            style={"color": C["muted"], "fontSize": "11px"},
+        ),
+        scenario_statistics_table(scenario_aggregate),
+        section_title("Paired-seed differences"),
+        html.P(
+            "Differences are scenario minus the first selected reference scenario and are matched strictly by pair_id.",
+            style={"color": C["muted"], "fontSize": "11px"},
+        ),
+        paired_statistics_table(paired_aggregate),
     ])
 
 

@@ -37,6 +37,19 @@ namespace RealTimeTests.Experiments
                 Assert.That(validation.Manifest.ScenarioName, Is.EqualTo("Baseline"));
                 Assert.That(validation.Manifest.RunNumber, Is.EqualTo(1));
                 Assert.That(validation.Manifest.SeedAlgorithm, Is.EqualTo(ExperimentRunCommitService.SeedAlgorithmName));
+                ExperimentSeedSet expectedSeeds = new FnvExperimentSeedProvider().DeriveSeeds(validation.Manifest.MasterSeed);
+                Assert.That(validation.Manifest.InitialPopulationSeed, Is.EqualTo(expectedSeeds.InitialPopulation));
+                Assert.That(validation.Manifest.DiseaseProgressionSeed, Is.EqualTo(expectedSeeds.DiseaseProgression));
+                Assert.That(validation.Manifest.TransmissionSeed, Is.EqualTo(expectedSeeds.Transmission));
+                Assert.That(validation.Manifest.SymptomSeed, Is.EqualTo(expectedSeeds.Symptom));
+                Assert.That(validation.Manifest.MortalitySeed, Is.EqualTo(expectedSeeds.Mortality));
+                Assert.That(validation.Manifest.MaskSeed, Is.EqualTo(expectedSeeds.Mask));
+                Assert.That(validation.Manifest.TestingSeed, Is.EqualTo(expectedSeeds.Testing));
+                Assert.That(validation.Manifest.ContactTracingSeed, Is.EqualTo(expectedSeeds.ContactTracing));
+                Assert.That(validation.Manifest.InterventionSeed, Is.EqualTo(expectedSeeds.Intervention));
+                Assert.That(validation.Manifest.ConfigurationHash, Has.Length.EqualTo(64));
+                Assert.That(validation.Manifest.GitCommitSha, Has.Length.EqualTo(40));
+                Assert.That(validation.Manifest.GitBranchOrTag, Is.EqualTo("Beta"));
                 Assert.That(validation.Manifest.FinalTrackedPopulation, Is.EqualTo(1000));
                 Assert.That(validation.Manifest.FinalExposed, Is.EqualTo(20));
                 Assert.That(validation.Manifest.FinalSick, Is.EqualTo(15));
@@ -45,7 +58,7 @@ namespace RealTimeTests.Experiments
                 Assert.That(validation.Manifest.FinalTransmissionsTotal, Is.EqualTo(140));
                 Assert.That(validation.Manifest.FinalAttackRatePercent, Is.EqualTo(14.0d));
                 Assert.That(validation.Manifest.FinalFatalityRatePercent, Is.EqualTo(3.5714285714285716d));
-                Assert.That(validation.Manifest.OutputFiles, Has.Count.EqualTo(3));
+                Assert.That(validation.Manifest.OutputFiles, Has.Count.EqualTo(13));
                 foreach (ExperimentGeneratedFileEntry file in validation.Manifest.OutputFiles)
                 {
                     Assert.That(file.Sha256, Has.Length.EqualTo(64));
@@ -57,8 +70,8 @@ namespace RealTimeTests.Experiments
                 Assert.That(summary, Does.Contain("run-a"));
                 Assert.That(summary, Does.Contain("SeedAlgorithm"));
                 Assert.That(summary, Does.Contain(ExperimentRunCommitService.SeedAlgorithmName));
-                Assert.That(summary, Does.Contain("FinalTrackedPopulation,FinalExposed,FinalSick,FinalRecovered,FinalDead"));
-                Assert.That(summary, Does.Contain("1000,20,15,100,5,140,14"));
+                Assert.That(summary, Does.Contain("FinalTrackedPopulation,FinalSusceptible,FinalExposed,FinalInfectious"));
+                Assert.That(summary, Does.Contain("1000,860,20,15,0,0,15,100,5,140"));
                 Assert.That(Directory.GetFiles(request.BatchDirectory, "*.tmp.*", SearchOption.TopDirectoryOnly), Is.Empty);
             }
             finally
@@ -242,8 +255,25 @@ namespace RealTimeTests.Experiments
             string attemptDirectory = finalDirectory + ".__inprogress_attempt-" + scenarioIndex + "-" + runIndex;
             Directory.CreateDirectory(attemptDirectory);
             File.WriteAllText(Path.Combine(attemptDirectory, "pandemic_run_result.csv"), "metric,value\r\ninfections,5\r\n", Encoding.UTF8);
-            File.WriteAllText(Path.Combine(attemptDirectory, ExperimentRunCommitService.DataFileName), "time,value\r\n1,2\r\n", Encoding.UTF8);
-            File.WriteAllText(Path.Combine(attemptDirectory, ExperimentRunCommitService.ContactsFileName), "source,target\r\n1,2\r\n", Encoding.UTF8);
+            string[] mandatoryFiles =
+            {
+                ExperimentRunCommitService.DataFileName,
+                ExperimentRunCommitService.ContactsFileName,
+                ExperimentRunCommitService.RunSummaryFileName,
+                ExperimentRunCommitService.StateTimeSeriesFileName,
+                ExperimentRunCommitService.TransmissionEventsFileName,
+                ExperimentRunCommitService.PhysicalContactsFileName,
+                ExperimentRunCommitService.TraceableContactsFileName,
+                ExperimentRunCommitService.TestEventsFileName,
+                ExperimentRunCommitService.InterventionEventsFileName,
+                ExperimentRunCommitService.HealthcareTimeSeriesFileName,
+                ExperimentRunCommitService.PopulationEventsFileName,
+                ExperimentRunCommitService.ErrorsFileName,
+            };
+            foreach (string mandatoryFile in mandatoryFiles)
+            {
+                File.WriteAllText(Path.Combine(attemptDirectory, mandatoryFile), "header\r\nvalue\r\n", Encoding.UTF8);
+            }
 
             ExperimentScenario scenario = new ExperimentScenario
             {
@@ -267,6 +297,8 @@ namespace RealTimeTests.Experiments
                 BatchName = batchName,
                 ModVersion = "1.2.3",
                 GameVersion = "1.21.1-f9",
+                GitCommitSha = "0123456789012345678901234567890123456789",
+                GitBranchOrTag = "Beta",
                 Baseline = new BaselineSaveIdentity
                 {
                     AssetFullName = "baseline.SaveGameMetaData",
@@ -288,11 +320,15 @@ namespace RealTimeTests.Experiments
                 "Extinction",
                 finalDirectory);
             manifest.FinalTrackedPopulation = 1000;
+            manifest.FinalSusceptible = 860;
             manifest.FinalExposed = 20;
+            manifest.FinalInfectious = 15;
             manifest.FinalSick = 15;
             manifest.FinalRecovered = 100;
             manifest.FinalDead = 5;
             manifest.FinalTransmissionsTotal = 140;
+            manifest.SecondaryTransmissionsTotal = 140;
+            manifest.CumulativeInfections = 140;
             manifest.FinalAttackRatePercent = 14.0d;
             manifest.FinalFatalityRatePercent = 3.5714285714285716d;
 

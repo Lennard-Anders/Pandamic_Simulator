@@ -113,10 +113,15 @@ namespace RealTimeTests.Pandemic
             PandemicComponentSeeds mapped = PandemicComponentSeeds.FromExperimentSeedSet(derived);
 
             Assert.That(mapped.MasterSeed, Is.EqualTo(42));
-            Assert.That(mapped.PandemicManagerSeed, Is.EqualTo(1915926915));
-            Assert.That(mapped.MaskManagerSeed, Is.EqualTo(1429821284));
-            Assert.That(mapped.ContactManagerSeed, Is.EqualTo(687098664));
-            Assert.That(mapped.TestManagerSeed, Is.EqualTo(1090736272));
+            Assert.That(mapped.InitialPopulationSeed, Is.EqualTo(298721136));
+            Assert.That(mapped.DiseaseProgressionSeed, Is.EqualTo(2085446224));
+            Assert.That(mapped.TransmissionSeed, Is.EqualTo(797134664));
+            Assert.That(mapped.SymptomSeed, Is.EqualTo(1375536039));
+            Assert.That(mapped.MortalitySeed, Is.EqualTo(1859217673));
+            Assert.That(mapped.MaskSeed, Is.EqualTo(1429821284));
+            Assert.That(mapped.TestingSeed, Is.EqualTo(525376056));
+            Assert.That(mapped.ContactTracingSeed, Is.EqualTo(1553439791));
+            Assert.That(mapped.InterventionSeed, Is.EqualTo(1678075125));
         }
 
         [Test]
@@ -125,19 +130,29 @@ namespace RealTimeTests.Pandemic
             var source = new ExperimentSeedSet
             {
                 Master = 1,
-                Pandemic = 2,
-                Mask = 3,
-                Test = 4,
-                Contact = 5,
+                InitialPopulation = 2,
+                DiseaseProgression = 3,
+                Transmission = 4,
+                Symptom = 5,
+                Mortality = 6,
+                Mask = 7,
+                Testing = 8,
+                ContactTracing = 9,
+                Intervention = 10,
             };
 
             PandemicComponentSeeds mapped = PandemicComponentSeeds.FromExperimentSeedSet(source);
 
             Assert.That(mapped.MasterSeed, Is.EqualTo(1));
-            Assert.That(mapped.PandemicManagerSeed, Is.EqualTo(2));
-            Assert.That(mapped.MaskManagerSeed, Is.EqualTo(3));
-            Assert.That(mapped.TestManagerSeed, Is.EqualTo(4));
-            Assert.That(mapped.ContactManagerSeed, Is.EqualTo(5));
+            Assert.That(mapped.InitialPopulationSeed, Is.EqualTo(2));
+            Assert.That(mapped.DiseaseProgressionSeed, Is.EqualTo(3));
+            Assert.That(mapped.TransmissionSeed, Is.EqualTo(4));
+            Assert.That(mapped.SymptomSeed, Is.EqualTo(5));
+            Assert.That(mapped.MortalitySeed, Is.EqualTo(6));
+            Assert.That(mapped.MaskSeed, Is.EqualTo(7));
+            Assert.That(mapped.TestingSeed, Is.EqualTo(8));
+            Assert.That(mapped.ContactTracingSeed, Is.EqualTo(9));
+            Assert.That(mapped.InterventionSeed, Is.EqualTo(10));
         }
     }
 }

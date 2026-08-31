@@ -4,138 +4,133 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using RealTime.Core;
-using UnityEngine;
 
 namespace RealTime.Pandemic
 {
+    /// <summary>
+    /// Records every physical encounter first and derives traceability separately. The retained
+    /// adjacency graph contains traceable contacts for the legacy quarantine workflow, while the
+    /// complete physical event history is never discarded or overwritten.
+    /// </summary>
     class ContactManager
     {
         public static ContactManager Instance { get; } = new ContactManager();
 
-        private System.Random random = new System.Random(1337);
-
-        private Dictionary<uint, Dictionary<uint, DateTime>> contacts = new Dictionary<uint, Dictionary<uint, DateTime>>();
-
-        private HashSet<uint> citizensUsingContactTracingBuilding = new HashSet<uint>();
-        private HashSet<uint> citizensNotUsingContactTracingBuilding = new HashSet<uint>();
-
-        private HashSet<uint> citizensUsingContactTracingApp = new HashSet<uint>();
-        private HashSet<uint> citizensNotUsingContactTracingApp = new HashSet<uint>();
-
-        private long totalRecordedContacts;
+        private readonly ContactEngine contactEngine = new ContactEngine();
+        private readonly Dictionary<uint, Dictionary<uint, DateTime>> contacts = new Dictionary<uint, Dictionary<uint, DateTime>>();
+        private readonly HashSet<ulong> traceablePairs = new HashSet<ulong>();
+        private ContactTracingEngine tracingEngine = new ContactTracingEngine(new ContactTracingPolicy(), 1337);
+        private Config.RealTimeConfig config;
+        private int masterSeed = 1337;
+        private long totalPhysicalContacts;
+        private long totalTraceableContacts;
         private long totalRecordedBuildingContacts;
         private long totalRecordedNonBuildingContacts;
-        private int totalDistinctContactPairs;
 
-        private Config.RealTimeConfig config;
-
-        public void Init(Config.RealTimeConfig config)
+        public void Init(Config.RealTimeConfig newConfig)
         {
-            this.config = config;
+            config = newConfig ?? throw new ArgumentNullException(nameof(newConfig));
             ResetRuntimeState();
+            ResetTracingEngine();
         }
 
-        /// <summary>Starts a new deterministic contact-tracing random stream.</summary>
-        internal void ResetRandom(int seed)
+        internal void ResetStableTraits(int seed)
         {
-            random = new System.Random(seed);
+            if (seed < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(seed));
+            }
+
+            masterSeed = seed;
+            if (config != null)
+            {
+                ResetTracingEngine();
+            }
         }
 
-        /// <summary>Clears references and cached state retained by this process-wide singleton.</summary>
         internal void ResetForLevelUnload()
         {
             config = null;
             ResetRuntimeState();
+            tracingEngine = new ContactTracingEngine(new ContactTracingPolicy(), masterSeed);
         }
 
-        private void ResetRuntimeState()
+        public PhysicalContactEvent AddPhysicalContact(PhysicalContactRequest request)
         {
-            contacts.Clear();
-            citizensUsingContactTracingBuilding.Clear();
-            citizensNotUsingContactTracingBuilding.Clear();
-            citizensUsingContactTracingApp.Clear();
-            citizensNotUsingContactTracingApp.Clear();
-            totalRecordedContacts = 0;
-            totalRecordedBuildingContacts = 0;
-            totalRecordedNonBuildingContacts = 0;
-            totalDistinctContactPairs = 0;
+            bool ignored;
+            return AddPhysicalContact(request, out ignored);
         }
 
-        private bool CitizenUsesContactTracing(uint citizenId, bool inBuilding)
+        internal PhysicalContactEvent AddPhysicalContact(PhysicalContactRequest request, out bool created)
         {
-            if (!citizensUsingContactTracingApp.Contains(citizenId) && !citizensNotUsingContactTracingApp.Contains(citizenId))
+            PhysicalContactEvent contact = contactEngine.Record(request, out created);
+            if (!created)
             {
-                if (random.NextDouble() < config.AppBasedContactTracingProbability / 100.0)
-                {
-                    citizensUsingContactTracingApp.Add(citizenId);
-                }
-                else
-                {
-                    citizensNotUsingContactTracingApp.Add(citizenId);
-                }
+                return contact;
             }
 
-            if (inBuilding)
+            ContactTraceability traceability = tracingEngine.Evaluate(contact);
+            contact.TraceableByApp = traceability.TraceableByApp;
+            contact.TraceableByManual = traceability.TraceableByManual;
+            totalPhysicalContacts++;
+            if (contact.BuildingId != 0)
             {
-                if (!citizensUsingContactTracingBuilding.Contains(citizenId) && !citizensNotUsingContactTracingBuilding.Contains(citizenId))
-                {
-                    if (random.NextDouble() < config.BuildingContactTracingProbability / 100.0)
-                    {
-                        citizensUsingContactTracingBuilding.Add(citizenId);
-                    } else
-                    {
-                        citizensNotUsingContactTracingBuilding.Add(citizenId);
-                    }
-                }
+                totalRecordedBuildingContacts++;
             }
-            return (citizensUsingContactTracingBuilding.Contains(citizenId) && inBuilding) || citizensUsingContactTracingApp.Contains(citizenId);
+            else
+            {
+                totalRecordedNonBuildingContacts++;
+            }
+
+            if (traceability.IsTraceable)
+            {
+                AddTraceableDirection(contact.CitizenA, contact.CitizenB, contact.EndTime);
+                AddTraceableDirection(contact.CitizenB, contact.CitizenA, contact.EndTime);
+                traceablePairs.Add(CreatePairKey(contact.CitizenA, contact.CitizenB));
+                totalTraceableContacts++;
+            }
+
+            return contact;
         }
 
+        /// <summary>Compatibility adapter for callers that do not yet provide full context.</summary>
         public void AddContact(uint citizenId, uint contactId, bool inBuilding, DateTime currentTime)
         {
-            if (CitizenUsesContactTracing(citizenId, inBuilding) && CitizenUsesContactTracing(contactId, inBuilding))
+            AddPhysicalContact(new PhysicalContactRequest
             {
-                if (!contacts.ContainsKey(citizenId))
-                {
-                    contacts.Add(citizenId, new Dictionary<uint, DateTime>());
-                }
-
-                if (!contacts[citizenId].ContainsKey(contactId))
-                {
-                    totalDistinctContactPairs++;
-                }
-
-                contacts[citizenId][contactId] = currentTime;
-                totalRecordedContacts++;
-                if (inBuilding)
-                {
-                    totalRecordedBuildingContacts++;
-                }
-                else
-                {
-                    totalRecordedNonBuildingContacts++;
-                }
-            }
+                CitizenA = citizenId,
+                CitizenB = contactId,
+                EndTime = currentTime,
+                DurationMinutes = 1d,
+                Context = PhysicalContactContext.Other,
+                BuildingId = inBuilding ? (ushort)1 : (ushort)0,
+            });
         }
 
         public Dictionary<uint, DateTime> GetContactsForCitizen(uint citizenId)
         {
-            if (contacts.ContainsKey(citizenId))
-            {
-                return contacts[citizenId];
-            }
-            return null;
+            return contacts.TryGetValue(citizenId, out Dictionary<uint, DateTime> result) ? result : null;
         }
+
+        internal IList<PhysicalContactEvent> GetPhysicalContacts() => contactEngine.GetEvents();
+
+        internal void SetRetainPhysicalHistory(bool retain) => contactEngine.SetRetainHistory(retain);
 
         public int GetTrackedCitizenCount() => contacts.Count;
 
-        public int GetTrackedPairCount() => totalDistinctContactPairs;
+        public int GetTrackedPairCount() => traceablePairs.Count;
 
-        public long GetTotalRecordedContacts() => totalRecordedContacts;
+        public long GetTotalRecordedContacts() => totalPhysicalContacts;
+
+        internal long GetTotalTraceableContacts() => totalTraceableContacts;
 
         public long GetTotalRecordedBuildingContacts() => totalRecordedBuildingContacts;
 
         public long GetTotalRecordedNonBuildingContacts() => totalRecordedNonBuildingContacts;
+
+        internal bool CitizenUsesAppForTesting(uint citizenId) => tracingEngine.UsesApp(citizenId);
+
+        internal bool CitizenUsesManualTracingForTesting(uint citizenId) => tracingEngine.IsManuallyTraceable(citizenId);
 
         public void WriteToDisk()
         {
@@ -148,7 +143,6 @@ namespace RealTime.Pandemic
             WriteToDisk(Path.Combine(modRoot, "contacts.csv"));
         }
 
-        /// <summary>Writes the retained contact graph to an explicit run-owned destination.</summary>
         internal void WriteToDisk(string outputFile)
         {
             if (string.IsNullOrEmpty(outputFile))
@@ -165,15 +159,13 @@ namespace RealTime.Pandemic
             File.WriteAllText(outputFile, BuildCsv());
         }
 
-        /// <summary>Builds the legacy contacts CSV without performing any file-system IO.</summary>
         internal string BuildCsv()
         {
             var csv = new StringBuilder();
             csv.AppendLine("citizen_id;contact_id;last_contact_time_ms");
-
-            foreach (var citizen in contacts.OrderBy(c => c.Key))
+            foreach (KeyValuePair<uint, Dictionary<uint, DateTime>> citizen in contacts.OrderBy(item => item.Key))
             {
-                foreach (var contact in citizen.Value.OrderBy(c => c.Key))
+                foreach (KeyValuePair<uint, DateTime> contact in citizen.Value.OrderBy(item => item.Key))
                 {
                     csv.AppendLine($"{citizen.Key};{contact.Key};{contact.Value.Ticks / TimeSpan.TicksPerMillisecond}");
                 }
@@ -183,10 +175,48 @@ namespace RealTime.Pandemic
             csv.AppendLine($"#tracked_citizens;{GetTrackedCitizenCount()}");
             csv.AppendLine($"#tracked_pairs;{GetTrackedPairCount()}");
             csv.AppendLine($"#total_recorded_contacts;{GetTotalRecordedContacts()}");
+            csv.AppendLine($"#traceable_contacts;{GetTotalTraceableContacts()}");
             csv.AppendLine($"#recorded_building_contacts;{GetTotalRecordedBuildingContacts()}");
             csv.AppendLine($"#recorded_non_building_contacts;{GetTotalRecordedNonBuildingContacts()}");
-
             return csv.ToString();
+        }
+
+        private void ResetRuntimeState()
+        {
+            contacts.Clear();
+            traceablePairs.Clear();
+            contactEngine.Reset();
+            totalPhysicalContacts = 0L;
+            totalTraceableContacts = 0L;
+            totalRecordedBuildingContacts = 0L;
+            totalRecordedNonBuildingContacts = 0L;
+        }
+
+        private void ResetTracingEngine()
+        {
+            tracingEngine.Reset(new ContactTracingPolicy
+            {
+                AppAdoptionPercent = config.AppBasedContactTracingProbability,
+                ManualTraceabilityPercent = config.BuildingContactTracingProbability,
+            }, masterSeed);
+        }
+
+        private void AddTraceableDirection(uint citizenId, uint contactId, DateTime currentTime)
+        {
+            if (!contacts.TryGetValue(citizenId, out Dictionary<uint, DateTime> citizenContacts))
+            {
+                citizenContacts = new Dictionary<uint, DateTime>();
+                contacts.Add(citizenId, citizenContacts);
+            }
+
+            citizenContacts[contactId] = currentTime;
+        }
+
+        private static ulong CreatePairKey(uint citizenA, uint citizenB)
+        {
+            uint lower = Math.Min(citizenA, citizenB);
+            uint upper = Math.Max(citizenA, citizenB);
+            return ((ulong)lower << 32) | upper;
         }
     }
 }

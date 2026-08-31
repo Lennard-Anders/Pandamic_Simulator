@@ -2,11 +2,13 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using RealTime.CustomAI;
 using RealTime.Experiments;
 using RealTime.GameConnection;
+using RealTime.GameConnection.Patches;
 using SkyTools.Tools;
 using UnityEngine;
 
@@ -14,11 +16,15 @@ namespace RealTime.Pandemic
 {
     public class PandemicManager : MonoBehaviour
     {
-        private bool QUICK_SIMULATION = true;
         private bool ACTIVE_ONLY = true;
         private bool SET_SICK_FLAG = false;
 
-        private System.Random random = new System.Random(0);
+        private System.Random initialPopulationRandom = new System.Random(0);
+        private System.Random diseaseProgressionRandom = new System.Random(1);
+        private System.Random transmissionRandom = new System.Random(2);
+        private System.Random symptomRandom = new System.Random(3);
+        private System.Random mortalityRandom = new System.Random(4);
+        private System.Random interventionRandom = new System.Random(5);
         private bool active = false;
         private bool hasStartedAtLeastOnce;
         private bool worldOverlaysEnabled = true;
@@ -26,7 +32,6 @@ namespace RealTime.Pandemic
         private bool xRayEnabled;
         private PandemicXRayMetric xRayMetric = PandemicXRayMetric.Infected;
         private PandemicXRayLocationMode xRayLocationMode = PandemicXRayLocationMode.LivePositions;
-        private float spreadDistance = 10;
         private DateTime lastDateTime;
         private DateTime lastDateTimeCitizensUpdate;
         private DateTime lastStoreTime;
@@ -42,13 +47,18 @@ namespace RealTime.Pandemic
         private List<uint> initialPopulationHealthy = new List<uint>();
         private List<uint> initialPopulationRecovered = new List<uint>();
         private List<uint> initialPopulationDead = new List<uint>();
+        private readonly Dictionary<uint, Citizen.AgeGroup> trackedAgeGroupByCitizen = new Dictionary<uint, Citizen.AgeGroup>();
+        private readonly Dictionary<uint, PandemicPopulationCategory> trackedPopulationCategoryByCitizen = new Dictionary<uint, PandemicPopulationCategory>();
         private List<uint> initialPopulationSick = new List<uint>();
         // SEIR: citizens infected but not yet infectious (latent/exposed phase)
         private List<uint> initialPopulationExposed = new List<uint>();
 
-        private List<uint> removedCitizens = new List<uint>();
         private HashSet<uint> usedCitizens = new HashSet<uint>();
         private Dictionary<uint, uint> citizenMatching = new Dictionary<uint, uint>();
+        private readonly Dictionary<uint, uint> logicalCitizenByRealCitizen = new Dictionary<uint, uint>();
+        private readonly object releasedCitizenIdsLock = new object();
+        private readonly HashSet<uint> releasedRealCitizenIds = new HashSet<uint>();
+        private uint nextLogicalCitizenId;
 
         private HashSet<ushort> infectedBuildingIds = new HashSet<ushort>();
         private HashSet<ushort> quarantineBuildingIds = new HashSet<ushort>();
@@ -63,11 +73,17 @@ namespace RealTime.Pandemic
         private HashSet<uint> infectedCitizens = new HashSet<uint>();
         private HashSet<uint> infectedCitizensWithSymptoms = new HashSet<uint>();
         private HashSet<uint> symptomHospitalHandledCitizens = new HashSet<uint>();
+        private readonly DiseaseStateEngine diseaseStateEngine = new DiseaseStateEngine();
+        private readonly InitialSeedSampler initialSeedSampler = new InitialSeedSampler();
+        private readonly MetricsEngine metricsEngine = new MetricsEngine();
+        private readonly PopulationLifecycleEngine populationLifecycleEngine = new PopulationLifecycleEngine();
+        private readonly ExperimentRunIntegrityMonitor runIntegrityMonitor = new ExperimentRunIntegrityMonitor();
+        private readonly IsolationQuarantineEngine isolationQuarantineEngine = new IsolationQuarantineEngine();
+        private DiseaseProgressionEngine diseaseProgressionEngine;
+        private InfectiousnessProfilePolicy infectiousnessProfilePolicy;
+        private DistributionSpec initialInfectionAgeDistribution;
+        private HealthcareEngine healthcareEngine;
 
-        // Quarantine fate: citizen → fate timestamp (ms), and whether they die
-        private Dictionary<uint, long> quarantineFateTimestampMs = new Dictionary<uint, long>();
-        private HashSet<uint> quarantineFatedToDie = new HashSet<uint>();
-        private const int QuarantineFateDays = 14;
         private Dictionary<uint, PandemicInfectionOriginInfo> infectionOrigins = new Dictionary<uint, PandemicInfectionOriginInfo>();
         private readonly List<PandemicDeathRecord> deathRecords = new List<PandemicDeathRecord>();
         private readonly List<PandemicHealthcareUsageSample> healthcareUsageSamples = new List<PandemicHealthcareUsageSample>();
@@ -94,7 +110,8 @@ namespace RealTime.Pandemic
 
         private SimulationManager simulation;
         private bool startCompleted;
-        private readonly Dictionary<PandemicLockdownFamily, PandemicFamilyExposure> lockdownFamilyExposure = new Dictionary<PandemicLockdownFamily, PandemicFamilyExposure>();
+        private readonly LockdownEngine lockdownEngine = new LockdownEngine();
+        private double currentLockdownMetricPercent;
         private readonly List<PandemicPolicyTimelineEntry> policyTimeline = new List<PandemicPolicyTimelineEntry>();
         private readonly Dictionary<ushort, PandemicPublicTransportLineState> publicTransportLineStates = new Dictionary<ushort, PandemicPublicTransportLineState>();
         private readonly Dictionary<ushort, PandemicPublicTransportDepotState> publicTransportDepotStates = new Dictionary<ushort, PandemicPublicTransportDepotState>();
@@ -107,16 +124,20 @@ namespace RealTime.Pandemic
         private readonly List<PandemicCitizenTickState> citizenTickStates = new List<PandemicCitizenTickState>();
         private readonly Stack<PandemicCitizenTickState> citizenTickStatePool = new Stack<PandemicCitizenTickState>();
         private readonly Stack<List<PandemicCitizenTickState>> citizenTickStateListPool = new Stack<List<PandemicCitizenTickState>>();
-        private readonly Dictionary<int, List<PandemicCitizenTickState>> outdoorHealthyByCell = new Dictionary<int, List<PandemicCitizenTickState>>();
-        private readonly Dictionary<int, List<PandemicCitizenTickState>> outdoorInfectiousByCell = new Dictionary<int, List<PandemicCitizenTickState>>();
-        private readonly Dictionary<ushort, List<PandemicCitizenTickState>> buildingHealthyOccupants = new Dictionary<ushort, List<PandemicCitizenTickState>>();
-        private readonly Dictionary<ushort, List<PandemicCitizenTickState>> buildingInfectiousOccupants = new Dictionary<ushort, List<PandemicCitizenTickState>>();
-        private readonly Dictionary<ushort, List<PandemicCitizenTickState>> vehicleHealthyOccupants = new Dictionary<ushort, List<PandemicCitizenTickState>>();
-        private readonly Dictionary<ushort, List<PandemicCitizenTickState>> vehicleInfectiousOccupants = new Dictionary<ushort, List<PandemicCitizenTickState>>();
+        private readonly Dictionary<int, List<PandemicCitizenTickState>> outdoorOccupantsByCell = new Dictionary<int, List<PandemicCitizenTickState>>();
+        private readonly Dictionary<ushort, List<PandemicCitizenTickState>> buildingOccupants = new Dictionary<ushort, List<PandemicCitizenTickState>>();
+        private readonly Dictionary<ushort, List<PandemicCitizenTickState>> vehicleOccupants = new Dictionary<ushort, List<PandemicCitizenTickState>>();
+        private readonly Dictionary<uint, PandemicCitizenTickState> citizenTickStateById = new Dictionary<uint, PandemicCitizenTickState>();
         private readonly Dictionary<uint, ushort> lastObservedBuildingByCitizen = new Dictionary<uint, ushort>();
         private readonly Dictionary<uint, long> buildingEntryTimestampMsByCitizen = new Dictionary<uint, long>();
         private readonly Dictionary<uint, long> homeDepartureIntentTimestampMsByCitizen = new Dictionary<uint, long>();
         private readonly HashSet<uint> pendingTransmissionIds = new HashSet<uint>();
+        private readonly TransmissionEngine transmissionEngine = new TransmissionEngine();
+        private readonly ContactSamplingEngine contactSamplingEngine = new ContactSamplingEngine();
+        private readonly ExperimentRecorder experimentRecorder = new ExperimentRecorder();
+        private readonly List<TransmissionExposure<PandemicPendingTransmissionContext>> pendingTransmissionExposures = new List<TransmissionExposure<PandemicPendingTransmissionContext>>();
+        private ExperimentRecorderSnapshot frozenScientificSnapshot;
+        private int contactSamplingSeed;
         private readonly uint[] familyLookupBuffer = new uint[10];
         private PandemicLiveSnapshot liveSnapshotCache;
         private float nextAnalyticsSnapshotRefreshTime;
@@ -129,7 +150,6 @@ namespace RealTime.Pandemic
         private int chartVersion;
 
         private readonly long CITIZENS_UPDATE_INTERVAL_MINUTES = 60 * 6;
-        private readonly long UPDATE_INTERVAL_MINUTES = 5;
         private readonly long STORE_INTERVAL_MINUTES = 5;
         private const float OutdoorMapHalfSize = 8640f;
         private const int OutdoorCellStride = 32768;
@@ -166,12 +186,6 @@ namespace RealTime.Pandemic
         };
 
         private MaskManager Masks = new MaskManager();
-
-        private sealed class PandemicFamilyExposure
-        {
-            public int TotalCitizens;
-            public int InfectedCitizens;
-        }
 
         private sealed class PandemicLocationAggregate
         {
@@ -228,6 +242,7 @@ namespace RealTime.Pandemic
             public Citizen.AgeGroup AgeGroup;
             public bool IsInfected;
             public bool IsInfectious;
+            public bool IsSusceptible;
             public bool ShouldQuarantine;
             public bool IsKnownSick;
             public bool AtHome;
@@ -236,6 +251,13 @@ namespace RealTime.Pandemic
             public bool IsInResidentialSharedAreaWindow;
             public int OutdoorCellX;
             public int OutdoorCellZ;
+        }
+
+        private sealed class PandemicPendingTransmissionContext
+        {
+            public PandemicCitizenTickState Target;
+            public PandemicInfectionOriginInfo Origin;
+            public double InfectiousnessMultiplier;
         }
 
         public void Awake()
@@ -262,6 +284,7 @@ namespace RealTime.Pandemic
 
             Config = config;
             NormalizeRuntimeConfiguration(Config);
+            CitizenManagerPatch.CitizenReleased = NotifyCitizenReleased;
 
             bool initialized = CitizenMgr != null && CitizenProxy != null && BuildingMgr != null;
             active = false;
@@ -282,6 +305,7 @@ namespace RealTime.Pandemic
 
         public long GetInfectionDate(uint citizenID)
         {
+            citizenID = ResolveLogicalCitizenIdFromGame(citizenID);
             if (!activeInfections.ContainsKey(citizenID))
             {
                 return -1;
@@ -477,6 +501,22 @@ namespace RealTime.Pandemic
             return true;
         }
 
+        /// <summary>Freezes a failed batch without healing or converting it into a successful completion.</summary>
+        internal bool FreezeInvalidBatchRun()
+        {
+            if (runContext == null || !runContext.IsBatch || !runIntegrityMonitor.HasFailed)
+            {
+                return false;
+            }
+
+            if (!frozenForFinalization)
+            {
+                FreezeRun(PandemicCompletionReason.Aborted);
+            }
+
+            return frozenForFinalization;
+        }
+
         /// <summary>Performs destructive cleanup only after the batch controller has durably finalized exports.</summary>
         internal void CompleteBatchFinalization()
         {
@@ -522,21 +562,34 @@ namespace RealTime.Pandemic
                 pandemicRunFinishedAt = default(DateTime);
                 completionReason = PandemicCompletionReason.None;
                 frozenForFinalization = false;
+                string scientificOutputDirectory = runContext?.IsBatch == true && runContext.Output != null
+                    ? Path.GetDirectoryName(runContext.Output.RichCsvPath)
+                    : null;
+                experimentRecorder.BeginRun(currentDateTime, scientificOutputDirectory);
+                QuarantineManager.Instance.SetInterventionSink(experimentRecorder.RecordIntervention);
+                ContactManager.Instance.SetRetainPhysicalHistory(runContext?.IsBatch != true);
                 SeedPolicyTimeline();
 
                 Citizen[] citizens = CitizenMgr.GetCitizensArray();
+                nextLogicalCitizenId = (uint)citizens.Length;
 
-                var infectionCandidates = new List<uint>();
+                var infectionCandidates = new List<InitialSeedCandidate>();
 
                 for (uint i = 0; i < citizens.Length; i++)
                 {
-                    if (CitizenProxy.IsEmpty(ref citizens[i]) || CitizenProxy.IsDead(ref citizens[i]) || CitizenProxy.GetHomeBuilding(ref citizens[i]) == 0)
+                    if (i == 0u
+                        || CitizenProxy.IsEmpty(ref citizens[i])
+                        || CitizenProxy.IsDead(ref citizens[i]))
                     {
                         continue;
                     }
 
                     initialPopulation.Add(i);
                     usedCitizens.Add(i);
+                    logicalCitizenByRealCitizen[i] = i;
+                    diseaseStateEngine.RegisterCitizen(i);
+                    trackedAgeGroupByCitizen[i] = CitizenProxy.GetAge(ref citizens[i]);
+                    trackedPopulationCategoryByCitizen[i] = ClassifyPopulation(ref citizens[i]);
 
                     if (CitizenProxy.IsSick(ref citizens[i]))
                     {
@@ -544,43 +597,49 @@ namespace RealTime.Pandemic
                     }
 
                     initialPopulationHealthy.Add(i);
-                    if (CitizenProxy.GetLocation(ref citizens[i]) == Citizen.Location.Home)
+                    ushort homeBuilding = CitizenProxy.GetHomeBuilding(ref citizens[i]);
+                    infectionCandidates.Add(new InitialSeedCandidate
                     {
-                        infectionCandidates.Add(i);
-                    }
+                        CitizenId = i,
+                        IsAtResidence = CitizenProxy.GetLocation(ref citizens[i]) == Citizen.Location.Home,
+                        AgeStratum = (int)CitizenProxy.GetAge(ref citizens[i]),
+                        DistrictStratum = GetDistrictId(homeBuilding),
+                    });
                 }
 
                 float infectionRatio = Config.DiseaseStartInfectionRatio;
-                uint intendedNumberOfSickCitizens = Math.Max((uint)(infectionRatio * (initialPopulationSick.Count + initialPopulationExposed.Count + initialPopulationHealthy.Count) / 100f), 1);
+                uint intendedNumberOfSickCitizens = (uint)(infectionRatio * (initialPopulationSick.Count + initialPopulationExposed.Count + initialPopulationHealthy.Count) / 100f);
 
-                Debug.Log("Intended number of sick citizens: " + intendedNumberOfSickCitizens + ", actual number of sick citizens: " + (initialPopulationSick.Count + initialPopulationExposed.Count) + ", number of healthy citizens: " + initialPopulationHealthy.Count + ", infection candidates: " + infectionCandidates);
-
-                while (intendedNumberOfSickCitizens > (initialPopulationSick.Count + initialPopulationExposed.Count) && initialPopulationHealthy.Count > 0)
+                IList<uint> selectedSeeds = initialSeedSampler.Select(
+                    infectionCandidates,
+                    checked((int)intendedNumberOfSickCitizens),
+                    Config.InitialSeedSamplingStrategy,
+                    initialPopulationRandom);
+                if (selectedSeeds.Count != intendedNumberOfSickCitizens && runContext?.IsBatch == true)
                 {
-                    // Sickening citizens
-                    uint citizenID;
-                    if (infectionCandidates.Count > 0)
-                    {
-                        int index = random.Next(infectionCandidates.Count);
-                        citizenID = infectionCandidates[index];
-                        infectionCandidates.RemoveAt(index);
-                        initialPopulationHealthy.Remove(citizenID);
-                    }
-                    else
-                    {
-                        int index = random.Next(initialPopulationHealthy.Count);
-                        citizenID = initialPopulationHealthy[index];
-                        initialPopulationHealthy.RemoveAt(index);
-                    }
+                    throw new InvalidOperationException(
+                        "InitialSeedSamplingInsufficientPopulation: the selected strategy provided "
+                        + selectedSeeds.Count.ToString(CultureInfo.InvariantCulture)
+                        + " eligible citizens for "
+                        + intendedNumberOfSickCitizens.ToString(CultureInfo.InvariantCulture)
+                        + " requested initial seeds.");
+                }
 
-                    // Seed citizens start already-infectious: backdate by exactly StartInfection days
-                    // so daysAlreadyElapsed >= Config.StartInfection and they route to initialPopulationSick (I),
-                    // not initialPopulationExposed (E). New infections from spread() use offset=0 and go through E→I normally.
-                    long seedOffset = (long)Config.StartInfection * 24L * 3600L * 1000L;
-                    InfectCitizen(citizenID, ref citizens[retrieveID(citizenID)], -seedOffset);
-                    PandemicInfectionOriginInfo seedOrigin = CreateSeedOrigin(ref citizens[retrieveID(citizenID)]);
-                    RecordInfectionOrigin(citizenID, seedOrigin);
-                    Observer.AddCitizenInfection(0, citizenID, currentDateTime.AddMilliseconds(-seedOffset), seedOrigin);
+                foreach (uint citizenID in selectedSeeds)
+                {
+                    double requestedInfectionAgeDays = Config.InitialInfectionAgeMode
+                        == RealTime.Config.PandemicInitialInfectionAgeMode.DistributedInitialInfectionAge
+                        ? DistributionSampler.Sample(initialInfectionAgeDistribution, diseaseProgressionRandom)
+                        : Config.InitialInfectionAgeFixedDays;
+                    if (TryInfectCitizen(
+                        citizenID,
+                        ref citizens[retrieveID(citizenID)],
+                        requestedInfectionAgeDays,
+                        DiseaseExposureKind.InitialSeed))
+                    {
+                        PandemicInfectionOriginInfo seedOrigin = CreateSeedOrigin(ref citizens[retrieveID(citizenID)]);
+                        RecordInfectionOrigin(citizenID, seedOrigin);
+                    }
                 }
 
                 if (initialPopulation.Count == 0)
@@ -590,7 +649,7 @@ namespace RealTime.Pandemic
                     return;
                 }
 
-                if (initialPopulationSick.Count == 0 && initialPopulationExposed.Count == 0)
+                if (intendedNumberOfSickCitizens > 0 && initialPopulationSick.Count == 0 && initialPopulationExposed.Count == 0)
                 {
                     Log.Warning("The 'Real Time' pandemic manager could not seed initial infections yet; initialization will be retried.");
                     startCompleted = false;
@@ -599,10 +658,23 @@ namespace RealTime.Pandemic
 
                 Debug.Log("Intended number of sick citizens: " + intendedNumberOfSickCitizens + ", actual number of sick citizens: " + (initialPopulationSick.Count + initialPopulationExposed.Count) + ", number of healthy citizens: " + initialPopulationHealthy.Count);
 
+                foreach (IGrouping<PandemicPopulationCategory, KeyValuePair<uint, PandemicPopulationCategory>> group
+                    in trackedPopulationCategoryByCitizen.GroupBy(item => item.Value).OrderBy(item => item.Key))
+                {
+                    experimentRecorder.RecordPopulation(new PandemicPopulationEvent
+                    {
+                        SimulationTime = currentDateTime,
+                        Action = "InitialPopulation",
+                        PopulationCategory = group.Key.ToString(),
+                        Count = group.Count(),
+                        Reason = "EligibleBaselinePopulation",
+                    });
+                }
+
                 lastDateTime = simulation.m_currentGameTime;
                 lastDateTimeCitizensUpdate = simulation.m_currentGameTime;
                 lastStoreTime = simulation.m_currentGameTime;
-                hadAnySickCitizens = true;
+                hadAnySickCitizens = initialPopulationSick.Count > 0 || initialPopulationExposed.Count > 0;
 
                 Observer.AddSickCitizens(currentDateTime, initialPopulationSick.Count);
                 Observer.AddExposedCitizens(currentDateTime, initialPopulationExposed.Count);
@@ -611,6 +683,7 @@ namespace RealTime.Pandemic
                 Observer.AddDeadCitizens(currentDateTime, initialPopulationDead.Count);
                 Observer.FinishObservations(currentDateTime);
                 CaptureHealthcareUsageSample(currentDateTime, citizens);
+                RecordScientificState(currentDateTime);
 
                 PersistRunSnapshot(force: true, "initial");
 
@@ -626,6 +699,11 @@ namespace RealTime.Pandemic
             catch (Exception ex)
             {
                 Log.Error("The 'Real Time' pandemic manager failed to start: " + ex);
+                if (runContext?.IsBatch == true)
+                {
+                    runIntegrityMonitor.Fail("SimulationBootstrapFailure", "The pandemic simulation failed during bootstrap.", currentDateTime, ex);
+                }
+
                 active = false;
                 startCompleted = false;
                 lifecycleState = PandemicLifecycleState.Dormant;
@@ -677,6 +755,21 @@ namespace RealTime.Pandemic
             Masks?.Init(Config);
             QuarantineManager.Instance.Reset();
             QuarantineManager.Instance.InLockDown = lockdownEnabled;
+            diseaseProgressionEngine = new DiseaseProgressionEngine(
+                PandemicScientificModelFactory.CreateDiseaseTimelinePolicy(Config),
+                diseaseProgressionRandom);
+            infectiousnessProfilePolicy = PandemicScientificModelFactory.CreateInfectiousnessPolicy(Config);
+            infectiousnessProfilePolicy.Validate();
+            initialInfectionAgeDistribution = PandemicScientificModelFactory.CreateInitialInfectionAgeDistribution(Config);
+            initialInfectionAgeDistribution.Validate(nameof(initialInfectionAgeDistribution));
+            healthcareEngine = new HealthcareEngine(new HealthcarePolicy
+            {
+                WarningThresholdPercent = Config.HealthcareWarningThresholdPercent,
+                CriticalThresholdPercent = Config.HealthcareCriticalThresholdPercent,
+                WarningMortalityMultiplier = Config.HealthcareWarningMortalityMultiplier,
+                CriticalMortalityMultiplier = Config.HealthcareCriticalMortalityMultiplier,
+            });
+            runIntegrityMonitor.Reset();
         }
 
         /// <summary>Reseeds every <see cref="System.Random"/> stream owned by the TENUS pandemic.</summary>
@@ -687,10 +780,16 @@ namespace RealTime.Pandemic
                 throw new ArgumentNullException(nameof(seeds));
             }
 
-            random = new System.Random(seeds.PandemicManagerSeed);
-            Masks.ResetRandom(seeds.MaskManagerSeed);
-            TestManager.Instance.ResetRandom(seeds.TestManagerSeed);
-            ContactManager.Instance.ResetRandom(seeds.ContactManagerSeed);
+            initialPopulationRandom = new System.Random(seeds.InitialPopulationSeed);
+            diseaseProgressionRandom = new System.Random(seeds.DiseaseProgressionSeed);
+            transmissionRandom = new System.Random(seeds.TransmissionSeed);
+            contactSamplingSeed = seeds.TransmissionSeed;
+            symptomRandom = new System.Random(seeds.SymptomSeed);
+            mortalityRandom = new System.Random(seeds.MortalitySeed);
+            interventionRandom = new System.Random(seeds.InterventionSeed);
+            Masks.ResetStableTraits(seeds.MasterSeed);
+            TestManager.Instance.ResetRandom(seeds.TestingSeed);
+            ContactManager.Instance.ResetStableTraits(seeds.MasterSeed);
         }
 
         private void PersistRunSnapshot(bool force, string phase)
@@ -726,6 +825,9 @@ namespace RealTime.Pandemic
                 : simulation != null ? simulation.m_currentGameTime : DateTime.Now;
             completionReason = reason;
             Observer?.Freeze();
+            frozenScientificSnapshot = experimentRecorder.Freeze(
+                pandemicRunFinishedAt,
+                !runIntegrityMonitor.HasFailed);
 
             // Force one final coherent analytics snapshot while Update still owns the simulation pause.
             cachedAnalyticsInfectionCount = -1;
@@ -867,6 +969,11 @@ namespace RealTime.Pandemic
             publicTransportShutdownState = publicTransportVehicles.Count > 0
                 ? PandemicPublicTransportShutdownState.Draining
                 : PandemicPublicTransportShutdownState.Closed;
+            RecordRuntimeIntervention(
+                PandemicInterventionType.PublicTransportShutdown,
+                "Start",
+                "LockdownFamilyClosed",
+                publicTransportShutdownState.ToString());
 
             if (publicTransportShutdownState == PandemicPublicTransportShutdownState.Closed)
             {
@@ -918,6 +1025,11 @@ namespace RealTime.Pandemic
             publicTransportLineStates.Clear();
             publicTransportDepotStates.Clear();
             publicTransportShutdownState = PandemicPublicTransportShutdownState.Open;
+            RecordRuntimeIntervention(
+                PandemicInterventionType.PublicTransportShutdown,
+                "End",
+                "LockdownFamilyOpened",
+                PandemicPublicTransportShutdownState.Open.ToString());
         }
 
         private void CapturePublicTransportLines()
@@ -1283,7 +1395,7 @@ namespace RealTime.Pandemic
 
         public void Update()
         {
-            if (IsAwaitingBatchFinalization)
+            if (frozenForFinalization)
             {
                 return;
             }
@@ -1295,7 +1407,10 @@ namespace RealTime.Pandemic
             }
             catch (Exception ex)
             {
-                Log.Warning("The 'Real Time' pandemic manager failed to update public transport shutdown state: " + ex);
+                if (HandleSimulationFailure("InterventionEngineException", "Public transport intervention update failed.", ex))
+                {
+                    return;
+                }
             }
 
             if (!IsReadyForUpdate())
@@ -1307,16 +1422,41 @@ namespace RealTime.Pandemic
             try
             {
                 DateTime tempDateTime = simulation.m_currentGameTime;
-                if ((tempDateTime.Ticks - lastDateTime.Ticks) / TimeSpan.TicksPerMinute < UPDATE_INTERVAL_MINUTES)
+                EpidemicStepDecision stepDecision = EpidemicStepScheduler.Evaluate(
+                    lastDateTime,
+                    tempDateTime,
+                    Config.EpidemicStepMinutes,
+                    runContext?.IsBatch == true);
+                if (stepDecision.Kind == EpidemicStepDecisionKind.NotDue)
                 {
                     return;
                 }
 
-                currentDateTime = tempDateTime;
+                if (stepDecision.Kind == EpidemicStepDecisionKind.IntegrityViolation)
+                {
+                    if (runContext?.IsBatch == true)
+                    {
+                        runIntegrityMonitor.Fail(
+                            stepDecision.ErrorCode,
+                            "A required epidemiological simulation step could not be reconstructed safely.",
+                            tempDateTime,
+                            null);
+                        active = false;
+                    }
+                    else
+                    {
+                        Log.Warning("The epidemiological clock lost monotonic step integrity; interactive simulation timing was resynchronized.");
+                        lastDateTime = tempDateTime;
+                    }
+
+                    return;
+                }
+
+                currentDateTime = stepDecision.StepTime;
                 simulation.ForcedSimulationPaused = true;
                 forcedPauseApplied = true;
 
-                long milliseconds = (currentDateTime.Ticks - lastDateTime.Ticks) / TimeSpan.TicksPerMillisecond;
+                long milliseconds = checked((long)Config.EpidemicStepMinutes * 60L * 1000L);
 
                 try
                 {
@@ -1324,78 +1464,92 @@ namespace RealTime.Pandemic
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning("The 'Real Time' pandemic manager could not update mask probabilities: " + ex);
+                    if (HandleSimulationFailure("TransmissionEngineException", "Transmission probability update failed.", ex))
+                    {
+                        return;
+                    }
                 }
-
-                double symptomPhaseDays = Math.Max(1.0, Config.DiseaseDuration - Config.StartSymptoms);
-
-                // C) Hospital saturation mortality multiplier: overwhelmed hospitals increase CFR
-                double saturationMultiplier = 1.0;
-                if (healthcareUsageSamples.Count > 0)
-                {
-                    float latestHospitalPct = healthcareUsageSamples[healthcareUsageSamples.Count - 1]?.HospitalUsagePercent ?? 0f;
-                    if (latestHospitalPct >= 90f)
-                        saturationMultiplier = 2.0;
-                    else if (latestHospitalPct >= 75f)
-                        saturationMultiplier = 1.35;
-                }
-
-                double childDeathProbability  = (1 - Math.Pow(1 - Config.DeathChild  / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
-                double teenDeathProbability   = (1 - Math.Pow(1 - Config.DeathTeen   / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
-                double youngDeathProbability  = (1 - Math.Pow(1 - Config.DeathYoung  / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
-                double adultDeathProbability  = (1 - Math.Pow(1 - Config.DeathAdult  / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
-                double seniorDeathProbability = (1 - Math.Pow(1 - Config.DeathSenior / 100.0, milliseconds / (symptomPhaseDays * 24 * 3600 * 1000.0))) * saturationMultiplier;
 
                 try
                 {
                     PromoteExposedToInfectious();
-                    kill(childDeathProbability, teenDeathProbability, youngDeathProbability, adultDeathProbability, seniorDeathProbability);
+                    ProcessMortality();
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning("The 'Real Time' pandemic manager failed during death simulation: " + ex);
+                    if (HandleSimulationFailure("DiseaseProgressionException", "Disease progression failed.", ex))
+                    {
+                        return;
+                    }
                 }
 
                 Citizen[] citizens = CitizenMgr.GetCitizensArray();
+                if (!ProcessReleasedCitizens())
+                {
+                    return;
+                }
+
                 SyncSymptomStates(citizens);
 
                 if (ACTIVE_ONLY)
                 {
-                    if ((tempDateTime.Ticks - lastDateTimeCitizensUpdate.Ticks) / TimeSpan.TicksPerMinute >= CITIZENS_UPDATE_INTERVAL_MINUTES)
+                    if ((currentDateTime.Ticks - lastDateTimeCitizensUpdate.Ticks) / TimeSpan.TicksPerMinute >= CITIZENS_UPDATE_INTERVAL_MINUTES)
                     {
-                        lastDateTimeCitizensUpdate = tempDateTime;
+                        lastDateTimeCitizensUpdate = currentDateTime;
                         citizens = CitizenMgr.GetCitizensArray();
 
                         for (int i = 0; i < initialPopulation.Count; i++)
                         {
-                            if (CitizenProxy.IsEmpty(ref citizens[retrieveID(initialPopulation[i])]))
+                            uint logicalCitizenId = initialPopulation[i];
+                            uint realCitizenId = retrieveID(logicalCitizenId);
+                            bool realCitizenMissing = realCitizenId >= citizens.Length
+                                || CitizenProxy.IsEmpty(ref citizens[realCitizenId]);
+                            bool deceasedSlotWasReused = !realCitizenMissing
+                                && diseaseStateEngine.GetState(logicalCitizenId, currentDateTime) == DiseaseState.Dead
+                                && !CitizenProxy.IsDead(ref citizens[realCitizenId]);
+                            if (realCitizenMissing || deceasedSlotWasReused)
                             {
-                                if (!initialPopulationDead.Contains(initialPopulation[i]) && !initialPopulationRecovered.Contains(initialPopulation[i]))
+                                if (!HandleTrackedCitizenDeparture(
+                                    logicalCitizenId,
+                                    realCitizenId,
+                                    deceasedSlotWasReused ? "CitizenSlotReused" : "CitizenNoLongerExists"))
                                 {
-                                    if (!removedCitizens.Contains(initialPopulation[i]))
-                                    {
-                                        removedCitizens.Add(initialPopulation[i]);
-                                    }
+                                    return;
                                 }
 
-                                usedCitizens.Remove(retrieveID(initialPopulation[i]));
-                                citizenMatching.Remove(initialPopulation[i]);
-                                initialPopulation.RemoveAt(i);
                                 i--;
                             }
                         }
 
-                        for (uint i = 0; i < citizens.Length && removedCitizens.Count > 0; i++)
+                        // Track every newly eligible resident as a new logical person. Population
+                        // growth must not depend on a preceding removal, and a reused game-buffer
+                        // slot must never inherit the old logical citizen's disease course.
+                        for (uint i = 0; i < citizens.Length; i++)
                         {
-                            if (!CitizenProxy.IsEmpty(ref citizens[i]) && CitizenProxy.GetHomeBuilding(ref citizens[i]) != 0 && !usedCitizens.Contains(i))
+                            if (i != 0u
+                                && !CitizenProxy.IsEmpty(ref citizens[i])
+                                && !CitizenProxy.IsDead(ref citizens[i])
+                                && !usedCitizens.Contains(i))
                             {
-                                uint removedCitizen = removedCitizens[0];
-                                removedCitizens.RemoveAt(0);
-
+                                uint newLogicalCitizen = AllocateLogicalCitizenId();
                                 usedCitizens.Add(i);
-                                citizenMatching[removedCitizen] = i;
-                                initialPopulation.Add(removedCitizen);
-
+                                citizenMatching[newLogicalCitizen] = i;
+                                logicalCitizenByRealCitizen[i] = newLogicalCitizen;
+                                initialPopulation.Add(newLogicalCitizen);
+                                initialPopulationHealthy.Add(newLogicalCitizen);
+                                diseaseStateEngine.RegisterCitizen(newLogicalCitizen);
+                                trackedAgeGroupByCitizen[newLogicalCitizen] = CitizenProxy.GetAge(ref citizens[i]);
+                                PandemicPopulationCategory populationCategory = ClassifyPopulation(ref citizens[i]);
+                                trackedPopulationCategoryByCitizen[newLogicalCitizen] = populationCategory;
+                                experimentRecorder.RecordPopulation(new PandemicPopulationEvent
+                                {
+                                    SimulationTime = currentDateTime,
+                                    CitizenId = newLogicalCitizen,
+                                    Action = "Added",
+                                    PopulationCategory = populationCategory.ToString(),
+                                    Count = 1,
+                                    Reason = "NewEligibleCitizen",
+                                });
                             }
                         }
                     }
@@ -1403,11 +1557,51 @@ namespace RealTime.Pandemic
 
                 try
                 {
-                    ProcessQuarantineFates();
+                    ProcessCitizenTesting(citizens);
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning("The 'Real Time' pandemic manager failed during quarantine fate processing: " + ex);
+                    if (HandleSimulationFailure("TestingEngineException", "Testing state-machine processing failed.", ex))
+                    {
+                        return;
+                    }
+                }
+
+                try
+                {
+                    ProcessRecoveries(citizens);
+                }
+                catch (Exception ex)
+                {
+                    if (HandleSimulationFailure("DiseaseProgressionException", "Disease recovery processing failed.", ex))
+                    {
+                        return;
+                    }
+                }
+
+                try
+                {
+                    UpdateLockdownPolicyStates(currentDateTime);
+                    UpdatePublicTransportShutdownState();
+                }
+                catch (Exception ex)
+                {
+                    if (HandleSimulationFailure("InterventionEngineException", "Lockdown policy update failed.", ex))
+                    {
+                        return;
+                    }
+                }
+
+                try
+                {
+                    ProcessContactTracingCandidates();
+                }
+                catch (Exception ex)
+                {
+                    if (HandleSimulationFailure("ContactTracingEngineException", "Contact tracing processing failed.", ex))
+                    {
+                        return;
+                    }
                 }
 
                 try
@@ -1416,7 +1610,10 @@ namespace RealTime.Pandemic
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning("The 'Real Time' pandemic manager failed during disease spread simulation: " + ex);
+                    if (HandleSimulationFailure("TransmissionEngineException", "Testing or transmission simulation failed.", ex))
+                    {
+                        return;
+                    }
                 }
 
                 try
@@ -1434,7 +1631,10 @@ namespace RealTime.Pandemic
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning("The 'Real Time' pandemic manager failed to capture healthcare usage data: " + ex);
+                    if (HandleSimulationFailure("HealthcareEngineException", "Healthcare time-series capture failed.", ex))
+                    {
+                        return;
+                    }
                 }
 
                 try
@@ -1464,15 +1664,27 @@ namespace RealTime.Pandemic
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning("The 'Real Time' pandemic manager observer update failed: " + ex);
+                    if (HandleSimulationFailure("MetricsEngineException", "Epidemiological metrics update failed.", ex))
+                    {
+                        return;
+                    }
                 }
+
+                runIntegrityMonitor.ValidateDiseaseState(diseaseStateEngine, currentDateTime);
+                if (runIntegrityMonitor.HasFailed)
+                {
+                    active = false;
+                    return;
+                }
+
+                RecordScientificState(currentDateTime);
 
                 lastDateTime = currentDateTime;
 
-                if ((tempDateTime.Ticks - lastStoreTime.Ticks) / TimeSpan.TicksPerMinute >= STORE_INTERVAL_MINUTES)
+                if ((currentDateTime.Ticks - lastStoreTime.Ticks) / TimeSpan.TicksPerMinute >= STORE_INTERVAL_MINUTES)
                 {
                     PersistRunSnapshot(force: true, "periodic");
-                    lastStoreTime = tempDateTime;
+                    lastStoreTime = currentDateTime;
                 }
 
                 PandemicRunPolicy policy = runContext?.Policy ?? PandemicRunPolicy.CreateLegacyManual();
@@ -1495,7 +1707,7 @@ namespace RealTime.Pandemic
             }
             catch (Exception ex)
             {
-                Log.Error("The 'Real Time' pandemic manager update failed unexpectedly and was recovered: " + ex);
+                HandleSimulationFailure("SimulationCoreException", "The epidemiological simulation failed unexpectedly.", ex);
             }
             finally
             {
@@ -1621,12 +1833,10 @@ namespace RealTime.Pandemic
             }
 
             citizenTickStates.Clear();
-            ClearTickStateBuckets(outdoorHealthyByCell);
-            ClearTickStateBuckets(outdoorInfectiousByCell);
-            ClearTickStateBuckets(buildingHealthyOccupants);
-            ClearTickStateBuckets(buildingInfectiousOccupants);
-            ClearTickStateBuckets(vehicleHealthyOccupants);
-            ClearTickStateBuckets(vehicleInfectiousOccupants);
+            citizenTickStateById.Clear();
+            ClearTickStateBuckets(outdoorOccupantsByCell);
+            ClearTickStateBuckets(buildingOccupants);
+            ClearTickStateBuckets(vehicleOccupants);
         }
 
         private void ClearTickStateBuckets<TKey>(Dictionary<TKey, List<PandemicCitizenTickState>> buckets)
@@ -1744,6 +1954,19 @@ namespace RealTime.Pandemic
                     TestManager.Instance.TestCitizen(citizenId, activeInfections.ContainsKey(citizenId), IsKnownSick(citizenId), currentDateTime);
                 }
             }
+
+            TestManager.Instance.ProcessPendingTests(currentDateTime, CreateTestSampleContext);
+        }
+
+        private PandemicTestSampleContext CreateTestSampleContext(uint citizenId)
+        {
+            DiseaseState state = diseaseStateEngine.GetState(citizenId, currentDateTime);
+            diseaseStateEngine.TryGetCourse(citizenId, out DiseaseCourse course);
+            return new PandemicTestSampleContext
+            {
+                DiseaseState = state,
+                ExposureTime = course?.ExposureTime,
+            };
         }
 
         private void ProcessRecoveries(Citizen[] citizens)
@@ -1762,9 +1985,7 @@ namespace RealTime.Pandemic
                     continue;
                 }
 
-                long infectedTime = (currentDateTime.Ticks / 10000) - activeInfections[citizenId];
-                double infectedTimeInDays = infectedTime / 1000.0 / 3600.0 / 24.0;
-                if (infectedTimeInDays > Config.DiseaseDuration)
+                if (diseaseStateEngine.GetState(citizenId, currentDateTime) == DiseaseState.Recovered)
                 {
                     HealCitizen(citizenId, ref citizens[realId]);
                     i--;
@@ -1780,15 +2001,17 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            for (int i = 0; i < initialPopulationSick.Count; i++)
+            for (int i = 0; i < initialPopulation.Count; i++)
             {
-                uint citizenId = initialPopulationSick[i];
-                if (!activeInfections.ContainsKey(citizenId))
+                uint citizenId = initialPopulation[i];
+                DiseaseState state = diseaseStateEngine.GetState(citizenId, currentDateTime);
+                if (state == DiseaseState.Dead || state == DiseaseState.Removed)
                 {
                     continue;
                 }
 
-                if (ShouldBeInQuarantine(citizenId))
+                if (TestManager.Instance.IsTestedPositive(citizenId, currentDateTime)
+                    || (!Config.OnlyTestedCitizensToQuarantine && IsKnownSick(citizenId)))
                 {
                     CheckForContacts(citizenId, Config.DiseaseDuration, Config.QuarantineBehavior);
                 }
@@ -1827,10 +2050,14 @@ namespace RealTime.Pandemic
                 state.InstanceId = CitizenProxy.GetInstance(ref citizen);
                 state.Location = CitizenProxy.GetLocation(ref citizen);
                 state.AgeGroup = CitizenProxy.GetAge(ref citizen);
-                state.IsInfected = activeInfections.ContainsKey(citizenId);
-                state.IsInfectious = state.IsInfected && IsInfectious(citizenId);
+                DiseaseState diseaseState = diseaseStateEngine.GetState(citizenId, currentDateTime);
+                state.IsInfected = diseaseState == DiseaseState.Exposed
+                    || diseaseState == DiseaseState.Infectious
+                    || diseaseState == DiseaseState.PostInfectiousIll;
+                state.IsInfectious = diseaseState == DiseaseState.Infectious && IsInfectious(citizenId);
+                state.IsSusceptible = diseaseState == DiseaseState.Susceptible;
                 state.IsKnownSick = state.IsInfected && IsKnownSick(citizenId);
-                state.ShouldQuarantine = ShouldBeInQuarantine(citizenId);
+                state.ShouldQuarantine = ShouldLogicalCitizenBeInQuarantine(citizenId);
                 state.AtHome = state.CurrentBuilding != 0 && state.HomeBuilding != 0 && state.CurrentBuilding == state.HomeBuilding;
                 state.TargetBuilding = state.InstanceId != 0 ? CitizenMgr.GetTargetBuilding(state.InstanceId) : (ushort)0;
                 state.TargetNode = state.InstanceId != 0 ? CitizenMgr.GetTargetNode(state.InstanceId) : (ushort)0;
@@ -1839,6 +2066,23 @@ namespace RealTime.Pandemic
                 state.OutdoorCellX = GetOutdoorCellCoordinate(state.Position.x, outdoorCellSize);
                 state.OutdoorCellZ = GetOutdoorCellCoordinate(state.Position.z, outdoorCellSize);
                 citizenTickStates.Add(state);
+                citizenTickStateById[state.CitizenId] = state;
+
+                if (state.VehicleId != 0)
+                {
+                    AddTickStateToBucket(vehicleOccupants, state.VehicleId, state);
+                }
+                else if (state.CurrentBuilding != 0)
+                {
+                    AddTickStateToBucket(buildingOccupants, state.CurrentBuilding, state);
+                }
+                else if (state.InstanceId != 0 && state.Position != Vector3.zero)
+                {
+                    AddTickStateToBucket(
+                        outdoorOccupantsByCell,
+                        GetOutdoorCellKey(state.OutdoorCellX, state.OutdoorCellZ),
+                        state);
+                }
 
                 if (SET_SICK_FLAG && state.IsInfected && !CitizenProxy.IsSick(ref citizen))
                 {
@@ -1848,19 +2092,6 @@ namespace RealTime.Pandemic
                 if (state.IsInfectious)
                 {
                     Observer.AddInfectiousCitizen(citizenId);
-                }
-
-                if (state.CurrentBuilding != 0)
-                {
-                    ItemClass.Service currentService = BuildingMgr.GetBuildingService(state.CurrentBuilding);
-                    ItemClass.SubService currentSubService = BuildingMgr.GetBuildingSubService(state.CurrentBuilding);
-                    PandemicLockdownFamily family = PandemicTaxonomy.GetBuildingFamily(currentService, currentSubService);
-                    PandemicFamilyExposure familyExposure = GetOrCreateFamilyExposure(family);
-                    familyExposure.TotalCitizens++;
-                    if (state.IsInfected)
-                    {
-                        familyExposure.InfectedCitizens++;
-                    }
                 }
 
                 if (state.IsInfected && state.HomeBuilding != 0)
@@ -1888,35 +2119,6 @@ namespace RealTime.Pandemic
                     }
                 }
 
-                if (state.IsInfected && state.ShouldQuarantine
-                    && (Config.QuarantineBehavior == RealTime.Config.QuarantineBehavior.Contacts
-                        || Config.QuarantineBehavior == RealTime.Config.QuarantineBehavior.Family))
-                {
-                    continue;
-                }
-
-                if (state.ShouldQuarantine)
-                {
-                    continue;
-                }
-
-                if (state.VehicleId != 0)
-                {
-                    AddTickStateToBucket(state.IsInfected ? vehicleInfectiousOccupants : vehicleHealthyOccupants, state.VehicleId, state);
-                    continue;
-                }
-
-                if (state.CurrentBuilding != 0)
-                {
-                    AddTickStateToBucket(state.IsInfected ? buildingInfectiousOccupants : buildingHealthyOccupants, state.CurrentBuilding, state);
-                    continue;
-                }
-
-                if (state.InstanceId != 0 && state.Position != Vector3.zero)
-                {
-                    int cellKey = GetOutdoorCellKey(state.OutdoorCellX, state.OutdoorCellZ);
-                    AddTickStateToBucket(state.IsInfected ? outdoorInfectiousByCell : outdoorHealthyByCell, cellKey, state);
-                }
             }
         }
 
@@ -1958,7 +2160,6 @@ namespace RealTime.Pandemic
             hubBuildingIds.Clear();
             buildingInfectedCounts.Clear();
             buildingCurrentInfectedCounts.Clear();
-            ResetLockdownFamilyExposure();
 
             if (!IsVisualizationDataAvailable())
             {
@@ -2083,6 +2284,7 @@ namespace RealTime.Pandemic
 
         public bool IsCitizenInfected(uint citizenId)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             return citizenId != 0 && activeInfections.ContainsKey(citizenId);
         }
 
@@ -2114,6 +2316,7 @@ namespace RealTime.Pandemic
 
         public bool IsCitizenWearingMask(uint citizenId)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             return Masks?.IsWearingMask(citizenId) ?? false;
         }
 
@@ -2125,6 +2328,44 @@ namespace RealTime.Pandemic
 
         internal IList<PandemicObservation> GetAllObservations() =>
             Observer?.GetObservations() ?? new List<PandemicObservation>();
+
+        internal ExperimentRecorderSnapshot GetScientificRunSnapshot()
+        {
+            if (!frozenForFinalization || frozenScientificSnapshot == null)
+            {
+                throw new InvalidOperationException("Scientific output can only be captured after the run is frozen.");
+            }
+
+            return frozenScientificSnapshot;
+        }
+
+        internal IList<PandemicTestRecord> GetTestRecords()
+        {
+            return TestManager.Instance.Engine == null
+                ? new List<PandemicTestRecord>()
+                : TestManager.Instance.Engine.Records.OrderBy(record => record.TestId).ToList();
+        }
+
+        internal ExperimentRunIntegrityFailure GetRunIntegrityFailure() => runIntegrityMonitor.Failure;
+
+        internal double GetActualMaskUsagePercent()
+        {
+            if (initialPopulation.Count == 0)
+            {
+                return 0d;
+            }
+
+            int wearing = 0;
+            for (int i = 0; i < initialPopulation.Count; ++i)
+            {
+                if (Masks.IsWearingMask(initialPopulation[i]))
+                {
+                    wearing++;
+                }
+            }
+
+            return wearing * 100d / initialPopulation.Count;
+        }
 
         internal IList<PandemicHealthcareTimePoint> GetHealthcareTimeSeries()
         {
@@ -2163,6 +2404,12 @@ namespace RealTime.Pandemic
 
         internal bool IsBatchRunOwned => runContext != null && runContext.IsBatch;
 
+        internal bool TryGetRunIntegrityFailure(out ExperimentRunIntegrityFailure failure)
+        {
+            failure = runIntegrityMonitor.Failure;
+            return failure != null;
+        }
+
         internal bool IsAwaitingBatchFinalization => IsBatchRunOwned
             && lifecycleState == PandemicLifecycleState.Finished
             && frozenForFinalization;
@@ -2186,10 +2433,10 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            Masks?.SetMaskForCitizen(citizenId, masked);
+            Masks?.SetMaskForCitizen(ResolveLogicalCitizenIdFromGame(citizenId), masked);
         }
 
-        /// <summary>Toggles quarantine for a single citizen. Adding quarantine also schedules a 14-day fate.</summary>
+        /// <summary>Toggles quarantine for a single citizen without altering the disease course.</summary>
         public void ToggleCitizenQuarantine(uint citizenId)
         {
             if (ExperimentControlGate.IsControlLocked)
@@ -2202,17 +2449,15 @@ namespace RealTime.Pandemic
                 currentDateTime = simulation.m_currentGameTime;
             }
 
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             DateTime now = currentDateTime;
-            if (QuarantineManager.Instance.IsInQuarantine(citizenId, now))
+            if (QuarantineManager.Instance.IsRestricted(citizenId, now))
             {
-                QuarantineManager.Instance.RemoveCitizenInQuarantine(citizenId);
-                quarantineFateTimestampMs.Remove(citizenId);
-                quarantineFatedToDie.Remove(citizenId);
+                QuarantineManager.Instance.RemoveAllRestrictions(citizenId, now, "ManualToggle");
             }
             else
             {
-                QuarantineManager.Instance.AddCitizenInQuarantine(citizenId, now);
-                ScheduleQuarantineFate(citizenId);
+                QuarantineManager.Instance.AddCitizenInIsolation(citizenId, now);
             }
         }
 
@@ -2321,6 +2566,42 @@ namespace RealTime.Pandemic
                 Type = type,
                 Enabled = enabled,
             });
+            RecordRuntimeIntervention(
+                type == PandemicPolicyMarkerType.Masks
+                    ? PandemicInterventionType.Mask
+                    : PandemicInterventionType.Lockdown,
+                enabled ? "Enable" : "Disable",
+                force ? "RunInitialPolicy" : "PolicyChanged",
+                "GlobalPolicy");
+        }
+
+        private void RecordRuntimeIntervention(
+            PandemicInterventionType type,
+            string action,
+            string reason,
+            string context)
+        {
+            if ((lifecycleState != PandemicLifecycleState.Running && reason != "RunInitialPolicy")
+                || frozenForFinalization
+                || experimentRecorder.RunStartTime == default(DateTime))
+            {
+                return;
+            }
+
+            DateTime timestamp = simulation != null ? simulation.m_currentGameTime : currentDateTime;
+            if (timestamp == default(DateTime))
+            {
+                return;
+            }
+
+            experimentRecorder.RecordIntervention(new PandemicInterventionEvent
+            {
+                SimulationTime = timestamp,
+                InterventionType = type,
+                Action = action,
+                Reason = reason,
+                Context = context,
+            });
         }
 
         private void RecordInfectionOrigin(uint citizenId, PandemicInfectionOriginInfo origin)
@@ -2335,6 +2616,7 @@ namespace RealTime.Pandemic
 
         public bool TryGetInfectionSource(uint citizenId, out ushort buildingId, out InfectionType infType)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             infType = InfectionType.OUTDOOR;
             buildingId = 0;
 
@@ -2350,12 +2632,14 @@ namespace RealTime.Pandemic
 
         internal bool TryGetInfectionOrigin(uint citizenId, out PandemicInfectionOriginInfo origin)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             return infectionOrigins.TryGetValue(citizenId, out origin);
         }
 
         public void ManuallyInfectCitizen(uint citizenId)
         {
             if (ExperimentControlGate.IsControlLocked) return;
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             if (activeInfections.ContainsKey(citizenId)) return;
             if (CitizenMgr == null || CitizenProxy == null) return;
             Citizen[] citizens = CitizenMgr.GetCitizensArray();
@@ -2363,8 +2647,10 @@ namespace RealTime.Pandemic
             if (realId >= citizens.Length) return;
             ref Citizen citizen = ref citizens[realId];
             if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen)) return;
-            InfectCitizen(citizenId, ref citizen);
-            RecordInfectionOrigin(citizenId, CreateOutdoorOrigin(CitizenMgr.GetCitizenPosition(CitizenProxy.GetInstance(ref citizen))));
+            if (TryInfectCitizen(citizenId, ref citizen, 0, DiseaseExposureKind.InitialSeed))
+            {
+                RecordInfectionOrigin(citizenId, CreateOutdoorOrigin(CitizenMgr.GetCitizenPosition(CitizenProxy.GetInstance(ref citizen))));
+            }
         }
 
         public IEnumerable<ushort> GetInfectedCitizenInstanceIds()
@@ -2621,9 +2907,20 @@ namespace RealTime.Pandemic
         {
             PandemicHealthcareUsageSample sample = CalculateHealthcareUsageSample(simulationTime, citizens);
             healthcareUsageSamples.Add(sample);
+        }
 
-            DateTime cutoff = simulationTime.AddDays(-7);
-            healthcareUsageSamples.RemoveAll(entry => entry == null || entry.SimulationTime < cutoff);
+        private void RecordScientificState(DateTime simulationTime)
+        {
+            EpidemicMetricsSnapshot metrics = metricsEngine.Capture(diseaseStateEngine, simulationTime);
+            experimentRecorder.RecordState(
+                simulationTime,
+                metrics.Counts,
+                metrics.Symptomatic,
+                metrics.InitialSeedCount,
+                metrics.SecondaryTransmissionCount,
+                metrics.HospitalizationsTotal,
+                QuarantineManager.Instance.GetIsolatedCount(simulationTime),
+                QuarantineManager.Instance.GetContactQuarantinedCount(simulationTime));
         }
 
         private PandemicHealthcareUsageSample CalculateHealthcareUsageSample(DateTime simulationTime, Citizen[] citizens)
@@ -2820,7 +3117,33 @@ namespace RealTime.Pandemic
 
             var districtSnapshots = CreateDistrictSnapshots();
             int[] ageGroupCounts = new int[Enum.GetValues(typeof(Citizen.AgeGroup)).Length];
+            int[] ageGroupPopulationCounts = new int[Enum.GetValues(typeof(Citizen.AgeGroup)).Length];
             int totalInfected = 0;
+
+            foreach (KeyValuePair<uint, Citizen.AgeGroup> trackedCitizen in trackedAgeGroupByCitizen)
+            {
+                DiseaseState state = diseaseStateEngine.GetState(trackedCitizen.Key, currentDateTime);
+                if (state == DiseaseState.Removed)
+                {
+                    continue;
+                }
+
+                int ageGroupIndex = (int)trackedCitizen.Value;
+                if (ageGroupIndex >= 0 && ageGroupIndex < ageGroupPopulationCounts.Length)
+                {
+                    ageGroupPopulationCounts[ageGroupIndex]++;
+                }
+
+                if (diseaseStateEngine.TryGetCourse(trackedCitizen.Key, out DiseaseCourse ignoredCourse))
+                {
+                    if (ageGroupIndex >= 0 && ageGroupIndex < ageGroupCounts.Length)
+                    {
+                        ageGroupCounts[ageGroupIndex]++;
+                    }
+
+                    totalInfected++;
+                }
+            }
 
             if (CitizenMgr != null && CitizenProxy != null && BuildingMgr != null)
             {
@@ -2836,21 +3159,10 @@ namespace RealTime.Pandemic
                         }
 
                         ref Citizen citizen = ref citizens[resolvedCitizenId];
+                        bool infected = diseaseStateEngine.TryGetCourse(citizenId, out DiseaseCourse ignoredCourse);
                         if (CitizenProxy.IsEmpty(ref citizen) || CitizenProxy.IsDead(ref citizen))
                         {
                             continue;
-                        }
-
-                        bool infected = activeInfections.ContainsKey(citizenId);
-                        if (infected)
-                        {
-                            int ageGroupIndex = (int)CitizenProxy.GetAge(ref citizen);
-                            if (ageGroupIndex >= 0 && ageGroupIndex < ageGroupCounts.Length)
-                            {
-                                ageGroupCounts[ageGroupIndex]++;
-                            }
-
-                            totalInfected++;
                         }
 
                         ushort homeBuilding = CitizenProxy.GetHomeBuilding(ref citizen);
@@ -2881,6 +3193,11 @@ namespace RealTime.Pandemic
                 {
                     Label = GetAgeGroupLabel(ageGroup),
                     InfectedCount = count,
+                    PopulationCount = ageGroupPopulationCounts[(int)ageGroup],
+                    ShareOfInfectionsPercent = totalInfected > 0 ? (count * 100f) / totalInfected : 0f,
+                    InfectionPrevalenceWithinAgeGroupPercent = ageGroupPopulationCounts[(int)ageGroup] > 0
+                        ? count * 100f / ageGroupPopulationCounts[(int)ageGroup]
+                        : 0f,
                     InfectedPercent = totalInfected > 0 ? (count * 100f) / totalInfected : 0f,
                 });
             }
@@ -3017,6 +3334,10 @@ namespace RealTime.Pandemic
                     Label = PandemicTaxonomy.GetLockdownFamilyLabel(family),
                     ManualClosed = IsFamilyClosedManually(family),
                     AutoCloseThresholdPercent = GetFamilyAutoThreshold(family),
+                    AutoReopenThresholdPercent = GetFamilyReopenThreshold(family),
+                    MinimumClosureDurationDays = GetFamilyMinimumClosureDurationDays(family),
+                    CooldownDurationDays = GetFamilyCooldownDurationDays(family),
+                    ThresholdMetric = "active_exposed_infectious_post_infectious_pct_of_tracked_population",
                     CurrentInfectedPercent = GetCurrentFamilyInfectedPercent(family),
                     IsClosed = !IsLockdownFamilyOpen(family),
                 });
@@ -3105,6 +3426,15 @@ namespace RealTime.Pandemic
             }
 
             return DistrictManager.instance.GetDistrict(BuildingMgr.GetBuildingPosition(homeBuilding));
+        }
+
+        private PandemicPopulationCategory ClassifyPopulation(ref Citizen citizen)
+        {
+            return populationLifecycleEngine.ClassifyCurrent(
+                CitizenProxy.HasFlags(ref citizen, Citizen.Flags.Tourist),
+                CitizenProxy.HasFlags(ref citizen, Citizen.Flags.MovingIn),
+                CitizenProxy.HasFlags(ref citizen, Citizen.Flags.DummyTraffic),
+                CitizenProxy.GetHomeBuilding(ref citizen) != 0);
         }
 
         private static string GetAgeGroupLabel(Citizen.AgeGroup ageGroup)
@@ -3243,32 +3573,60 @@ namespace RealTime.Pandemic
             return false;
         }
 
-        private void ResetLockdownFamilyExposure()
-        {
-            lockdownFamilyExposure.Clear();
-            foreach (PandemicLockdownFamily family in LockdownFamilies)
-            {
-                lockdownFamilyExposure[family] = new PandemicFamilyExposure();
-            }
-        }
-
-        private PandemicFamilyExposure GetOrCreateFamilyExposure(PandemicLockdownFamily family)
-        {
-            if (!lockdownFamilyExposure.TryGetValue(family, out PandemicFamilyExposure exposure))
-            {
-                exposure = new PandemicFamilyExposure();
-                lockdownFamilyExposure[family] = exposure;
-            }
-
-            return exposure;
-        }
-
         private float GetCurrentFamilyInfectedPercent(PandemicLockdownFamily family)
         {
-            PandemicFamilyExposure exposure = GetOrCreateFamilyExposure(family);
-            return exposure.TotalCitizens > 0
-                ? (exposure.InfectedCitizens * 100f) / exposure.TotalCitizens
-                : 0f;
+            return (float)currentLockdownMetricPercent;
+        }
+
+        private void UpdateLockdownPolicyStates(DateTime simulationTime)
+        {
+            DiseaseStateCounts counts = diseaseStateEngine.GetCounts(simulationTime);
+            int activeCases = counts.Exposed + counts.Infectious + counts.PostInfectiousIll;
+            int trackedPopulation = diseaseStateEngine.TrackedPopulationCount;
+            currentLockdownMetricPercent = trackedPopulation > 0
+                ? (activeCases * 100d) / trackedPopulation
+                : 0d;
+
+            if (!QuarantineManager.Instance.InLockDown)
+            {
+                lockdownEngine.Deactivate(simulationTime, currentLockdownMetricPercent);
+                return;
+            }
+
+            foreach (PandemicLockdownFamily family in LockdownFamilies)
+            {
+                if (PandemicTaxonomy.IsProtectedFamily(family))
+                {
+                    continue;
+                }
+
+                bool wasClosed = lockdownEngine.IsClosed(family);
+                bool isClosed = lockdownEngine.Evaluate(
+                    family,
+                    GetFamilyLockdownPolicy(family),
+                    currentLockdownMetricPercent,
+                    simulationTime);
+                if (isClosed != wasClosed)
+                {
+                    experimentRecorder.RecordIntervention(new PandemicInterventionEvent
+                    {
+                        SimulationTime = simulationTime,
+                        InterventionType = PandemicInterventionType.Lockdown,
+                        Action = isClosed ? "Close" : "Reopen",
+                        Reason = "AutomaticThreshold",
+                        Context = PandemicTaxonomy.GetLockdownFamilyLabel(family),
+                    });
+                }
+            }
+        }
+
+        private PandemicLockdownPolicy GetFamilyLockdownPolicy(PandemicLockdownFamily family)
+        {
+            return new PandemicLockdownPolicy(
+                GetFamilyAutoThreshold(family),
+                GetFamilyReopenThreshold(family),
+                TimeSpan.FromDays(GetFamilyMinimumClosureDurationDays(family)),
+                TimeSpan.FromDays(GetFamilyCooldownDurationDays(family)));
         }
 
         private bool IsLockdownFamilyOpen(PandemicLockdownFamily family)
@@ -3288,8 +3646,7 @@ namespace RealTime.Pandemic
                 return false;
             }
 
-            float autoThreshold = GetFamilyAutoThreshold(family);
-            return autoThreshold <= 0f || GetCurrentFamilyInfectedPercent(family) < autoThreshold;
+            return !lockdownEngine.IsClosed(family);
         }
 
         public bool IsBuildingOpenForPandemic(ushort buildingId)
@@ -3517,23 +3874,30 @@ namespace RealTime.Pandemic
             initialPopulationHealthy.Clear();
             initialPopulationRecovered.Clear();
             initialPopulationDead.Clear();
+            trackedAgeGroupByCitizen.Clear();
+            trackedPopulationCategoryByCitizen.Clear();
             initialPopulationSick.Clear();
             initialPopulationExposed.Clear();
-            removedCitizens.Clear();
             usedCitizens.Clear();
             citizenMatching.Clear();
+            logicalCitizenByRealCitizen.Clear();
+            lock (releasedCitizenIdsLock)
+            {
+                releasedRealCitizenIds.Clear();
+            }
+
+            nextLogicalCitizenId = 0;
             activeInfections.Clear();
             infectedCitizens.Clear();
             infectedCitizensWithSymptoms.Clear();
             symptomHospitalHandledCitizens.Clear();
+            diseaseStateEngine.Reset();
             infectedBuildingIds.Clear();
             quarantineBuildingIds.Clear();
             hotspotBuildingIds.Clear();
             hubBuildingIds.Clear();
             buildingInfectedCounts.Clear();
             buildingCurrentInfectedCounts.Clear();
-            quarantineFateTimestampMs.Clear();
-            quarantineFatedToDie.Clear();
             infectionOrigins.Clear();
             policyTimeline.Clear();
             publicTransportLineStates.Clear();
@@ -3548,6 +3912,7 @@ namespace RealTime.Pandemic
               deathRecords.Clear();
               healthcareUsageSamples.Clear();
               pendingTransmissionIds.Clear();
+              pendingTransmissionExposures.Clear();
               recentUpdateDurationsMs.Clear();
               averageUpdateDurationMs = 0d;
               performanceTier = PandemicPerformanceTier.Light;
@@ -3560,7 +3925,10 @@ namespace RealTime.Pandemic
               cachedSuperspreaderInfectionCount = -1;
               snapshotVersion = 0;
               chartVersion = 0;
-              ResetLockdownFamilyExposure();
+              lockdownEngine.Reset();
+              currentLockdownMetricPercent = 0d;
+              experimentRecorder.Reset();
+              frozenScientificSnapshot = null;
               lastDateTime = default;
             lastDateTimeCitizensUpdate = default;
             lastStoreTime = default;
@@ -3568,138 +3936,41 @@ namespace RealTime.Pandemic
             hadAnySickCitizens = false;
         }
 
+        private bool HandleSimulationFailure(string code, string message, Exception exception)
+        {
+            runIntegrityMonitor.Fail(code, message, currentDateTime, exception);
+            active = false;
+
+            if (runContext?.IsBatch == true)
+            {
+                Log.Error("[TENUS Batch] " + message + " " + exception);
+                return true;
+            }
+
+            Log.Error("The 'Real Time' pandemic simulation was stopped after a fatal scientific-core error: " + message + " " + exception);
+            try
+            {
+                FreezeRun(PandemicCompletionReason.Aborted);
+            }
+            catch (Exception freezeException)
+            {
+                lifecycleState = PandemicLifecycleState.Finished;
+                frozenForFinalization = false;
+                Log.Error("The 'Real Time' pandemic simulation could not freeze its failed manual run: " + freezeException);
+            }
+
+            return true;
+        }
+
         /// <summary>Normalizes the pandemic values that managers cache or assume are valid at runtime.</summary>
         internal static void NormalizeRuntimeConfiguration(Config.RealTimeConfig config)
         {
-            if (config == null)
-            {
-                return;
-            }
-
-            bool changed = false;
-
-            if (config.DiseaseDuration == 0)
-            {
-                config.DiseaseDuration = 14;
-                changed = true;
-            }
-
-            if (config.StartInfection == 0 && config.EndInfection == 0)
-            {
-                config.StartInfection = 1;
-                config.EndInfection = Math.Min(10u, config.DiseaseDuration);
-                changed = true;
-            }
-
-            if (config.EndInfection == 0)
-            {
-                config.EndInfection = Math.Min(10u, config.DiseaseDuration);
-                changed = true;
-            }
-
-            if (config.EndInfection > config.DiseaseDuration)
-            {
-                config.EndInfection = config.DiseaseDuration;
-                changed = true;
-            }
-
-            if (config.StartInfection > config.EndInfection)
-            {
-                config.StartInfection = config.EndInfection;
-                changed = true;
-            }
-
-            if (config.StartSymptoms == 0 && config.EndSymptoms == 0)
-            {
-                config.StartSymptoms = Math.Min(3u, config.DiseaseDuration);
-                config.EndSymptoms = config.DiseaseDuration;
-                changed = true;
-            }
-
-            if (config.EndSymptoms == 0)
-            {
-                config.EndSymptoms = config.DiseaseDuration;
-                changed = true;
-            }
-
-            if (config.EndSymptoms > config.DiseaseDuration)
-            {
-                config.EndSymptoms = config.DiseaseDuration;
-                changed = true;
-            }
-
-            if (config.StartSymptoms > config.EndSymptoms)
-            {
-                config.StartSymptoms = config.EndSymptoms;
-                changed = true;
-            }
-
-            if (config.IndoorDiseaseTransmissionProbability <= 0f)
-            {
-                config.IndoorDiseaseTransmissionProbability = 1.5f;
-                changed = true;
-            }
-
-            if (config.OutdoorDiseaseTransmissionProbability <= 0f)
-            {
-                config.OutdoorDiseaseTransmissionProbability = 0.3f;
-                changed = true;
-            }
-
-            if (config.DiseaseTransmissionRange <= 0f)
-            {
-                config.DiseaseTransmissionRange = 1.5f;
-                changed = true;
-            }
-
-            if (config.DiseaseStartInfectionRatio <= 0f)
-            {
-                config.DiseaseStartInfectionRatio = 5f;
-                changed = true;
-            }
-
-            if (config.SymptomProbability <= 0f)
-            {
-                config.SymptomProbability = 50f;
-                changed = true;
-            }
-
-            if (config.HubHighlightThreshold < 2)
-            {
-                config.HubHighlightThreshold = 6;
-                changed = true;
-            }
-
-            if (config.SuperspreaderCitizenThreshold < 2)
-            {
-                config.SuperspreaderCitizenThreshold = 5;
-                changed = true;
-            }
-
-            if (config.SuperspreaderLocationThreshold < 2)
-            {
-                config.SuperspreaderLocationThreshold = 10;
-                changed = true;
-            }
-
-            if (changed)
-            {
-                Log.Warning("The 'Real Time' pandemic configuration contained zero/invalid values and was adjusted to safe runtime defaults.");
-            }
+            PandemicConfigurationNormalizer.Normalize(config);
         }
 
         private bool IsInfectious(uint citizenID)
         {
-            if (activeInfections.ContainsKey(citizenID))
-            {
-                long infectedTime = (currentDateTime.Ticks / 10000) - activeInfections[citizenID];
-                double infectedTimeInDays = infectedTime / 1000.0 / 3600.0 / 24.0;
-                if (Config.StartInfection <= infectedTimeInDays && infectedTimeInDays <= Config.EndInfection)
-                {
-                    return true;
-                }
-            }
-            return false;
+            return diseaseStateEngine.IsInfectious(citizenID, currentDateTime);
         }
 
         // SEIR: promote citizens from latent/exposed phase into the infectious phase once
@@ -3715,8 +3986,10 @@ namespace RealTime.Pandemic
                     continue;
                 }
 
-                double daysElapsed = ((currentDateTime.Ticks / 10000) - activeInfections[citizenId]) / (24.0 * 3600.0 * 1000.0);
-                if (daysElapsed >= Config.StartInfection)
+                DiseaseState state = diseaseStateEngine.GetState(citizenId, currentDateTime);
+                if (state == DiseaseState.Infectious
+                    || state == DiseaseState.PostInfectiousIll
+                    || state == DiseaseState.Recovered)
                 {
                     initialPopulationExposed.RemoveAt(i--);
                     initialPopulationSick.Add(citizenId);
@@ -3724,39 +3997,154 @@ namespace RealTime.Pandemic
             }
         }
 
-        private void InfectCitizen(uint infectedCitizenID, ref Citizen infectedCitizen)
+        private float GetFamilyReopenThreshold(PandemicLockdownFamily family)
         {
-            InfectCitizen(infectedCitizenID, ref infectedCitizen, 0);
+            if (Config == null)
+            {
+                return 0f;
+            }
+
+            switch (family)
+            {
+                case PandemicLockdownFamily.Education:
+                    return Config.ReopenEducationThresholdPercent;
+                case PandemicLockdownFamily.PublicTransport:
+                    return Config.ReopenPublicTransportThresholdPercent;
+                case PandemicLockdownFamily.Commercial:
+                    return Config.ReopenCommercialThresholdPercent;
+                case PandemicLockdownFamily.LeisureTourismParks:
+                    return Config.ReopenLeisureTourismParksThresholdPercent;
+                case PandemicLockdownFamily.Office:
+                    return Config.ReopenOfficeThresholdPercent;
+                case PandemicLockdownFamily.IndustryPlayerIndustry:
+                    return Config.ReopenIndustryThresholdPercent;
+                case PandemicLockdownFamily.GovernmentOtherPublic:
+                    return Config.ReopenGovernmentOtherPublicThresholdPercent;
+                case PandemicLockdownFamily.EssentialServices:
+                    return Config.ReopenEssentialServicesThresholdPercent;
+                default:
+                    return 0f;
+            }
         }
 
-        private void InfectCitizen(uint infectedCitizenID, ref Citizen infectedCitizen, long offset)
+        private float GetFamilyMinimumClosureDurationDays(PandemicLockdownFamily family)
         {
-            if (infectedCitizens.Contains(infectedCitizenID))
+            if (Config == null)
             {
-                return;
+                return 0f;
+            }
+
+            switch (family)
+            {
+                case PandemicLockdownFamily.Education:
+                    return Config.MinimumEducationClosureDurationDays;
+                case PandemicLockdownFamily.PublicTransport:
+                    return Config.MinimumPublicTransportClosureDurationDays;
+                case PandemicLockdownFamily.Commercial:
+                    return Config.MinimumCommercialClosureDurationDays;
+                case PandemicLockdownFamily.LeisureTourismParks:
+                    return Config.MinimumLeisureTourismParksClosureDurationDays;
+                case PandemicLockdownFamily.Office:
+                    return Config.MinimumOfficeClosureDurationDays;
+                case PandemicLockdownFamily.IndustryPlayerIndustry:
+                    return Config.MinimumIndustryClosureDurationDays;
+                case PandemicLockdownFamily.GovernmentOtherPublic:
+                    return Config.MinimumGovernmentOtherPublicClosureDurationDays;
+                case PandemicLockdownFamily.EssentialServices:
+                    return Config.MinimumEssentialServicesClosureDurationDays;
+                default:
+                    return 0f;
+            }
+        }
+
+        private float GetFamilyCooldownDurationDays(PandemicLockdownFamily family)
+        {
+            if (Config == null)
+            {
+                return 0f;
+            }
+
+            switch (family)
+            {
+                case PandemicLockdownFamily.Education:
+                    return Config.EducationLockdownCooldownDurationDays;
+                case PandemicLockdownFamily.PublicTransport:
+                    return Config.PublicTransportLockdownCooldownDurationDays;
+                case PandemicLockdownFamily.Commercial:
+                    return Config.CommercialLockdownCooldownDurationDays;
+                case PandemicLockdownFamily.LeisureTourismParks:
+                    return Config.LeisureTourismParksLockdownCooldownDurationDays;
+                case PandemicLockdownFamily.Office:
+                    return Config.OfficeLockdownCooldownDurationDays;
+                case PandemicLockdownFamily.IndustryPlayerIndustry:
+                    return Config.IndustryLockdownCooldownDurationDays;
+                case PandemicLockdownFamily.GovernmentOtherPublic:
+                    return Config.GovernmentOtherPublicLockdownCooldownDurationDays;
+                case PandemicLockdownFamily.EssentialServices:
+                    return Config.EssentialServicesLockdownCooldownDurationDays;
+                default:
+                    return 0f;
+            }
+        }
+
+        private bool TryInfectCitizen(uint infectedCitizenID, ref Citizen infectedCitizen)
+        {
+            return TryInfectCitizen(infectedCitizenID, ref infectedCitizen, 0d, DiseaseExposureKind.SecondaryTransmission);
+        }
+
+        private bool TryInfectCitizen(
+            uint infectedCitizenID,
+            ref Citizen infectedCitizen,
+            double infectionAgeDays,
+            DiseaseExposureKind exposureKind)
+        {
+            if (!diseaseStateEngine.IsSusceptible(infectedCitizenID, currentDateTime))
+            {
+                return false;
+            }
+
+            bool isSymptomatic = symptomRandom.NextDouble() < Config.SymptomProbability / 100.0;
+            DiseaseCourse course = exposureKind == DiseaseExposureKind.InitialSeed
+                ? diseaseProgressionEngine.CreateInitialCourse(
+                    infectedCitizenID,
+                    currentDateTime,
+                    infectionAgeDays,
+                    isSymptomatic,
+                    exposureKind,
+                    out _)
+                : diseaseProgressionEngine.CreateCourse(
+                    infectedCitizenID,
+                    currentDateTime,
+                    isSymptomatic,
+                    exposureKind);
+            if (!diseaseStateEngine.TryExpose(course, currentDateTime))
+            {
+                return false;
             }
 
             CitizenProxy.SetSick(ref infectedCitizen, false);
             infectedCitizens.Add(infectedCitizenID);
-
-            if (random.NextDouble() < Config.SymptomProbability / 100.0)
+            if (isSymptomatic)
             {
                 infectedCitizensWithSymptoms.Add(infectedCitizenID);
             }
 
-            long timeOfInfection = currentDateTime.Ticks / 10000;
-            activeInfections.Add(infectedCitizenID, timeOfInfection + offset);
+            activeInfections.Add(infectedCitizenID, course.ExposureTime.Ticks / 10000);
             hadAnySickCitizens = true;
 
             initialPopulationHealthy.Remove(infectedCitizenID);
 
-            // SEIR: route to exposed (latent) or infectious based on how far along the infection already is.
-            // offset is negative (backdated); daysElapsed = -offset / ms_per_day.
-            double daysAlreadyElapsed = (-offset) / (24.0 * 3600.0 * 1000.0);
-            if (daysAlreadyElapsed >= Config.StartInfection)
+            DiseaseState state = diseaseStateEngine.GetState(infectedCitizenID, currentDateTime);
+            if (state == DiseaseState.Infectious || state == DiseaseState.PostInfectiousIll)
+            {
                 initialPopulationSick.Add(infectedCitizenID);
+            }
             else
+            {
                 initialPopulationExposed.Add(infectedCitizenID);
+            }
+
+            return true;
         }
 
         private void HealCitizen(uint infectedCitizenID, ref Citizen infectedCitizen)
@@ -3764,6 +4152,12 @@ namespace RealTime.Pandemic
             if (!infectedCitizens.Contains(infectedCitizenID))
             {
                 return;
+            }
+
+            if (diseaseStateEngine.TryGetCourse(infectedCitizenID, out DiseaseCourse recoveryCourse)
+                && recoveryCourse.HospitalizationState == HospitalizationState.Hospitalized)
+            {
+                recoveryCourse.HospitalizationState = HospitalizationState.Discharged;
             }
 
             CitizenProxy.SetSick(ref infectedCitizen, false);
@@ -3777,9 +4171,14 @@ namespace RealTime.Pandemic
             initialPopulationExposed.Remove(infectedCitizenID); // defensive: in case of edge-case recovery before promotion
         }
 
-        private void KillCitizen(uint infectedCitizenID, ref Citizen infectedCitizen)
+        private void KillCitizen(uint infectedCitizenID, ref Citizen infectedCitizen, DateTime diseaseDeathTime)
         {
             if (!infectedCitizens.Contains(infectedCitizenID) || !activeInfections.ContainsKey(infectedCitizenID))
+            {
+                return;
+            }
+
+            if (!diseaseStateEngine.TryMarkDead(infectedCitizenID, diseaseDeathTime))
             {
                 return;
             }
@@ -3810,16 +4209,25 @@ namespace RealTime.Pandemic
 
         internal bool ShouldSeekHospital(uint citizenId)
         {
-            return lifecycleState == PandemicLifecycleState.Running
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
+            bool shouldSeek = lifecycleState == PandemicLifecycleState.Running
                 && activeInfections.ContainsKey(citizenId)
-                && HasSymptoms(citizenId)
-                && GetDaysSinceInfection(citizenId) >= Config.StartSymptoms
-                && !symptomHospitalHandledCitizens.Contains(citizenId)
-                && !IsInQuarantine(citizenId);
+                && diseaseStateEngine.TryGetCourse(citizenId, out DiseaseCourse symptomCourse)
+                && symptomCourse.GetSymptomState(currentDateTime) == SymptomState.Symptomatic
+                && !symptomHospitalHandledCitizens.Contains(citizenId);
+            if (shouldSeek
+                && diseaseStateEngine.TryGetCourse(citizenId, out DiseaseCourse course)
+                && course.HospitalizationState == HospitalizationState.None)
+            {
+                course.HospitalizationState = HospitalizationState.SeekingCare;
+            }
+
+            return shouldSeek;
         }
 
         internal void OnCitizenVisitedHealthcare(uint citizenId)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             if (lifecycleState != PandemicLifecycleState.Running || !activeInfections.ContainsKey(citizenId))
             {
                 return;
@@ -3831,8 +4239,11 @@ namespace RealTime.Pandemic
             }
 
             symptomHospitalHandledCitizens.Add(citizenId);
-            QuarantineManager.Instance.AddCitizenInQuarantine(citizenId, currentDateTime);
-            ScheduleQuarantineFate(citizenId);
+            if (diseaseStateEngine.TryGetCourse(citizenId, out DiseaseCourse course))
+            {
+                course.HospitalizationState = HospitalizationState.Hospitalized;
+            }
+            QuarantineManager.Instance.AddCitizenInIsolation(citizenId, currentDateTime);
 
             Citizen[] citizens = CitizenMgr?.GetCitizensArray();
             if (citizens == null)
@@ -3849,6 +4260,7 @@ namespace RealTime.Pandemic
 
         internal void OnHospitalUnavailable(uint citizenId)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             if (lifecycleState != PandemicLifecycleState.Running || !activeInfections.ContainsKey(citizenId))
             {
                 return;
@@ -3860,8 +4272,11 @@ namespace RealTime.Pandemic
             }
 
             symptomHospitalHandledCitizens.Add(citizenId);
-            QuarantineManager.Instance.AddCitizenInQuarantine(citizenId, currentDateTime);
-            ScheduleQuarantineFate(citizenId);
+            if (diseaseStateEngine.TryGetCourse(citizenId, out DiseaseCourse course))
+            {
+                course.HospitalizationState = HospitalizationState.CareUnavailable;
+            }
+            QuarantineManager.Instance.AddCitizenInIsolation(citizenId, currentDateTime);
         }
 
         private int GetDaysSinceInfection(uint citizenId)
@@ -3897,7 +4312,7 @@ namespace RealTime.Pandemic
                     continue;
                 }
 
-                bool symptomatic = HasSymptoms(citizenId) && GetDaysSinceInfection(citizenId) >= Config.StartSymptoms && !IsInQuarantine(citizenId);
+                bool symptomatic = IsKnownSick(citizenId);
                 CitizenProxy.SetSick(ref citizens[realId], symptomatic);
             }
         }
@@ -3954,7 +4369,7 @@ namespace RealTime.Pandemic
 
         private bool IsInQuarantine(uint citizenId)
         {
-            return QuarantineManager.Instance.IsInQuarantine(citizenId, currentDateTime) || QuarantineManager.Instance.IsInProphylacticQuarantine(citizenId, currentDateTime);
+            return QuarantineManager.Instance.IsRestricted(citizenId, currentDateTime);
         }
 
         public void Shuffle<T>(IList<T> list)
@@ -3963,7 +4378,7 @@ namespace RealTime.Pandemic
             while (n > 1)
             {
                 n--;
-                int k = random.Next(n + 1);
+                int k = interventionRandom.Next(n + 1);
                 T value = list[k];
                 list[k] = list[n];
                 list[n] = value;
@@ -3978,61 +4393,62 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            ProcessCitizenTesting(citizens);
-            ProcessRecoveries(citizens);
-            ProcessContactTracingCandidates();
             BuildCitizenTickStateIndex(citizens);
 
             pendingTransmissionIds.Clear();
+            pendingTransmissionExposures.Clear();
             float rangeSq = Config.DiseaseTransmissionRange * Config.DiseaseTransmissionRange;
-            SimulateOutdoorTransmissions(citizens, rangeSq);
-            SimulateVehicleTransmissions(citizens);
-            SimulateBuildingTransmissions(citizens);
+            SimulateOutdoorTransmissions(rangeSq);
+            SimulateVehicleTransmissions();
+            SimulateBuildingTransmissions();
+            ResolvePendingTransmissions(citizens);
         }
 
-        private void SimulateOutdoorTransmissions(Citizen[] citizens, float rangeSq)
+        private void SimulateOutdoorTransmissions(float rangeSq)
         {
-            if (outdoorInfectiousByCell.Count == 0 || outdoorHealthyByCell.Count == 0)
+            if (outdoorOccupantsByCell.Count == 0)
             {
                 return;
             }
 
-            foreach (List<PandemicCitizenTickState> infectiousStates in outdoorInfectiousByCell.Values)
+            foreach (int cellKey in outdoorOccupantsByCell.Keys.OrderBy(key => key))
             {
-                for (int i = 0; i < infectiousStates.Count; i++)
+                List<PandemicCitizenTickState> occupants = outdoorOccupantsByCell[cellKey];
+                for (int i = 0; i < occupants.Count; i++)
                 {
-                    PandemicCitizenTickState infectious = infectiousStates[i];
+                    PandemicCitizenTickState first = occupants[i];
                     for (int dz = -1; dz <= 1; dz++)
                     {
                         for (int dx = -1; dx <= 1; dx++)
                         {
-                            int neighborKey = GetOutdoorCellKey(infectious.OutdoorCellX + dx, infectious.OutdoorCellZ + dz);
-                            if (!outdoorHealthyByCell.TryGetValue(neighborKey, out List<PandemicCitizenTickState> healthyStates))
+                            int neighborKey = GetOutdoorCellKey(first.OutdoorCellX + dx, first.OutdoorCellZ + dz);
+                            if (!outdoorOccupantsByCell.TryGetValue(neighborKey, out List<PandemicCitizenTickState> neighborStates))
                             {
                                 continue;
                             }
 
-                            for (int j = 0; j < healthyStates.Count; j++)
+                            for (int j = 0; j < neighborStates.Count; j++)
                             {
-                                PandemicCitizenTickState healthy = healthyStates[j];
-                                if (pendingTransmissionIds.Contains(healthy.CitizenId) || activeInfections.ContainsKey(healthy.CitizenId))
+                                PandemicCitizenTickState second = neighborStates[j];
+                                if (second.CitizenId <= first.CitizenId)
                                 {
                                     continue;
                                 }
 
-                                if ((healthy.Position - infectious.Position).sqrMagnitude > rangeSq)
+                                float squaredDistance = (second.Position - first.Position).sqrMagnitude;
+                                if (squaredDistance > rangeSq)
                                 {
                                     continue;
                                 }
 
-                                ContactManager.Instance.AddContact(infectious.CitizenId, healthy.CitizenId, false, currentDateTime);
-                                if (Masks.GetOutdoorInfectionProbability(infectious.CitizenId, healthy.CitizenId) <= random.NextDouble())
-                                {
-                                    continue;
-                                }
-
-                                PandemicInfectionOriginInfo origin = CreateOutdoorOrigin(healthy.Position);
-                                InfectTargetCitizen(infectious.CitizenId, healthy, citizens, origin);
+                                PandemicInfectionOriginInfo origin = CreateOutdoorOrigin(Midpoint(first.Position, second.Position));
+                                ProcessPhysicalContactPair(
+                                    first,
+                                    second,
+                                    PhysicalContactContext.Outdoor,
+                                    origin,
+                                    Math.Sqrt(squaredDistance),
+                                    false);
                             }
                         }
                     }
@@ -4040,111 +4456,467 @@ namespace RealTime.Pandemic
             }
         }
 
-        private void SimulateVehicleTransmissions(Citizen[] citizens)
+        private void SimulateVehicleTransmissions()
         {
-            foreach (KeyValuePair<ushort, List<PandemicCitizenTickState>> bucket in vehicleInfectiousOccupants)
+            foreach (ushort vehicleId in vehicleOccupants.Keys.OrderBy(id => id))
             {
-                if (!vehicleHealthyOccupants.TryGetValue(bucket.Key, out List<PandemicCitizenTickState> healthyStates))
+                List<PandemicCitizenTickState> occupants = vehicleOccupants[vehicleId];
+                IList<ContactPair> pairs = contactSamplingEngine.SampleBounded(
+                    occupants.Select(state => state.CitizenId),
+                    (int)Config.MaxContactsPerPersonPerStepTransit,
+                    contactSamplingSeed,
+                    currentDateTime.Ticks,
+                    100000 + vehicleId);
+                for (int i = 0; i < pairs.Count; ++i)
+                {
+                    ContactPair pair = pairs[i];
+                    if (citizenTickStateById.TryGetValue(pair.CitizenA, out PandemicCitizenTickState first)
+                        && citizenTickStateById.TryGetValue(pair.CitizenB, out PandemicCitizenTickState second))
+                    {
+                        PandemicInfectionOriginInfo origin = CreateVehicleOrigin(vehicleId, Midpoint(first.Position, second.Position));
+                        ProcessPhysicalContactPair(
+                            first,
+                            second,
+                            GetContactContext(origin),
+                            origin,
+                            null,
+                            false);
+                    }
+                }
+            }
+        }
+
+        private void SimulateBuildingTransmissions()
+        {
+            foreach (ushort buildingId in buildingOccupants.Keys.OrderBy(id => id))
+            {
+                List<PandemicCitizenTickState> occupants = buildingOccupants[buildingId];
+                if (occupants.Count < 2)
                 {
                     continue;
                 }
 
-                for (int i = 0; i < bucket.Value.Count; i++)
+                Vector3 buildingPosition = BuildingMgr.GetBuildingPosition(buildingId);
+                ItemClass.Service service = BuildingMgr.GetBuildingService(buildingId);
+                ItemClass.SubService subService = BuildingMgr.GetBuildingSubService(buildingId);
+                PandemicInfectionOriginInfo origin = CreateBuildingOrigin(buildingId, buildingPosition);
+                if (service == ItemClass.Service.Residential)
                 {
-                    PandemicCitizenTickState infectious = bucket.Value[i];
-                    for (int j = 0; j < healthyStates.Count; j++)
+                    HashSet<ulong> householdPairs = RecordHouseholdContacts(occupants, origin);
+                    IList<ContactPair> sharedPairs = contactSamplingEngine.SampleBounded(
+                        occupants.Select(state => state.CitizenId),
+                        (int)Config.MaxContactsPerPersonPerStepResidentialSharedArea,
+                        contactSamplingSeed,
+                        currentDateTime.Ticks,
+                        200000 + buildingId);
+                    for (int i = 0; i < sharedPairs.Count; ++i)
                     {
-                        PandemicCitizenTickState healthy = healthyStates[j];
-                        if (pendingTransmissionIds.Contains(healthy.CitizenId) || activeInfections.ContainsKey(healthy.CitizenId))
+                        ContactPair pair = sharedPairs[i];
+                        if (householdPairs.Contains(CreateCitizenPairKey(pair.CitizenA, pair.CitizenB))
+                            || !citizenTickStateById.TryGetValue(pair.CitizenA, out PandemicCitizenTickState first)
+                            || !citizenTickStateById.TryGetValue(pair.CitizenB, out PandemicCitizenTickState second)
+                            || !first.IsInResidentialSharedAreaWindow
+                            || !second.IsInResidentialSharedAreaWindow)
                         {
                             continue;
                         }
 
-                        ContactManager.Instance.AddContact(infectious.CitizenId, healthy.CitizenId, false, currentDateTime);
-                        if (Masks.GetVehicleInfectionProbability(infectious.CitizenId, healthy.CitizenId) <= random.NextDouble())
-                        {
-                            continue;
-                        }
+                        ProcessPhysicalContactPair(first, second, PhysicalContactContext.Other, origin, null, true);
+                    }
 
-                        PandemicInfectionOriginInfo origin = CreateVehicleOrigin(bucket.Key, healthy.Position);
-                        InfectTargetCitizen(infectious.CitizenId, healthy, citizens, origin);
+                    continue;
+                }
+
+                PhysicalContactContext context = GetBuildingContactContext(service, subService);
+                int maximumContacts = GetMaximumContactsPerPerson(context);
+                IList<ContactPair> sampledPairs = contactSamplingEngine.SampleBounded(
+                    occupants.Select(state => state.CitizenId),
+                    maximumContacts,
+                    contactSamplingSeed,
+                    currentDateTime.Ticks,
+                    300000 + ((int)context * 65536) + buildingId);
+                for (int i = 0; i < sampledPairs.Count; ++i)
+                {
+                    ContactPair pair = sampledPairs[i];
+                    if (citizenTickStateById.TryGetValue(pair.CitizenA, out PandemicCitizenTickState first)
+                        && citizenTickStateById.TryGetValue(pair.CitizenB, out PandemicCitizenTickState second))
+                    {
+                        ProcessPhysicalContactPair(first, second, context, origin, null, false);
                     }
                 }
             }
         }
 
-        private void SimulateBuildingTransmissions(Citizen[] citizens)
+        private void QueueTransmissionExposure(
+            uint sourceCitizenId,
+            PandemicCitizenTickState target,
+            double probability,
+            PandemicInfectionOriginInfo origin,
+            double infectiousnessMultiplier)
         {
-            foreach (KeyValuePair<ushort, List<PandemicCitizenTickState>> bucket in buildingInfectiousOccupants)
+            long contextKey = origin == null
+                ? 0L
+                : ((long)(int)origin.Category << 32)
+                    | ((long)origin.BuildingId << 16)
+                    | origin.VehicleId;
+            pendingTransmissionExposures.Add(new TransmissionExposure<PandemicPendingTransmissionContext>
             {
-                if (!buildingHealthyOccupants.TryGetValue(bucket.Key, out List<PandemicCitizenTickState> healthyStates))
+                SourceCitizenId = sourceCitizenId,
+                TargetCitizenId = target.CitizenId,
+                Probability = probability,
+                StableContextKey = contextKey,
+                Context = new PandemicPendingTransmissionContext
+                {
+                    Target = target,
+                    Origin = origin,
+                    InfectiousnessMultiplier = infectiousnessMultiplier,
+                },
+            });
+        }
+
+        private HashSet<ulong> RecordHouseholdContacts(
+            IList<PandemicCitizenTickState> occupants,
+            PandemicInfectionOriginInfo origin)
+        {
+            var occupantIds = new HashSet<uint>(occupants.Select(state => state.CitizenId));
+            var pairs = new HashSet<ulong>();
+            foreach (PandemicCitizenTickState citizen in occupants.OrderBy(state => state.CitizenId))
+            {
+                if (!citizen.AtHome)
                 {
                     continue;
                 }
 
-                Vector3 buildingPosition = BuildingMgr.GetBuildingPosition(bucket.Key);
-                for (int i = 0; i < bucket.Value.Count; i++)
+                Array.Clear(familyLookupBuffer, 0, familyLookupBuffer.Length);
+                if (!CitizenMgr.TryGetFamily(citizen.RealCitizenId, familyLookupBuffer))
                 {
-                    PandemicCitizenTickState infectious = bucket.Value[i];
-                    bool familyLookupAvailable = false;
-                    if (infectious.AtHome)
+                    continue;
+                }
+
+                for (int i = 0; i < familyLookupBuffer.Length; ++i)
+                {
+                    uint realFamilyMemberId = familyLookupBuffer[i];
+                    if (!TryGetLogicalCitizenId(realFamilyMemberId, out uint familyMemberId)
+                        || familyMemberId <= citizen.CitizenId
+                        || !occupantIds.Contains(familyMemberId)
+                        || !citizenTickStateById.TryGetValue(familyMemberId, out PandemicCitizenTickState familyMember)
+                        || !familyMember.AtHome)
                     {
-                        Array.Clear(familyLookupBuffer, 0, familyLookupBuffer.Length);
-                        familyLookupAvailable = CitizenMgr.TryGetFamily(infectious.CitizenId, familyLookupBuffer);
+                        continue;
                     }
 
-                    for (int j = 0; j < healthyStates.Count; j++)
+                    ulong pairKey = CreateCitizenPairKey(citizen.CitizenId, familyMemberId);
+                    if (pairs.Add(pairKey))
                     {
-                        PandemicCitizenTickState healthy = healthyStates[j];
-                        if (pendingTransmissionIds.Contains(healthy.CitizenId) || activeInfections.ContainsKey(healthy.CitizenId))
-                        {
-                            continue;
-                        }
-
-                        double probability;
-                        if (infectious.AtHome && healthy.AtHome)
-                        {
-                            bool sameFamily = familyLookupAvailable && Array.IndexOf(familyLookupBuffer, healthy.CitizenId) >= 0;
-                            if (sameFamily)
-                            {
-                                ContactManager.Instance.AddContact(infectious.CitizenId, healthy.CitizenId, true, currentDateTime);
-                                probability = Masks.GetHouseholdInfectionProbability(infectious.CitizenId, healthy.CitizenId);
-                            }
-                            else
-                            {
-                                if (!infectious.IsInResidentialSharedAreaWindow || !healthy.IsInResidentialSharedAreaWindow)
-                                {
-                                    continue;
-                                }
-
-                                ContactManager.Instance.AddContact(infectious.CitizenId, healthy.CitizenId, true, currentDateTime);
-                                probability = Masks.GetIndoorInfectionProbabilityNoContact(infectious.CitizenId, healthy.CitizenId);
-                            }
-                        }
-                        else
-                        {
-                            ContactManager.Instance.AddContact(infectious.CitizenId, healthy.CitizenId, true, currentDateTime);
-                            probability = Masks.GetIndoorInfectionProbability(infectious.CitizenId, healthy.CitizenId);
-                        }
-
-                        if (probability <= random.NextDouble())
-                        {
-                            continue;
-                        }
-
-                        PandemicInfectionOriginInfo origin = CreateBuildingOrigin(bucket.Key, buildingPosition);
-                        InfectTargetCitizen(infectious.CitizenId, healthy, citizens, origin);
+                        ProcessPhysicalContactPair(
+                            citizen,
+                            familyMember,
+                            PhysicalContactContext.Household,
+                            origin,
+                            null,
+                            false);
                     }
                 }
             }
+
+            return pairs;
         }
 
-        private void InfectTargetCitizen(uint infectingCitizenId, PandemicCitizenTickState target, Citizen[] citizens, PandemicInfectionOriginInfo origin)
+        private void ProcessPhysicalContactPair(
+            PandemicCitizenTickState first,
+            PandemicCitizenTickState second,
+            PhysicalContactContext context,
+            PandemicInfectionOriginInfo origin,
+            double? distance,
+            bool residentialSharedArea)
         {
-            pendingTransmissionIds.Add(target.CitizenId);
-            Observer.AddCitizenInfection(infectingCitizenId, target.CitizenId, currentDateTime, origin);
-            InfectCitizen(target.CitizenId, ref citizens[target.RealCitizenId]);
-            RecordInfectionOrigin(target.CitizenId, origin);
+            if (first == null || second == null || first.CitizenId == second.CitizenId)
+            {
+                return;
+            }
+
+            if (!isolationQuarantineEngine.IsPhysicalContactAllowed(
+                first.ShouldQuarantine,
+                first.AtHome,
+                second.ShouldQuarantine,
+                second.AtHome,
+                context))
+            {
+                experimentRecorder.RecordPreventedContact();
+                return;
+            }
+
+            if (!RecordPhysicalContact(first.CitizenId, second.CitizenId, context, origin, distance))
+            {
+                return;
+            }
+
+            QueueDirectionalTransmission(first, second, context, origin, residentialSharedArea);
+            QueueDirectionalTransmission(second, first, context, origin, residentialSharedArea);
+        }
+
+        private void QueueDirectionalTransmission(
+            PandemicCitizenTickState source,
+            PandemicCitizenTickState target,
+            PhysicalContactContext context,
+            PandemicInfectionOriginInfo origin,
+            bool residentialSharedArea)
+        {
+            if (!source.IsInfectious
+                || !target.IsSusceptible
+                || !diseaseStateEngine.IsSusceptible(target.CitizenId, currentDateTime))
+            {
+                return;
+            }
+
+            double probability;
+            if (context == PhysicalContactContext.Household)
+            {
+                probability = Masks.GetHouseholdInfectionProbability(source.CitizenId, target.CitizenId);
+            }
+            else if (residentialSharedArea)
+            {
+                probability = Masks.GetIndoorInfectionProbabilityNoContact(source.CitizenId, target.CitizenId);
+            }
+            else if (origin != null && origin.VehicleId != 0)
+            {
+                probability = Masks.GetVehicleInfectionProbability(source.CitizenId, target.CitizenId);
+            }
+            else if (context == PhysicalContactContext.Outdoor)
+            {
+                probability = Masks.GetOutdoorInfectionProbability(source.CitizenId, target.CitizenId);
+            }
+            else
+            {
+                probability = Masks.GetIndoorInfectionProbability(source.CitizenId, target.CitizenId);
+            }
+
+            if (!diseaseStateEngine.TryGetCourse(source.CitizenId, out DiseaseCourse sourceCourse))
+            {
+                return;
+            }
+
+            double infectiousnessMultiplier = InfectiousnessProfileEngine.GetMultiplier(
+                sourceCourse,
+                currentDateTime,
+                infectiousnessProfilePolicy);
+            probability = InfectiousnessProfileEngine.ApplyToProbability(probability, infectiousnessMultiplier);
+            QueueTransmissionExposure(source.CitizenId, target, probability, origin, infectiousnessMultiplier);
+        }
+
+        private int GetMaximumContactsPerPerson(PhysicalContactContext context)
+        {
+            switch (context)
+            {
+                case PhysicalContactContext.School:
+                case PhysicalContactContext.University:
+                    return (int)Config.MaxContactsPerPersonPerStepSchool;
+                case PhysicalContactContext.Healthcare:
+                    return (int)Config.MaxContactsPerPersonPerStepHealthcare;
+                case PhysicalContactContext.Commercial:
+                case PhysicalContactContext.Leisure:
+                    return (int)Config.MaxContactsPerPersonPerStepCommercial;
+                case PhysicalContactContext.PublicTransport:
+                    return (int)Config.MaxContactsPerPersonPerStepTransit;
+                default:
+                    return (int)Config.MaxContactsPerPersonPerStepWorkplace;
+            }
+        }
+
+        private static PhysicalContactContext GetBuildingContactContext(
+            ItemClass.Service service,
+            ItemClass.SubService subService)
+        {
+            switch (service)
+            {
+                case ItemClass.Service.Education:
+                    return PhysicalContactContext.School;
+                case ItemClass.Service.PlayerEducation:
+                    return subService == ItemClass.SubService.PlayerEducationUniversity
+                        || subService == ItemClass.SubService.PlayerEducationLiberalArts
+                        || subService == ItemClass.SubService.PlayerEducationTradeSchool
+                        ? PhysicalContactContext.University
+                        : PhysicalContactContext.School;
+                case ItemClass.Service.Office:
+                case ItemClass.Service.Industrial:
+                case ItemClass.Service.PlayerIndustry:
+                    return PhysicalContactContext.Workplace;
+                case ItemClass.Service.HealthCare:
+                    return PhysicalContactContext.Healthcare;
+                case ItemClass.Service.Commercial:
+                    return PhysicalContactContext.Commercial;
+                case ItemClass.Service.Tourism:
+                case ItemClass.Service.Monument:
+                case ItemClass.Service.Museums:
+                case ItemClass.Service.VarsitySports:
+                case ItemClass.Service.Beautification:
+                    return PhysicalContactContext.Leisure;
+                case ItemClass.Service.PublicTransport:
+                    return PhysicalContactContext.PublicTransport;
+                default:
+                    return PhysicalContactContext.Other;
+            }
+        }
+
+        private static Vector3 Midpoint(Vector3 first, Vector3 second)
+        {
+            return (first + second) * 0.5f;
+        }
+
+        private static ulong CreateCitizenPairKey(uint citizenA, uint citizenB)
+        {
+            uint lower = Math.Min(citizenA, citizenB);
+            uint upper = Math.Max(citizenA, citizenB);
+            return ((ulong)lower << 32) | upper;
+        }
+
+        private bool RecordPhysicalContact(
+            uint citizenA,
+            uint citizenB,
+            PhysicalContactContext context,
+            PandemicInfectionOriginInfo origin,
+            double? distance)
+        {
+            bool contactCreated;
+            PhysicalContactEvent contact = ContactManager.Instance.AddPhysicalContact(new PhysicalContactRequest
+            {
+                CitizenA = citizenA,
+                CitizenB = citizenB,
+                EndTime = currentDateTime,
+                DurationMinutes = Config.EpidemicStepMinutes,
+                Context = context,
+                BuildingId = origin?.BuildingId ?? 0,
+                VehicleId = origin?.VehicleId ?? 0,
+                PositionX = origin?.Position.x ?? 0f,
+                PositionY = origin?.Position.y ?? 0f,
+                PositionZ = origin?.Position.z ?? 0f,
+                Distance = distance,
+            }, out contactCreated);
+            if (!contactCreated)
+            {
+                return false;
+            }
+
+            experimentRecorder.RecordPhysicalContact(contact, GetOriginDistrictId(origin));
+            return true;
+        }
+
+        private byte GetOriginDistrictId(PandemicInfectionOriginInfo origin)
+        {
+            if (origin == null || DistrictManager.instance == null)
+            {
+                return 0;
+            }
+
+            if (origin.BuildingId != 0)
+            {
+                return GetDistrictId(origin.BuildingId);
+            }
+
+            return origin.Position == Vector3.zero
+                ? (byte)0
+                : DistrictManager.instance.GetDistrict(origin.Position);
+        }
+
+        private static PhysicalContactContext GetContactContext(PandemicInfectionOriginInfo origin)
+        {
+            if (origin == null)
+            {
+                return PhysicalContactContext.Other;
+            }
+
+            switch (origin.Category)
+            {
+                case PandemicInfectionOriginCategory.ResidentialHome:
+                    return PhysicalContactContext.Household;
+                case PandemicInfectionOriginCategory.WorkplaceOfficeIndustry:
+                    return PhysicalContactContext.Workplace;
+                case PandemicInfectionOriginCategory.SchoolUniversity:
+                    return PhysicalContactContext.School;
+                case PandemicInfectionOriginCategory.Healthcare:
+                    return PhysicalContactContext.Healthcare;
+                case PandemicInfectionOriginCategory.CommercialLeisureTourism:
+                    return PhysicalContactContext.Commercial;
+                case PandemicInfectionOriginCategory.Bus:
+                case PandemicInfectionOriginCategory.Tram:
+                case PandemicInfectionOriginCategory.Metro:
+                case PandemicInfectionOriginCategory.Train:
+                case PandemicInfectionOriginCategory.ShipFerry:
+                case PandemicInfectionOriginCategory.Plane:
+                case PandemicInfectionOriginCategory.StopPlatform:
+                    return PhysicalContactContext.PublicTransport;
+                case PandemicInfectionOriginCategory.OutdoorStreet:
+                    return PhysicalContactContext.Outdoor;
+                default:
+                    return PhysicalContactContext.Other;
+            }
+        }
+
+        private void ResolvePendingTransmissions(Citizen[] citizens)
+        {
+            IList<ResolvedTransmission<PandemicPendingTransmissionContext>> resolved = transmissionEngine.Resolve(
+                pendingTransmissionExposures,
+                transmissionRandom);
+            for (int i = 0; i < resolved.Count; i++)
+            {
+                ResolvedTransmission<PandemicPendingTransmissionContext> transmission = resolved[i];
+                if (!diseaseStateEngine.IsSusceptible(transmission.TargetCitizenId, currentDateTime))
+                {
+                    continue;
+                }
+
+                InfectTargetCitizen(
+                    transmission.SourceCitizenId,
+                    transmission.Context.Target,
+                    citizens,
+                    transmission.Context.Origin,
+                    transmission.CombinedProbability,
+                    transmission.SourceProbability,
+                    transmission.Context.InfectiousnessMultiplier);
+            }
+        }
+
+        private void InfectTargetCitizen(
+            uint infectingCitizenId,
+            PandemicCitizenTickState target,
+            Citizen[] citizens,
+            PandemicInfectionOriginInfo origin,
+            double combinedProbability,
+            double sourceProbability,
+            double infectiousnessMultiplier)
+        {
+            if (TryInfectCitizen(target.CitizenId, ref citizens[target.RealCitizenId]))
+            {
+                pendingTransmissionIds.Add(target.CitizenId);
+                Observer.AddCitizenInfection(infectingCitizenId, target.CitizenId, currentDateTime, origin);
+                RecordInfectionOrigin(target.CitizenId, origin);
+                double sourceInfectionAge = 0d;
+                if (diseaseStateEngine.TryGetCourse(infectingCitizenId, out DiseaseCourse sourceCourse))
+                {
+                    sourceInfectionAge = Math.Max(0d, (currentDateTime - sourceCourse.ExposureTime).TotalDays);
+                }
+
+                experimentRecorder.RecordTransmission(new PandemicTransmissionEvent
+                {
+                    SimulationTime = currentDateTime,
+                    SourceCitizenId = infectingCitizenId,
+                    TargetCitizenId = target.CitizenId,
+                    SourceInfectionAgeDays = sourceInfectionAge,
+                    TargetPreviousState = DiseaseState.Susceptible,
+                    TargetNewState = DiseaseState.Exposed,
+                    Context = GetContactContext(origin),
+                    OriginCategory = origin?.Category ?? PandemicInfectionOriginCategory.OtherUnknown,
+                    BuildingId = origin?.BuildingId ?? 0,
+                    VehicleId = origin?.VehicleId ?? 0,
+                    DistrictId = GetOriginDistrictId(origin),
+                    SourceMaskType = Masks.GetMaskTypeName(infectingCitizenId),
+                    TargetMaskType = Masks.GetMaskTypeName(target.CitizenId),
+                    TransmissionProbability = combinedProbability,
+                    SourceProbability = sourceProbability,
+                    InfectiousnessMultiplier = infectiousnessMultiplier,
+                    IsInitialSeed = false,
+                });
+            }
         }
 
         private uint retrieveID(uint citizenID)
@@ -4156,103 +4928,146 @@ namespace RealTime.Pandemic
             return citizenID;
         }
 
-        private void ScheduleQuarantineFate(uint citizenID)
+        private uint ResolveLogicalCitizenIdFromGame(uint realCitizenId)
         {
-            if (quarantineFateTimestampMs.ContainsKey(citizenID))
+            return logicalCitizenByRealCitizen.TryGetValue(realCitizenId, out uint logicalCitizenId)
+                ? logicalCitizenId
+                : realCitizenId;
+        }
+
+        private bool TryGetLogicalCitizenId(uint realCitizenId, out uint logicalCitizenId)
+        {
+            return logicalCitizenByRealCitizen.TryGetValue(realCitizenId, out logicalCitizenId);
+        }
+
+        private void NotifyCitizenReleased(uint realCitizenId)
+        {
+            if (realCitizenId == 0u)
             {
                 return;
             }
 
-            // Random resolution day between 1 and QuarantineFateDays (in ms)
-            int fateDays = random.Next(1, QuarantineFateDays + 1);
-            long fateTs = (currentDateTime.Ticks / 10000) + (long)fateDays * 24 * 3600 * 1000;
-            quarantineFateTimestampMs[citizenID] = fateTs;
-
-            double deathProb = GetDeathProbabilityForCitizen(citizenID);
-            if (random.NextDouble() < deathProb)
+            lock (releasedCitizenIdsLock)
             {
-                quarantineFatedToDie.Add(citizenID);
+                releasedRealCitizenIds.Add(realCitizenId);
             }
         }
 
-        private double GetDeathProbabilityForCitizen(uint citizenID)
+        private bool ProcessReleasedCitizens()
         {
-            if (Config == null || CitizenMgr == null || CitizenProxy == null)
+            List<uint> released;
+            lock (releasedCitizenIdsLock)
             {
-                return 0;
+                if (releasedRealCitizenIds.Count == 0)
+                {
+                    return true;
+                }
+
+                released = releasedRealCitizenIds.OrderBy(id => id).ToList();
+                releasedRealCitizenIds.Clear();
             }
 
-            Citizen[] citizens = CitizenMgr.GetCitizensArray();
-            uint realId = retrieveID(citizenID);
-            if (realId >= citizens.Length)
+            for (int i = 0; i < released.Count; ++i)
             {
-                return 0;
+                uint realCitizenId = released[i];
+                if (TryGetLogicalCitizenId(realCitizenId, out uint logicalCitizenId)
+                    && !HandleTrackedCitizenDeparture(logicalCitizenId, realCitizenId, "CitizenReleased"))
+                {
+                    return false;
+                }
             }
 
-            Citizen.AgeGroup age = CitizenProxy.GetAge(ref citizens[realId]);
-            switch (age)
-            {
-                case Citizen.AgeGroup.Child:  return Config.DeathChild  / 100.0;
-                case Citizen.AgeGroup.Teen:   return Config.DeathTeen   / 100.0;
-                case Citizen.AgeGroup.Young:  return Config.DeathYoung  / 100.0;
-                case Citizen.AgeGroup.Adult:  return Config.DeathAdult  / 100.0;
-                case Citizen.AgeGroup.Senior: return Config.DeathSenior / 100.0;
-                default: return 0;
-            }
+            return true;
         }
 
-        private void ProcessQuarantineFates()
+        private bool HandleTrackedCitizenDeparture(uint logicalCitizenId, uint realCitizenId, string reason)
         {
-            if (!IsVisualizationDataAvailable() || quarantineFateTimestampMs.Count == 0)
+            PandemicPopulationCategory previousCategory = trackedPopulationCategoryByCitizen.TryGetValue(
+                logicalCitizenId,
+                out PandemicPopulationCategory storedCategory)
+                ? storedCategory
+                : PandemicPopulationCategory.Resident;
+            bool expectedDeadRelease = diseaseStateEngine.GetState(logicalCitizenId, currentDateTime)
+                == DiseaseState.Dead;
+            experimentRecorder.RecordPopulation(new PandemicPopulationEvent
             {
-                return;
+                SimulationTime = currentDateTime,
+                CitizenId = logicalCitizenId,
+                Action = "Removed",
+                PopulationCategory = expectedDeadRelease
+                    ? previousCategory.ToString()
+                    : populationLifecycleEngine.ClassifyRemoval(previousCategory).ToString(),
+                Count = 1,
+                Reason = expectedDeadRelease ? "DeceasedCitizenReleased" : reason,
+            });
+
+            usedCitizens.Remove(realCitizenId);
+            logicalCitizenByRealCitizen.Remove(realCitizenId);
+            citizenMatching.Remove(logicalCitizenId);
+            initialPopulation.Remove(logicalCitizenId);
+            if (expectedDeadRelease)
+            {
+                DetachTerminalCitizenFromGame(logicalCitizenId);
+                return true;
             }
 
-            long nowMs = currentDateTime.Ticks / 10000;
-            Citizen[] citizens = CitizenMgr.GetCitizensArray();
-            var toProcess = new List<uint>();
-
-            foreach (var kvp in quarantineFateTimestampMs)
+            RemoveTrackedCitizen(logicalCitizenId);
+            if (runContext?.IsBatch != true)
             {
-                if (nowMs >= kvp.Value)
-                {
-                    toProcess.Add(kvp.Key);
-                }
+                return true;
             }
 
-            foreach (uint citizenID in toProcess)
+            runIntegrityMonitor.Fail(
+                "PopulationIntegrityViolation",
+                "A tracked citizen disappeared during strict scientific batch execution.",
+                currentDateTime,
+                null);
+            active = false;
+            return false;
+        }
+
+        private uint AllocateLogicalCitizenId()
+        {
+            if (nextLogicalCitizenId == uint.MaxValue)
             {
-                quarantineFateTimestampMs.Remove(citizenID);
-
-                uint realId = retrieveID(citizenID);
-                if (realId >= citizens.Length)
-                {
-                    quarantineFatedToDie.Remove(citizenID);
-                    continue;
-                }
-
-                if (!activeInfections.ContainsKey(citizenID))
-                {
-                    quarantineFatedToDie.Remove(citizenID);
-                    continue;
-                }
-
-                if (quarantineFatedToDie.Contains(citizenID))
-                {
-                    quarantineFatedToDie.Remove(citizenID);
-                    KillCitizen(citizenID, ref citizens[realId]);
-                }
-                else
-                {
-                    HealCitizen(citizenID, ref citizens[realId]);
-                    QuarantineManager.Instance.RemoveCitizenInQuarantine(citizenID);
-                }
+                throw new InvalidOperationException("The logical citizen identifier space is exhausted.");
             }
+
+            return nextLogicalCitizenId++;
+        }
+
+        private void RemoveTrackedCitizen(uint citizenId)
+        {
+            diseaseStateEngine.RemoveCitizen(citizenId);
+            activeInfections.Remove(citizenId);
+            infectedCitizensWithSymptoms.Remove(citizenId);
+            symptomHospitalHandledCitizens.Remove(citizenId);
+            infectionOrigins.Remove(citizenId);
+            trackedAgeGroupByCitizen.Remove(citizenId);
+            trackedPopulationCategoryByCitizen.Remove(citizenId);
+            initialPopulationHealthy.Remove(citizenId);
+            initialPopulationExposed.Remove(citizenId);
+            initialPopulationSick.Remove(citizenId);
+            initialPopulationRecovered.Remove(citizenId);
+            initialPopulationDead.Remove(citizenId);
+            QuarantineManager.Instance.RemoveAllRestrictions(citizenId, currentDateTime, "PopulationRemoved");
+            TestManager.Instance.CancelCitizen(citizenId);
+        }
+
+        private void DetachTerminalCitizenFromGame(uint citizenId)
+        {
+            activeInfections.Remove(citizenId);
+            infectedCitizensWithSymptoms.Remove(citizenId);
+            symptomHospitalHandledCitizens.Remove(citizenId);
+            infectionOrigins.Remove(citizenId);
+            QuarantineManager.Instance.RemoveAllRestrictions(citizenId, currentDateTime, "DeceasedCitizenReleased");
+            TestManager.Instance.CancelCitizen(citizenId);
         }
 
         /// <summary>Returns the number of days the citizen has been infected, or -1 if not infected.</summary>
         public int GetDaysInfected(uint citizenId)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             if (!activeInfections.ContainsKey(citizenId) || simulation == null)
             {
                 return -1;
@@ -4268,6 +5083,7 @@ namespace RealTime.Pandemic
         /// <summary>Returns the age-based death probability as a percentage (0-100).</summary>
         public float GetCitizenDeathProbabilityPercent(uint citizenId)
         {
+            citizenId = ResolveLogicalCitizenIdFromGame(citizenId);
             if (Config == null || CitizenMgr == null || CitizenProxy == null)
             {
                 return 0f;
@@ -4294,10 +5110,15 @@ namespace RealTime.Pandemic
 
         public bool ShouldBeInQuarantine(uint citizenID)
         {
+            return ShouldLogicalCitizenBeInQuarantine(ResolveLogicalCitizenIdFromGame(citizenID));
+        }
+
+        private bool ShouldLogicalCitizenBeInQuarantine(uint citizenID)
+        {
             if (lifecycleState != PandemicLifecycleState.Running)
             {
                 return lifecycleState == PandemicLifecycleState.Finished
-                    && QuarantineManager.Instance.IsInQuarantineReadOnly(citizenID, currentDateTime);
+                    && QuarantineManager.Instance.IsRestrictedReadOnly(citizenID, currentDateTime);
             }
 
             if (simulation != null)
@@ -4305,40 +5126,46 @@ namespace RealTime.Pandemic
                 currentDateTime = simulation.m_currentGameTime;
             }
 
-            if (IsInQuarantine(citizenID))
+            bool quarantineEnabled = Config.QuarantineBehavior != RealTime.Config.QuarantineBehavior.None;
+            bool positiveAvailable = TestManager.Instance.IsTestedPositive(citizenID, currentDateTime);
+            bool pendingBlock = quarantineEnabled
+                && Config.QuarantineWhileAwaitingTestResult
+                && TestManager.Instance.IsAwaitingResult(citizenID)
+                && TestManager.Instance.IsBlocked(citizenID, currentDateTime);
+            if (isolationQuarantineEngine.ShouldQuarantineForPendingTest(pendingBlock)
+                && !positiveAvailable)
             {
-                return true;
+                QuarantineManager.Instance.AddPendingTestQuarantine(citizenID, currentDateTime);
+            }
+            else
+            {
+                QuarantineManager.Instance.RemovePendingTestQuarantine(
+                    citizenID,
+                    currentDateTime,
+                    positiveAvailable ? "PositiveResultAvailable" : "TestResultAvailableOrTestEnded");
             }
 
-            Citizen citizen = CitizenMgr.GetCitizensArray()[retrieveID(citizenID)];
-            if (activeInfections.ContainsKey(citizenID) && Config.QuarantineBehavior != RealTime.Config.QuarantineBehavior.None)
+            bool knownSick = activeInfections.ContainsKey(citizenID) && IsKnownSick(citizenID);
+            if (quarantineEnabled
+                && isolationQuarantineEngine.ShouldIsolateCase(
+                    Config.OnlyTestedCitizensToQuarantine,
+                    knownSick,
+                    positiveAvailable,
+                    false))
             {
-                long infectionInDays = ((simulation.m_currentGameTime.Ticks / 10000) - GetInfectionDate(citizenID)) / 1000 / 3600 / 24;
-                bool knownSick = IsKnownSick(citizenID);
-                if ((knownSick && !Config.OnlyTestedCitizensToQuarantine) || TestManager.Instance.IsBlocked(citizenID, currentDateTime) || infectionInDays >= 2)
+                if (!QuarantineManager.Instance.IsInIsolation(citizenID, currentDateTime))
                 {
-                    if (!IsInQuarantine(citizenID))
-                    {
-                        QuarantineManager.Instance.AddCitizenInQuarantine(citizenID, currentDateTime);
-                        ScheduleQuarantineFate(citizenID);
-                    }
-                    return true;
+                    QuarantineManager.Instance.AddCitizenInIsolation(citizenID, currentDateTime);
                 }
             }
 
-            return false;
+            return QuarantineManager.Instance.IsRestricted(citizenID, currentDateTime);
         }
 
         private bool IsKnownSick(uint citizenID)
         {
-            Citizen citizen = CitizenMgr.GetCitizensArray()[retrieveID(citizenID)];
-            if (activeInfections.ContainsKey(citizenID))
-            {
-                long infectionInDays = ((simulation.m_currentGameTime.Ticks / 10000) - GetInfectionDate(citizenID)) / 1000 / 3600 / 24;
-                bool hasSymptoms = HasSymptoms(citizenID);
-                return infectionInDays > Config.StartSymptoms && hasSymptoms;
-            }
-            return false;
+            return diseaseStateEngine.TryGetCourse(citizenID, out DiseaseCourse course)
+                && course.GetSymptomState(currentDateTime) == SymptomState.Symptomatic;
         }
 
         private void CheckForContacts(uint citizenID, uint timeInDays, Config.QuarantineBehavior quarantineBehavior)
@@ -4370,7 +5197,7 @@ namespace RealTime.Pandemic
                 {
                     if (contact.Value.Ticks > leastConsideredTime)
                     {
-                        QuarantineManager.Instance.AddCitizenInProphylacticQuarantine(contact.Key, currentDateTime);
+                        QuarantineManager.Instance.AddContactQuarantine(contact.Key, currentDateTime);
                     }
                 }
             }
@@ -4378,13 +5205,15 @@ namespace RealTime.Pandemic
             if (quarantineBehavior == RealTime.Config.QuarantineBehavior.Family)// || quarantineBehavior == RealTime.Config.QuarantineBehavior.Contacts)
             {
                 uint[] family = new uint[10];
-                if (CitizenMgr.TryGetFamily(citizenID, family))
+                uint realCitizenId = retrieveID(citizenID);
+                if (CitizenMgr.TryGetFamily(realCitizenId, family))
                 {
-                    foreach (uint otherCitizenID in family)
+                    foreach (uint realFamilyMemberId in family)
                     {
-                        if (otherCitizenID > 0)
+                        if (TryGetLogicalCitizenId(realFamilyMemberId, out uint otherCitizenID)
+                            && otherCitizenID != citizenID)
                         {
-                            QuarantineManager.Instance.AddCitizenInProphylacticQuarantine(otherCitizenID, currentDateTime);
+                            QuarantineManager.Instance.AddContactQuarantine(otherCitizenID, currentDateTime);
                         }
                     }
                 }
@@ -4393,61 +5222,94 @@ namespace RealTime.Pandemic
 
         internal bool HasSymptoms(uint citizenID)
         {
-            return infectedCitizensWithSymptoms.Contains(citizenID);
+            return diseaseStateEngine.TryGetCourse(citizenID, out DiseaseCourse course) && course.IsSymptomatic;
         }
 
-        public void kill(double childDeathProbability, double teenDeathProbability, double youngDeathProbability, double adultDeathProbability, double seniorDeathProbability)
+        private void ProcessMortality()
         {
             Citizen[] citizens = CitizenMgr.GetCitizensArray();
-            
+            double hospitalUsage = healthcareUsageSamples.Count == 0
+                ? 0d
+                : healthcareUsageSamples[healthcareUsageSamples.Count - 1].HospitalUsagePercent;
+            double healthcareMultiplier = healthcareEngine.GetMortalityHazardMultiplier(hospitalUsage);
+            TimeSpan configuredStepDuration = TimeSpan.FromMinutes(Config.EpidemicStepMinutes);
+            DateTime stepStart = currentDateTime.Subtract(configuredStepDuration);
+
             for (int i = 0; i < initialPopulationSick.Count; i++)
             {
                 uint citizenID = initialPopulationSick[i];
-                if (!activeInfections.ContainsKey(citizenID))
-                {
-                    continue;
-                }
-                float infectedTime = ((currentDateTime.Ticks / 10000) - activeInfections[citizenID]) / (24 * 3600 * 1000f);
-                
-                if (infectedTime < Config.StartSymptoms)
+                if (!diseaseStateEngine.TryGetCourse(citizenID, out DiseaseCourse course))
                 {
                     continue;
                 }
 
-                bool isSymptomatic = infectedCitizensWithSymptoms.Contains(citizenID);
-                double deathProbability = 0;
-                Citizen.AgeGroup ageGroup = CitizenProxy.GetAge(ref citizens[retrieveID(citizenID)]);
-                switch (ageGroup)
+                DateTime effectiveMortalityStart = course.MortalityStartTime > course.InfectiousStartTime
+                    ? course.MortalityStartTime
+                    : course.InfectiousStartTime;
+                if (!activeInfections.ContainsKey(citizenID)
+                    || currentDateTime <= effectiveMortalityStart
+                    || stepStart >= course.RecoveryTime)
                 {
-                    case Citizen.AgeGroup.Child:
-                        deathProbability = childDeathProbability;
-                        break;
-                    case Citizen.AgeGroup.Teen:
-                        deathProbability = teenDeathProbability;
-                        break;
-                    case Citizen.AgeGroup.Young:
-                        deathProbability = youngDeathProbability;
-                        break;
-                    case Citizen.AgeGroup.Adult:
-                        deathProbability = adultDeathProbability;
-                        break;
-                    case Citizen.AgeGroup.Senior:
-                        deathProbability = seniorDeathProbability;
-                        break;
+                    continue;
                 }
 
-                // B) Asymptomatic death fix: asymptomatics can still die but at 10% of the symptomatic rate,
-                // reflecting silent severe outcomes (e.g. sudden cardiac events, undetected organ damage).
-                if (!isSymptomatic)
-                    deathProbability *= 0.10;
-
-                if (random.NextDouble() < deathProbability)
+                DateTime hazardEnd = currentDateTime < course.RecoveryTime
+                    ? currentDateTime
+                    : course.RecoveryTime.AddTicks(-1L);
+                DateTime hazardStart = stepStart > effectiveMortalityStart
+                    ? stepStart
+                    : effectiveMortalityStart;
+                if (hazardEnd <= hazardStart)
                 {
-                    KillCitizen(citizenID, ref citizens[retrieveID(citizenID)]);
+                    continue;
+                }
+
+                DiseaseState state = diseaseStateEngine.GetState(citizenID, hazardEnd);
+                if (state != DiseaseState.Infectious && state != DiseaseState.PostInfectiousIll)
+                {
+                    continue;
+                }
+
+                uint realCitizenId = retrieveID(citizenID);
+                if (realCitizenId >= citizens.Length)
+                {
+                    continue;
+                }
+
+                double baseProbability = GetConfiguredMortalityProbability(
+                    CitizenProxy.GetAge(ref citizens[realCitizenId]));
+                double hazardMultiplier = healthcareMultiplier
+                    * (course.IsSymptomatic ? 1d : Config.AsymptomaticMortalityMultiplier);
+                double stepProbability = DiseaseProgressionEngine.CalculateStepMortalityProbability(
+                    baseProbability,
+                    course.RecoveryTime - effectiveMortalityStart,
+                    hazardEnd - hazardStart,
+                    hazardMultiplier);
+                if (mortalityRandom.NextDouble() < stepProbability)
+                {
+                    KillCitizen(citizenID, ref citizens[realCitizenId], hazardEnd);
                     i--;
                 }
             }
+        }
 
+        private double GetConfiguredMortalityProbability(Citizen.AgeGroup ageGroup)
+        {
+            switch (ageGroup)
+            {
+                case Citizen.AgeGroup.Child:
+                    return Config.DeathChild / 100d;
+                case Citizen.AgeGroup.Teen:
+                    return Config.DeathTeen / 100d;
+                case Citizen.AgeGroup.Young:
+                    return Config.DeathYoung / 100d;
+                case Citizen.AgeGroup.Adult:
+                    return Config.DeathAdult / 100d;
+                case Citizen.AgeGroup.Senior:
+                    return Config.DeathSenior / 100d;
+                default:
+                    return 0d;
+            }
         }
 
         /// <summary>
@@ -4479,6 +5341,8 @@ namespace RealTime.Pandemic
                 return;
             }
 
+            CitizenManagerPatch.CitizenReleased = null;
+
             try
             {
                 RestorePublicTransportService();
@@ -4488,6 +5352,7 @@ namespace RealTime.Pandemic
                 Log.Warning("The 'Real Time' pandemic manager could not restore public transport while unloading: " + ex);
             }
 
+            experimentRecorder.Dispose();
             ContactManager.Instance.ResetForLevelUnload();
             TestManager.Instance.ResetForLevelUnload();
             QuarantineManager.Instance.ResetForLevelUnload();

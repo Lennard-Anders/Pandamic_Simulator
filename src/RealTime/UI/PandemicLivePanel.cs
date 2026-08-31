@@ -1160,7 +1160,7 @@ namespace RealTime.UI
 
                 PandemicOutputContext output = manager.CurrentRunContext?.Output ?? PandemicOutputContext.CreateManual();
                 PandemicRunExportResult result = PandemicRunExportService.Instance.Export(
-                    new PandemicRunExportRequest(manager, snapshot, output, realWorldStartTime, DateTime.Now));
+                    new PandemicRunExportRequest(manager, snapshot, null, output, realWorldStartTime, DateTime.Now));
                 Log.Info("The 'Real Time' pandemic run data was exported to: " + result.RichCsvPath);
             }
             catch (Exception ex)
@@ -2081,6 +2081,7 @@ namespace RealTime.UI
                 case "Symptoms":
                 case "PandemicMonitor":
                 case "PandemicLockdown":
+                case "ScientificModel":
                     return true;
                 default:
                     return false;

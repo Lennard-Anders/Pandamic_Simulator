@@ -34,6 +34,10 @@ namespace RealTime.UI
 
         ExperimentBatchPanelActionResult SetReturnToBaseline(bool returnToBaseline);
 
+        ExperimentBatchPanelActionResult SetPairedSeedMode(bool enabled);
+
+        ExperimentBatchPanelActionResult SetStopBatchOnRunFailure(bool enabled);
+
         ExperimentBatchPanelActionResult AddCurrentSettingsAsScenario();
 
         ExperimentBatchPanelActionResult DuplicateScenario(int scenarioIndex);
@@ -209,6 +213,8 @@ namespace RealTime.UI
         private UIDropDown outputRootDropDown;
         private UIButton switchOutputRootButton;
         private UIDropDown speedDropDown;
+        private UICheckBox pairedSeedModeCheckBox;
+        private UICheckBox stopOnFailureCheckBox;
         private UICheckBox returnToBaselineCheckBox;
         private UIScrollablePanel scenarioList;
         private UILabel planSummaryLabel;
@@ -452,7 +458,15 @@ namespace RealTime.UI
             speedDropDown.items = SpeedNames;
             speedDropDown.eventSelectedIndexChanged += OnSpeedChanged;
 
-            returnToBaselineCheckBox = CreateCheckBox(panel, 392f, 164f, 430f, "Return to the exact baseline after the final run");
+            pairedSeedModeCheckBox = CreateCheckBox(panel, 372f, 164f, 135f, "Paired seeds");
+            pairedSeedModeCheckBox.tooltip = "Use the first scenario's First seed plus the repetition index for every scenario; pair IDs are 1-based.";
+            pairedSeedModeCheckBox.eventCheckChanged += OnPairedSeedModeChanged;
+
+            stopOnFailureCheckBox = CreateCheckBox(panel, 505f, 164f, 172f, "Stop on invalid run");
+            stopOnFailureCheckBox.tooltip = "Archive diagnostics and reload the exact baseline, then stop. Disable this to continue with the next run.";
+            stopOnFailureCheckBox.eventCheckChanged += OnStopOnFailureChanged;
+
+            returnToBaselineCheckBox = CreateCheckBox(panel, 677f, 164f, 213f, "Return after final run");
             returnToBaselineCheckBox.tooltip = "The batch remains complete even if the optional final return load fails.";
             returnToBaselineCheckBox.eventCheckChanged += OnReturnToBaselineChanged;
         }
@@ -620,16 +634,19 @@ namespace RealTime.UI
 
             int speedIndex = plan == null ? 0 : (int)plan.SpeedMode;
             speedDropDown.selectedIndex = ClampIndex(speedIndex, SpeedNames.Length);
+            pairedSeedModeCheckBox.isChecked = plan != null && plan.PairedSeedMode;
+            stopOnFailureCheckBox.isChecked = plan == null || plan.StopBatchOnRunFailure;
             returnToBaselineCheckBox.isChecked = plan == null || plan.ReturnToBaseline;
             int scenarioCount = plan == null || plan.Scenarios == null ? 0 : plan.Scenarios.Count;
             int totalRuns = CountPlannedRuns(plan);
             planSummaryLabel.text = string.Format(
                 CultureInfo.CurrentCulture,
-                "{0} scenario{1} · {2} total run{3}",
+                "{0} scenario{1} · {2} total run{3}{4}",
                 scenarioCount,
                 scenarioCount == 1 ? string.Empty : "s",
                 totalRuns,
-                totalRuns == 1 ? string.Empty : "s");
+                totalRuns == 1 ? string.Empty : "s",
+                plan != null && plan.PairedSeedMode ? " · paired" : string.Empty);
 
             SetEditable(batchNameField, !readOnly);
             SetEditable(outputFolderNameField, !readOnly);
@@ -638,6 +655,10 @@ namespace RealTime.UI
             SetEnabled(outputRootDropDown, !readOnly);
             SetEnabled(switchOutputRootButton, !readOnly);
             SetEnabled(speedDropDown, !readOnly);
+            pairedSeedModeCheckBox.readOnly = readOnly;
+            SetEnabled(pairedSeedModeCheckBox, !readOnly);
+            stopOnFailureCheckBox.readOnly = readOnly;
+            SetEnabled(stopOnFailureCheckBox, !readOnly);
             returnToBaselineCheckBox.readOnly = readOnly;
             SetEnabled(returnToBaselineCheckBox, !readOnly);
         }
@@ -1127,6 +1148,32 @@ namespace RealTime.UI
             }
         }
 
+        private void OnPairedSeedModeChanged(UIComponent component, bool value)
+        {
+            if (suppressEvents || viewState == null || viewState.IsPlanReadOnly)
+            {
+                return;
+            }
+
+            if (viewState.Plan == null || value != viewState.Plan.PairedSeedMode)
+            {
+                RunAction(() => controller.SetPairedSeedMode(value));
+            }
+        }
+
+        private void OnStopOnFailureChanged(UIComponent component, bool value)
+        {
+            if (suppressEvents || viewState == null || viewState.IsPlanReadOnly)
+            {
+                return;
+            }
+
+            if (viewState.Plan == null || value != viewState.Plan.StopBatchOnRunFailure)
+            {
+                RunAction(() => controller.SetStopBatchOnRunFailure(value));
+            }
+        }
+
         private void RefreshBaselines()
         {
             RunAction(controller.RefreshBaselineCatalog);
@@ -1263,7 +1310,8 @@ namespace RealTime.UI
             ExperimentSeedStrategy seedStrategy = seedStrategyDropDown.selectedIndex == 0
                 ? ExperimentSeedStrategy.Fixed
                 : ExperimentSeedStrategy.Sequential;
-            if (seedStrategy == ExperimentSeedStrategy.Sequential
+            if ((viewState.Plan == null || !viewState.Plan.PairedSeedMode)
+                && seedStrategy == ExperimentSeedStrategy.Sequential
                 && (long)firstSeed + runCount - 1L > int.MaxValue)
             {
                 ShowLocalError("The sequential seed range exceeds Int32.MaxValue.");

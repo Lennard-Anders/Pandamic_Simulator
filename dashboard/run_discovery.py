@@ -61,7 +61,9 @@ def discover_run_csvs(data_dir: Path) -> list[Path]:
     published = [
         path
         for path in files
-        if path.is_file() and not is_transient_run_path(path.relative_to(root))
+        if path.is_file()
+        and not is_transient_run_path(path.relative_to(root))
+        and _has_publishable_manifest_status(path)
     ]
     return sorted(
         published,
@@ -71,6 +73,16 @@ def discover_run_csvs(data_dir: Path) -> list[Path]:
             str(path),
         ),
     )
+
+
+def _has_publishable_manifest_status(run_path: Path) -> bool:
+    """Accept manual runs, but require Completed when a sibling manifest exists."""
+    manifest_path = Path(run_path).with_name(RUN_MANIFEST_NAME)
+    if not manifest_path.exists():
+        return True
+    manifest = _read_manifest(manifest_path)
+    status = _manifest_value(manifest, "status")
+    return str(status or "").strip().casefold() == "completed"
 
 
 def _normalized_key(value: Any) -> str:

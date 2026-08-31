@@ -102,35 +102,60 @@ namespace RealTime.Pandemic
     {
         public PandemicComponentSeeds(
             int masterSeed,
-            int pandemicManagerSeed,
-            int maskManagerSeed,
-            int testManagerSeed,
-            int contactManagerSeed)
+            int initialPopulationSeed,
+            int diseaseProgressionSeed,
+            int transmissionSeed,
+            int symptomSeed,
+            int mortalitySeed,
+            int maskSeed,
+            int testingSeed,
+            int contactTracingSeed,
+            int interventionSeed)
         {
             EnsureNonnegative(masterSeed, nameof(masterSeed));
-            EnsureNonnegative(pandemicManagerSeed, nameof(pandemicManagerSeed));
-            EnsureNonnegative(maskManagerSeed, nameof(maskManagerSeed));
-            EnsureNonnegative(testManagerSeed, nameof(testManagerSeed));
-            EnsureNonnegative(contactManagerSeed, nameof(contactManagerSeed));
+            EnsureNonnegative(initialPopulationSeed, nameof(initialPopulationSeed));
+            EnsureNonnegative(diseaseProgressionSeed, nameof(diseaseProgressionSeed));
+            EnsureNonnegative(transmissionSeed, nameof(transmissionSeed));
+            EnsureNonnegative(symptomSeed, nameof(symptomSeed));
+            EnsureNonnegative(mortalitySeed, nameof(mortalitySeed));
+            EnsureNonnegative(maskSeed, nameof(maskSeed));
+            EnsureNonnegative(testingSeed, nameof(testingSeed));
+            EnsureNonnegative(contactTracingSeed, nameof(contactTracingSeed));
+            EnsureNonnegative(interventionSeed, nameof(interventionSeed));
 
             MasterSeed = masterSeed;
-            PandemicManagerSeed = pandemicManagerSeed;
-            MaskManagerSeed = maskManagerSeed;
-            TestManagerSeed = testManagerSeed;
-            ContactManagerSeed = contactManagerSeed;
+            InitialPopulationSeed = initialPopulationSeed;
+            DiseaseProgressionSeed = diseaseProgressionSeed;
+            TransmissionSeed = transmissionSeed;
+            SymptomSeed = symptomSeed;
+            MortalitySeed = mortalitySeed;
+            MaskSeed = maskSeed;
+            TestingSeed = testingSeed;
+            ContactTracingSeed = contactTracingSeed;
+            InterventionSeed = interventionSeed;
         }
 
         public int MasterSeed { get; }
 
-        public int PandemicManagerSeed { get; }
+        public int InitialPopulationSeed { get; }
 
-        public int MaskManagerSeed { get; }
+        public int DiseaseProgressionSeed { get; }
 
-        public int TestManagerSeed { get; }
+        public int TransmissionSeed { get; }
 
-        public int ContactManagerSeed { get; }
+        public int SymptomSeed { get; }
 
-        /// <summary>Adapts the single seed-provider result to the four random streams owned by Pandemic.</summary>
+        public int MortalitySeed { get; }
+
+        public int MaskSeed { get; }
+
+        public int TestingSeed { get; }
+
+        public int ContactTracingSeed { get; }
+
+        public int InterventionSeed { get; }
+
+        /// <summary>Adapts the seed-provider result to the nine independent TENUS random streams.</summary>
         public static PandemicComponentSeeds FromExperimentSeedSet(ExperimentSeedSet seeds)
         {
             if (seeds == null)
@@ -140,10 +165,15 @@ namespace RealTime.Pandemic
 
             return new PandemicComponentSeeds(
                 seeds.Master,
-                seeds.Pandemic,
+                seeds.InitialPopulation,
+                seeds.DiseaseProgression,
+                seeds.Transmission,
+                seeds.Symptom,
+                seeds.Mortality,
                 seeds.Mask,
-                seeds.Test,
-                seeds.Contact);
+                seeds.Testing,
+                seeds.ContactTracing,
+                seeds.Intervention);
         }
 
         private static void EnsureNonnegative(int seed, string parameterName)
@@ -211,6 +241,14 @@ namespace RealTime.Pandemic
         public int RunNumber { get; set; }
 
         public int OverallRunNumber { get; set; }
+
+        public int PairId { get; set; }
+
+        public string ConfigurationHash { get; set; }
+
+        public string GitCommitSha { get; set; }
+
+        public string GitBranchOrTag { get; set; }
     }
 
     /// <summary>Immutable ownership, policy, output, and seed context for one pandemic run.</summary>

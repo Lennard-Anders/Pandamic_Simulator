@@ -1,0 +1,712 @@
+// <copyright file="ExperimentRecorder.cs" company="dymanoid">
+// Copyright (c) dymanoid. All rights reserved.
+// </copyright>
+
+namespace RealTime.Pandemic
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Globalization;
+    using System.IO;
+    using System.Text;
+
+    internal enum PandemicInterventionType
+    {
+        Mask,
+        Isolation,
+        Quarantine,
+        Lockdown,
+        PublicTransportShutdown,
+    }
+
+    internal sealed class PandemicStateTimePoint
+    {
+        public DateTime SimulationTime { get; set; }
+
+        public int Susceptible { get; set; }
+
+        public int Exposed { get; set; }
+
+        public int Infectious { get; set; }
+
+        public int PostInfectiousIll { get; set; }
+
+        public int Symptomatic { get; set; }
+
+        public int Recovered { get; set; }
+
+        public int Dead { get; set; }
+
+        public int Removed { get; set; }
+
+        public int TrackedPopulation { get; set; }
+
+        public int InitialSeedCount { get; set; }
+
+        public int SecondaryTransmissionsTotal { get; set; }
+
+        public int NewExposures { get; set; }
+
+        public int HospitalizationsTotal { get; set; }
+
+        public int IsolatedCitizens { get; set; }
+
+        public int QuarantinedCitizens { get; set; }
+    }
+
+    internal sealed class PandemicTransmissionEvent
+    {
+        public long EventId { get; set; }
+
+        public DateTime SimulationTime { get; set; }
+
+        public uint SourceCitizenId { get; set; }
+
+        public uint TargetCitizenId { get; set; }
+
+        public double SourceInfectionAgeDays { get; set; }
+
+        public DiseaseState TargetPreviousState { get; set; }
+
+        public DiseaseState TargetNewState { get; set; }
+
+        public PhysicalContactContext Context { get; set; }
+
+        public PandemicInfectionOriginCategory OriginCategory { get; set; }
+
+        public ushort BuildingId { get; set; }
+
+        public ushort VehicleId { get; set; }
+
+        public byte DistrictId { get; set; }
+
+        public string SourceMaskType { get; set; }
+
+        public string TargetMaskType { get; set; }
+
+        public double TransmissionProbability { get; set; }
+
+        public double SourceProbability { get; set; }
+
+        public double InfectiousnessMultiplier { get; set; }
+
+        public bool IsInitialSeed { get; set; }
+    }
+
+    internal sealed class PandemicInterventionEvent
+    {
+        public long EventId { get; set; }
+
+        public DateTime SimulationTime { get; set; }
+
+        public uint? CitizenId { get; set; }
+
+        public PandemicInterventionType InterventionType { get; set; }
+
+        public string Action { get; set; }
+
+        public string Reason { get; set; }
+
+        public string Context { get; set; }
+    }
+
+    internal sealed class PandemicPopulationEvent
+    {
+        public long EventId { get; set; }
+
+        public DateTime SimulationTime { get; set; }
+
+        public uint? CitizenId { get; set; }
+
+        public string Action { get; set; }
+
+        public string PopulationCategory { get; set; }
+
+        public int Count { get; set; }
+
+        public string Reason { get; set; }
+    }
+
+    internal sealed class ExperimentRecorderSnapshot
+    {
+        public ExperimentRecorderSnapshot()
+        {
+            StateTimeSeries = new List<PandemicStateTimePoint>();
+            TransmissionEvents = new List<PandemicTransmissionEvent>();
+            InterventionEvents = new List<PandemicInterventionEvent>();
+            PopulationEvents = new List<PandemicPopulationEvent>();
+        }
+
+        public DateTime RunStartTime { get; set; }
+
+        public DateTime RunEndTime { get; set; }
+
+        public long PhysicalContactsTotal { get; set; }
+
+        public long TraceableContactsTotal { get; set; }
+
+        public long HouseholdContactsTotal { get; set; }
+
+        public long WorkContactsTotal { get; set; }
+
+        public long SchoolContactsTotal { get; set; }
+
+        public long TransitContactsTotal { get; set; }
+
+        public long ContactsPreventedByIntervention { get; set; }
+
+        public List<PandemicStateTimePoint> StateTimeSeries { get; private set; }
+
+        public List<PandemicTransmissionEvent> TransmissionEvents { get; private set; }
+
+        public List<PandemicInterventionEvent> InterventionEvents { get; private set; }
+
+        public List<PandemicPopulationEvent> PopulationEvents { get; private set; }
+    }
+
+    /// <summary>
+    /// Run-scoped scientific recorder. High-volume contact and transmission rows are streamed to
+    /// temporary files; compact state and intervention records remain detached and testable in memory.
+    /// </summary>
+    internal sealed class ExperimentRecorder : IDisposable
+    {
+        public const string TransmissionEventsFileName = "transmission_events.csv";
+        public const string PhysicalContactsFileName = "physical_contacts.csv";
+        public const string TraceableContactsFileName = "traceable_contacts.csv";
+
+        private readonly List<PandemicStateTimePoint> stateTimeSeries = new List<PandemicStateTimePoint>();
+        private readonly List<PandemicTransmissionEvent> transmissionEvents = new List<PandemicTransmissionEvent>();
+        private readonly List<PandemicInterventionEvent> interventionEvents = new List<PandemicInterventionEvent>();
+        private readonly List<PandemicPopulationEvent> populationEvents = new List<PandemicPopulationEvent>();
+        private StreamWriter transmissionWriter;
+        private StreamWriter physicalContactWriter;
+        private StreamWriter traceableContactWriter;
+        private string outputDirectory;
+        private long nextTransmissionEventId;
+        private long nextInterventionEventId;
+        private long nextPopulationEventId;
+        private int lastSecondaryTransmissionCount;
+        private int pendingStreamRows;
+        private bool frozen;
+        private long physicalContactsTotal;
+        private long traceableContactsTotal;
+        private long householdContactsTotal;
+        private long workContactsTotal;
+        private long schoolContactsTotal;
+        private long transitContactsTotal;
+        private long contactsPreventedByIntervention;
+
+        public DateTime RunStartTime { get; private set; }
+
+        public void BeginRun(DateTime startTime, string batchOutputDirectory)
+        {
+            Reset();
+            if (startTime == default(DateTime))
+            {
+                throw new ArgumentException("A scientific run requires a simulation start time.", nameof(startTime));
+            }
+
+            RunStartTime = startTime;
+            outputDirectory = string.IsNullOrEmpty(batchOutputDirectory)
+                ? null
+                : Path.GetFullPath(batchOutputDirectory);
+            nextTransmissionEventId = 1L;
+            nextInterventionEventId = 1L;
+            nextPopulationEventId = 1L;
+            if (outputDirectory == null)
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(outputDirectory);
+            transmissionWriter = CreateStreamingWriter(
+                TransmissionEventsFileName,
+                "event_id,simulation_time,pandemic_day,source_citizen_id,target_citizen_id,source_infection_age_days,target_previous_state,target_new_state,context,origin_category,building_id,vehicle_id,district_id,source_mask_type,target_mask_type,transmission_probability,source_probability,infectiousness_multiplier,is_initial_seed");
+            physicalContactWriter = CreateStreamingWriter(
+                PhysicalContactsFileName,
+                "contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,position_x,position_y,position_z,distance,traceable_by_app,traceable_by_manual");
+            traceableContactWriter = CreateStreamingWriter(
+                TraceableContactsFileName,
+                "contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,traceable_by_app,traceable_by_manual");
+        }
+
+        public void RecordState(
+            DateTime simulationTime,
+            DiseaseStateCounts counts,
+            int symptomatic,
+            int initialSeedCount,
+            int secondaryTransmissionCount,
+            int hospitalizationsTotal,
+            int isolatedCitizens,
+            int quarantinedCitizens)
+        {
+            EnsureMutable();
+            if (counts == null)
+            {
+                throw new ArgumentNullException(nameof(counts));
+            }
+
+            EnsureRunTime(simulationTime);
+            if (stateTimeSeries.Count > 0
+                && simulationTime < stateTimeSeries[stateTimeSeries.Count - 1].SimulationTime)
+            {
+                throw new InvalidOperationException("Scientific state time points must be monotonic.");
+            }
+            if (counts.Susceptible < 0
+                || counts.Exposed < 0
+                || counts.Infectious < 0
+                || counts.PostInfectiousIll < 0
+                || counts.Recovered < 0
+                || counts.Dead < 0
+                || counts.Removed < 0
+                || symptomatic < 0
+                || initialSeedCount < 0
+                || secondaryTransmissionCount < 0
+                || hospitalizationsTotal < 0
+                || isolatedCitizens < 0
+                || quarantinedCitizens < 0)
+            {
+                throw new InvalidOperationException("Scientific state counters cannot be negative.");
+            }
+
+            if (symptomatic > counts.Exposed + counts.Infectious + counts.PostInfectiousIll)
+            {
+                throw new InvalidOperationException("Symptomatic is a parallel attribute of unresolved infection and cannot exceed exposed, infectious, and post-infectious compartments.");
+            }
+
+            int newExposures = secondaryTransmissionCount - lastSecondaryTransmissionCount;
+            if (newExposures < 0)
+            {
+                throw new InvalidOperationException("The cumulative secondary-transmission count decreased.");
+            }
+
+            stateTimeSeries.Add(new PandemicStateTimePoint
+            {
+                SimulationTime = simulationTime,
+                Susceptible = counts.Susceptible,
+                Exposed = counts.Exposed,
+                Infectious = counts.Infectious,
+                PostInfectiousIll = counts.PostInfectiousIll,
+                Symptomatic = symptomatic,
+                Recovered = counts.Recovered,
+                Dead = counts.Dead,
+                Removed = counts.Removed,
+                TrackedPopulation = counts.Susceptible + counts.Exposed + counts.Infectious
+                    + counts.PostInfectiousIll + counts.Recovered + counts.Dead,
+                InitialSeedCount = initialSeedCount,
+                SecondaryTransmissionsTotal = secondaryTransmissionCount,
+                NewExposures = newExposures,
+                HospitalizationsTotal = hospitalizationsTotal,
+                IsolatedCitizens = isolatedCitizens,
+                QuarantinedCitizens = quarantinedCitizens,
+            });
+            lastSecondaryTransmissionCount = secondaryTransmissionCount;
+        }
+
+        public void RecordTransmission(PandemicTransmissionEvent transmission)
+        {
+            EnsureMutable();
+            if (transmission == null)
+            {
+                throw new ArgumentNullException(nameof(transmission));
+            }
+
+            EnsureRunTime(transmission.SimulationTime);
+            if (transmission.SourceCitizenId == 0u
+                || transmission.TargetCitizenId == 0u
+                || transmission.SourceCitizenId == transmission.TargetCitizenId)
+            {
+                throw new InvalidOperationException("A transmission requires distinct, nonzero source and target citizen IDs.");
+            }
+
+            if (transmission.TargetPreviousState != DiseaseState.Susceptible
+                || transmission.TargetNewState != DiseaseState.Exposed
+                || transmission.IsInitialSeed)
+            {
+                throw new InvalidOperationException("Each transmission event must represent exactly one non-seed Susceptible-to-Exposed transition.");
+            }
+
+            ValidateProbability(transmission.TransmissionProbability, "combined transmission probability");
+            ValidateProbability(transmission.SourceProbability, "source transmission probability");
+            if (double.IsNaN(transmission.InfectiousnessMultiplier)
+                || double.IsInfinity(transmission.InfectiousnessMultiplier)
+                || transmission.InfectiousnessMultiplier < 0d)
+            {
+                throw new InvalidOperationException("The infectiousness multiplier must be finite and nonnegative.");
+            }
+
+            transmission.EventId = nextTransmissionEventId++;
+            transmissionEvents.Add(transmission);
+            if (transmissionWriter != null)
+            {
+                WriteCsvRow(
+                    transmissionWriter,
+                    transmission.EventId,
+                    Iso(transmission.SimulationTime),
+                    PandemicDay(transmission.SimulationTime),
+                    transmission.SourceCitizenId,
+                    transmission.TargetCitizenId,
+                    Number(transmission.SourceInfectionAgeDays),
+                    transmission.TargetPreviousState,
+                    transmission.TargetNewState,
+                    transmission.Context,
+                    transmission.OriginCategory,
+                    transmission.BuildingId,
+                    transmission.VehicleId,
+                    transmission.DistrictId,
+                    transmission.SourceMaskType,
+                    transmission.TargetMaskType,
+                    Number(transmission.TransmissionProbability),
+                    Number(transmission.SourceProbability),
+                    Number(transmission.InfectiousnessMultiplier),
+                    transmission.IsInitialSeed ? 1 : 0);
+                FlushStreamsPeriodically();
+            }
+        }
+
+        public void RecordPhysicalContact(PhysicalContactEvent contact, byte districtId)
+        {
+            EnsureMutable();
+            if (contact == null)
+            {
+                throw new ArgumentNullException(nameof(contact));
+            }
+
+            EnsureRunTime(contact.EndTime);
+            if (contact.StartTime < RunStartTime || contact.EndTime < contact.StartTime)
+            {
+                throw new InvalidOperationException("A physical contact must lie within the run and have a nonnegative interval.");
+            }
+
+            physicalContactsTotal++;
+            if (contact.TraceableByApp || contact.TraceableByManual)
+            {
+                traceableContactsTotal++;
+            }
+
+            switch (contact.Context)
+            {
+                case PhysicalContactContext.Household:
+                    householdContactsTotal++;
+                    break;
+                case PhysicalContactContext.Workplace:
+                    workContactsTotal++;
+                    break;
+                case PhysicalContactContext.School:
+                case PhysicalContactContext.University:
+                    schoolContactsTotal++;
+                    break;
+                case PhysicalContactContext.PublicTransport:
+                    transitContactsTotal++;
+                    break;
+            }
+
+            if (physicalContactWriter == null)
+            {
+                return;
+            }
+
+            WriteCsvRow(
+                physicalContactWriter,
+                contact.ContactId,
+                Iso(contact.StartTime),
+                Iso(contact.EndTime),
+                Number(contact.DurationMinutes),
+                contact.CitizenA,
+                contact.CitizenB,
+                contact.Context,
+                contact.BuildingId,
+                contact.VehicleId,
+                districtId,
+                Number(contact.PositionX),
+                Number(contact.PositionY),
+                Number(contact.PositionZ),
+                contact.Distance.HasValue ? Number(contact.Distance.Value) : string.Empty,
+                contact.TraceableByApp ? 1 : 0,
+                contact.TraceableByManual ? 1 : 0);
+            if (contact.TraceableByApp || contact.TraceableByManual)
+            {
+                WriteCsvRow(
+                    traceableContactWriter,
+                    contact.ContactId,
+                    Iso(contact.StartTime),
+                    Iso(contact.EndTime),
+                    Number(contact.DurationMinutes),
+                    contact.CitizenA,
+                    contact.CitizenB,
+                    contact.Context,
+                    contact.BuildingId,
+                    contact.VehicleId,
+                    districtId,
+                    contact.TraceableByApp ? 1 : 0,
+                    contact.TraceableByManual ? 1 : 0);
+            }
+
+            FlushStreamsPeriodically();
+        }
+
+        public void RecordPreventedContact()
+        {
+            EnsureMutable();
+            contactsPreventedByIntervention++;
+        }
+
+        public void RecordIntervention(PandemicInterventionEvent intervention)
+        {
+            EnsureMutable();
+            if (intervention == null)
+            {
+                throw new ArgumentNullException(nameof(intervention));
+            }
+
+            EnsureRunTime(intervention.SimulationTime);
+
+            intervention.EventId = nextInterventionEventId++;
+            interventionEvents.Add(intervention);
+        }
+
+        public void RecordPopulation(PandemicPopulationEvent populationEvent)
+        {
+            EnsureMutable();
+            if (populationEvent == null)
+            {
+                throw new ArgumentNullException(nameof(populationEvent));
+            }
+
+            EnsureRunTime(populationEvent.SimulationTime);
+            if (populationEvent.Count < 0)
+            {
+                throw new InvalidOperationException("Population-event counts cannot be negative.");
+            }
+
+            populationEvent.EventId = nextPopulationEventId++;
+            populationEvents.Add(populationEvent);
+        }
+
+        public ExperimentRecorderSnapshot Freeze(DateTime endTime)
+        {
+            return Freeze(endTime, true);
+        }
+
+        public ExperimentRecorderSnapshot Freeze(DateTime endTime, bool validateTransmissionCount)
+        {
+            EnsureRunTime(endTime);
+            if (validateTransmissionCount && stateTimeSeries.Count > 0)
+            {
+                int expected = stateTimeSeries[stateTimeSeries.Count - 1].SecondaryTransmissionsTotal;
+                if (transmissionEvents.Count != expected)
+                {
+                    throw new InvalidOperationException(
+                        "Every successful secondary transmission must have exactly one event row; expected "
+                        + expected + ", recorded " + transmissionEvents.Count + ".");
+                }
+            }
+
+            if (!frozen)
+            {
+                CloseAndPublishStreamingFiles();
+                frozen = true;
+            }
+
+            var result = new ExperimentRecorderSnapshot
+            {
+                RunStartTime = RunStartTime,
+                RunEndTime = endTime,
+                PhysicalContactsTotal = physicalContactsTotal,
+                TraceableContactsTotal = traceableContactsTotal,
+                HouseholdContactsTotal = householdContactsTotal,
+                WorkContactsTotal = workContactsTotal,
+                SchoolContactsTotal = schoolContactsTotal,
+                TransitContactsTotal = transitContactsTotal,
+                ContactsPreventedByIntervention = contactsPreventedByIntervention,
+            };
+            result.StateTimeSeries.AddRange(stateTimeSeries);
+            result.TransmissionEvents.AddRange(transmissionEvents);
+            result.InterventionEvents.AddRange(interventionEvents);
+            result.PopulationEvents.AddRange(populationEvents);
+            return result;
+        }
+
+        public void Reset()
+        {
+            DisposeWriters();
+            outputDirectory = null;
+            RunStartTime = default(DateTime);
+            stateTimeSeries.Clear();
+            transmissionEvents.Clear();
+            interventionEvents.Clear();
+            populationEvents.Clear();
+            nextTransmissionEventId = 1L;
+            nextInterventionEventId = 1L;
+            nextPopulationEventId = 1L;
+            lastSecondaryTransmissionCount = 0;
+            pendingStreamRows = 0;
+            physicalContactsTotal = 0L;
+            traceableContactsTotal = 0L;
+            householdContactsTotal = 0L;
+            workContactsTotal = 0L;
+            schoolContactsTotal = 0L;
+            transitContactsTotal = 0L;
+            contactsPreventedByIntervention = 0L;
+            frozen = false;
+        }
+
+        public void Dispose()
+        {
+            DisposeWriters();
+        }
+
+        private StreamWriter CreateStreamingWriter(string finalName, string header)
+        {
+            string temporaryPath = Path.Combine(outputDirectory, finalName + ".tmp");
+            var writer = new StreamWriter(
+                new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read),
+                new UTF8Encoding(false));
+            writer.WriteLine(header);
+            writer.Flush();
+            return writer;
+        }
+
+        private void CloseAndPublishStreamingFiles()
+        {
+            if (outputDirectory == null)
+            {
+                DisposeWriters();
+                return;
+            }
+
+            FlushAndClose(ref transmissionWriter);
+            FlushAndClose(ref physicalContactWriter);
+            FlushAndClose(ref traceableContactWriter);
+            PublishTemporaryFile(TransmissionEventsFileName);
+            PublishTemporaryFile(PhysicalContactsFileName);
+            PublishTemporaryFile(TraceableContactsFileName);
+        }
+
+        private void PublishTemporaryFile(string finalName)
+        {
+            string finalPath = Path.Combine(outputDirectory, finalName);
+            string temporaryPath = finalPath + ".tmp";
+            if (File.Exists(finalPath))
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    throw new IOException("A scientific output exists beside its temporary file: " + finalPath);
+                }
+
+                return;
+            }
+
+            if (!File.Exists(temporaryPath))
+            {
+                throw new FileNotFoundException("A streamed scientific output is missing.", temporaryPath);
+            }
+
+            File.Move(temporaryPath, finalPath);
+        }
+
+        private void FlushStreamsPeriodically()
+        {
+            pendingStreamRows++;
+            if (pendingStreamRows < 256)
+            {
+                return;
+            }
+
+            transmissionWriter?.Flush();
+            physicalContactWriter?.Flush();
+            traceableContactWriter?.Flush();
+            pendingStreamRows = 0;
+        }
+
+        private void DisposeWriters()
+        {
+            FlushAndClose(ref transmissionWriter);
+            FlushAndClose(ref physicalContactWriter);
+            FlushAndClose(ref traceableContactWriter);
+        }
+
+        private static void FlushAndClose(ref StreamWriter writer)
+        {
+            if (writer == null)
+            {
+                return;
+            }
+
+            writer.Flush();
+            writer.Dispose();
+            writer = null;
+        }
+
+        private void EnsureMutable()
+        {
+            if (frozen)
+            {
+                throw new InvalidOperationException("The scientific run recorder is frozen.");
+            }
+        }
+
+        private void EnsureRunTime(DateTime simulationTime)
+        {
+            if (RunStartTime == default(DateTime))
+            {
+                throw new InvalidOperationException("The scientific run recorder has not been started.");
+            }
+
+            if (simulationTime < RunStartTime)
+            {
+                throw new InvalidOperationException("A scientific event cannot precede the run start time.");
+            }
+        }
+
+        private static void ValidateProbability(double value, string name)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || value < 0d || value > 1d)
+            {
+                throw new InvalidOperationException("The " + name + " must be finite and between zero and one.");
+            }
+        }
+
+        private int PandemicDay(DateTime simulationTime)
+        {
+            return RunStartTime == default(DateTime)
+                ? 0
+                : Math.Max(0, (int)Math.Floor((simulationTime - RunStartTime).TotalDays));
+        }
+
+        private static string Iso(DateTime value)
+        {
+            return value.ToString("o", CultureInfo.InvariantCulture);
+        }
+
+        private static string Number(double value)
+        {
+            return value.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        private static void WriteCsvRow(StreamWriter writer, params object[] values)
+        {
+            for (int i = 0; i < values.Length; ++i)
+            {
+                if (i > 0)
+                {
+                    writer.Write(',');
+                }
+
+                string value = Convert.ToString(values[i], CultureInfo.InvariantCulture) ?? string.Empty;
+                if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0)
+                {
+                    writer.Write('"');
+                    writer.Write(value.Replace("\"", "\"\""));
+                    writer.Write('"');
+                }
+                else
+                {
+                    writer.Write(value);
+                }
+            }
+
+            writer.WriteLine();
+        }
+    }
+}

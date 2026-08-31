@@ -254,7 +254,7 @@ namespace RealTime.UI
                 }
 
                 bool infected = manager.IsCitizenInfected(citizenId);
-                bool inQuarantine = QuarantineManager.Instance.IsInQuarantine(
+                bool inQuarantine = QuarantineManager.Instance.IsRestricted(
                     citizenId,
                     ColossalFramework.Singleton<SimulationManager>.instance.m_currentGameTime);
                 bool wearsMask = manager.IsCitizenWearingMask(citizenId);
@@ -311,7 +311,7 @@ namespace RealTime.UI
             if (mgr == null) return;
             bool isMasked = mgr.IsCitizenWearingMask(currentViewedCitizenId);
             mgr.ForceSetCitizenMask(currentViewedCitizenId, !isMasked);
-            bool inQ = QuarantineManager.Instance.IsInQuarantine(
+            bool inQ = QuarantineManager.Instance.IsRestricted(
                 currentViewedCitizenId,
                 ColossalFramework.Singleton<SimulationManager>.instance.m_currentGameTime);
             RefreshCitizenPandemicButtons(currentViewedCitizenId, inQ, !isMasked);
@@ -324,7 +324,7 @@ namespace RealTime.UI
             var mgr = PandemicManager.Instance;
             if (mgr == null) return;
             mgr.ToggleCitizenQuarantine(currentViewedCitizenId);
-            bool inQ = QuarantineManager.Instance.IsInQuarantine(
+            bool inQ = QuarantineManager.Instance.IsRestricted(
                 currentViewedCitizenId,
                 ColossalFramework.Singleton<SimulationManager>.instance.m_currentGameTime);
             bool masked = mgr.IsCitizenWearingMask(currentViewedCitizenId);

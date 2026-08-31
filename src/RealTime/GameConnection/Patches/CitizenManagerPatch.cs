@@ -4,6 +4,7 @@
 
 namespace RealTime.GameConnection.Patches
 {
+    using System;
     using System.Reflection;
     using ColossalFramework.Math;
     using RealTime.CustomAI;
@@ -24,6 +25,12 @@ namespace RealTime.GameConnection.Patches
 
         /// <summary>Gets the patch object for the method that creates a new citizen (with specified gender).</summary>
         public static IPatch CreateCitizenPatch2 { get; } = new CitizenManager_CreateCitizen2();
+
+        /// <summary>Gets the observational patch that reports a citizen before its buffer slot is released.</summary>
+        public static IPatch ReleaseCitizenPatch { get; } = new CitizenManager_ReleaseCitizen();
+
+        /// <summary>Gets or sets the level-owned observer for exact citizen lifecycle releases.</summary>
+        public static Action<uint> CitizenReleased { get; set; }
 
         private static void UpdateCizizenAge(uint citizenId)
         {
@@ -110,6 +117,23 @@ namespace RealTime.GameConnection.Patches
                 {
                     UpdateCitizenEducation(citizen);
                 }
+            }
+        }
+
+        private sealed class CitizenManager_ReleaseCitizen : PatchBase
+        {
+            protected override MethodInfo GetMethod() =>
+                typeof(CitizenManager).GetMethod(
+                    "ReleaseCitizen",
+                    BindingFlags.Instance | BindingFlags.Public,
+                    null,
+                    new[] { typeof(uint) },
+                    new ParameterModifier[0]);
+
+            [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming Rules", "SA1313", Justification = "Harmony patch")]
+            private static void Prefix(uint citizen)
+            {
+                CitizenReleased?.Invoke(citizen);
             }
         }
     }

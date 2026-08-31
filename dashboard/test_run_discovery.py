@@ -60,6 +60,22 @@ class RunDiscoveryTests(unittest.TestCase):
 
             self.assertEqual([run_a, run_b], discover_run_csvs(root))
 
+    def test_excludes_invalid_or_malformed_manifest_runs(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            completed = self._write_run(root / "completed" / "pandemic_run_a.csv", 1_000_000_000)
+            invalid = self._write_run(root / "invalid" / "pandemic_run_b.csv", 2_000_000_000)
+            malformed = self._write_run(root / "malformed" / "pandemic_run_c.csv", 3_000_000_000)
+            completed.with_name("run_manifest.json").write_text(
+                json.dumps({"Status": "Completed"}), encoding="utf-8"
+            )
+            invalid.with_name("run_manifest.json").write_text(
+                json.dumps({"Status": "Invalid"}), encoding="utf-8"
+            )
+            malformed.with_name("run_manifest.json").write_text("{not-json", encoding="utf-8")
+
+            self.assertEqual([completed], discover_run_csvs(root))
+
     def test_manifest_label_accepts_pascal_case_serialized_fields(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

@@ -17,7 +17,7 @@ namespace RealTime.Config
         /// <summary>The storage ID for the configuration objects.</summary>
         public const string StorageId = "PandemicConfiguration";
 
-        private const int LatestVersion = 7;
+        private const int LatestVersion = 12;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeConfig"/> class.</summary>
         public RealTimeConfig()
@@ -284,6 +284,66 @@ namespace RealTime.Config
         [ConfigItemSlider(0, 28, 1, ValueType = SliderValueType.Default)]
         public uint MinimumTestDuration { get; set; }
 
+        /// <summary>Gets or sets the probability that a detectable infection produces a positive result.</summary>
+        [ConfigItem("Pandemic", "Testing", 4)]
+        [ConfigItemSlider(0, 100, .1f, ValueType = SliderValueType.Percentage)]
+        public float TestSensitivityPercent { get; set; }
+
+        /// <summary>Gets or sets the probability that an uninfected sample produces a negative result.</summary>
+        [ConfigItem("Pandemic", "Testing", 5)]
+        [ConfigItemSlider(0, 100, .1f, ValueType = SliderValueType.Percentage)]
+        public float TestSpecificityPercent { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether every pending test triggers precautionary quarantine.</summary>
+        [ConfigItem("Pandemic", "Testing", 6)]
+        [ConfigItemCheckBox]
+        public bool QuarantineWhileAwaitingTestResult { get; set; }
+
+        /// <summary>Gets or sets the minimum interval before a citizen can be tested again.</summary>
+        [ConfigItem("Pandemic", "Testing", 7)]
+        [ConfigItemSlider(0, 28, 1, ValueType = SliderValueType.Default)]
+        public uint RetestIntervalDays { get; set; }
+
+        /// <summary>Gets or sets the fixed epidemiological simulation step in simulation minutes.</summary>
+        [ConfigItem("Pandemic", "Testing", 8)]
+        [ConfigItemSlider(1, 60, 1, ValueType = SliderValueType.Default)]
+        public uint EpidemicStepMinutes { get; set; }
+
+        /// <summary>Gets or sets the per-step school contact cap used for deterministic sampling.</summary>
+        [ConfigItem("Pandemic", "ContactModel", 0)]
+        [ConfigItemSlider(1, 100, 1, ValueType = SliderValueType.Default)]
+        public uint MaxContactsPerPersonPerStepSchool { get; set; }
+
+        /// <summary>Gets or sets the per-step workplace contact cap used for deterministic sampling.</summary>
+        [ConfigItem("Pandemic", "ContactModel", 1)]
+        [ConfigItemSlider(1, 100, 1, ValueType = SliderValueType.Default)]
+        public uint MaxContactsPerPersonPerStepWorkplace { get; set; }
+
+        /// <summary>Gets or sets the per-step commercial contact cap used for deterministic sampling.</summary>
+        [ConfigItem("Pandemic", "ContactModel", 2)]
+        [ConfigItemSlider(1, 100, 1, ValueType = SliderValueType.Default)]
+        public uint MaxContactsPerPersonPerStepCommercial { get; set; }
+
+        /// <summary>Gets or sets the per-step healthcare contact cap used for deterministic sampling.</summary>
+        [ConfigItem("Pandemic", "ContactModel", 3)]
+        [ConfigItemSlider(1, 100, 1, ValueType = SliderValueType.Default)]
+        public uint MaxContactsPerPersonPerStepHealthcare { get; set; }
+
+        /// <summary>Gets or sets the per-step public-transport contact cap used for deterministic sampling.</summary>
+        [ConfigItem("Pandemic", "ContactModel", 4)]
+        [ConfigItemSlider(1, 100, 1, ValueType = SliderValueType.Default)]
+        public uint MaxContactsPerPersonPerStepTransit { get; set; }
+
+        /// <summary>Gets or sets the per-step residential shared-area contact cap.</summary>
+        [ConfigItem("Pandemic", "ContactModel", 5)]
+        [ConfigItemSlider(1, 100, 1, ValueType = SliderValueType.Default)]
+        public uint MaxContactsPerPersonPerStepResidentialSharedArea { get; set; }
+
+        /// <summary>Gets or sets the named legacy-calibration multiplier for residential shared areas.</summary>
+        [ConfigItem("Pandemic", "ContactModel", 6)]
+        [ConfigItemSlider(0f, 10f, 0.001f, ValueType = SliderValueType.Default)]
+        public float ResidentialSharedAreaTransmissionMultiplier { get; set; }
+
         /// <summary>Gets or sets the disease duration.</summary>
         [ConfigItem("DiseaseProperties", 0)]
         [ConfigItemSlider(0, 28, 1, ValueType = SliderValueType.Default)]
@@ -363,6 +423,276 @@ namespace RealTime.Config
         [ConfigItem("Symptoms", "OtherSymptoms", 4)]
         [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
         public float SymptomProbability { get; set; }
+
+        /// <summary>Gets or sets the distribution used for the minimum exposed duration.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 0)]
+        [ConfigItemComboBox]
+        public PandemicDistributionType ExposedDurationDistributionType { get; set; }
+
+        /// <summary>Gets or sets the arithmetic mean exposed duration in days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 1)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float ExposedDurationMeanDays { get; set; }
+
+        /// <summary>Gets or sets the exposed-duration standard deviation in days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 2)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float ExposedDurationStandardDeviationDays { get; set; }
+
+        /// <summary>Gets or sets the minimum exposed duration in days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 3)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float ExposedDurationMinimumDays { get; set; }
+
+        /// <summary>Gets or sets the maximum exposed duration in days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 4)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float ExposedDurationMaximumDays { get; set; }
+
+        /// <summary>Gets or sets the deterministic exposed duration in days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 5)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float ExposedDurationFixedDays { get; set; }
+
+        /// <summary>Gets or sets the distribution for infectious-start offset.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 6)]
+        [ConfigItemComboBox]
+        public PandemicDistributionType InfectiousStartDistributionType { get; set; }
+
+        /// <summary>Gets or sets infectious-start arithmetic mean days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 7)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousStartMeanDays { get; set; }
+
+        /// <summary>Gets or sets infectious-start standard deviation days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 8)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousStartStandardDeviationDays { get; set; }
+
+        /// <summary>Gets or sets minimum infectious-start offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 9)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousStartMinimumDays { get; set; }
+
+        /// <summary>Gets or sets maximum infectious-start offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 10)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousStartMaximumDays { get; set; }
+
+        /// <summary>Gets or sets deterministic infectious-start offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 11)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousStartFixedDays { get; set; }
+
+        /// <summary>Gets or sets the distribution for infectious-end offset.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 12)]
+        [ConfigItemComboBox]
+        public PandemicDistributionType InfectiousEndDistributionType { get; set; }
+
+        /// <summary>Gets or sets infectious-end arithmetic mean days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 13)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousEndMeanDays { get; set; }
+
+        /// <summary>Gets or sets infectious-end standard deviation days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 14)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousEndStandardDeviationDays { get; set; }
+
+        /// <summary>Gets or sets minimum infectious-end offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 15)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousEndMinimumDays { get; set; }
+
+        /// <summary>Gets or sets maximum infectious-end offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 16)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousEndMaximumDays { get; set; }
+
+        /// <summary>Gets or sets deterministic infectious-end offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 17)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousEndFixedDays { get; set; }
+
+        /// <summary>Gets or sets the distribution for symptom-start offset.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 18)]
+        [ConfigItemComboBox]
+        public PandemicDistributionType SymptomStartDistributionType { get; set; }
+
+        /// <summary>Gets or sets symptom-start arithmetic mean days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 19)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomStartMeanDays { get; set; }
+
+        /// <summary>Gets or sets symptom-start standard deviation days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 20)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomStartStandardDeviationDays { get; set; }
+
+        /// <summary>Gets or sets minimum symptom-start offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 21)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomStartMinimumDays { get; set; }
+
+        /// <summary>Gets or sets maximum symptom-start offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 22)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomStartMaximumDays { get; set; }
+
+        /// <summary>Gets or sets deterministic symptom-start offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 23)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomStartFixedDays { get; set; }
+
+        /// <summary>Gets or sets the distribution for symptom-end offset.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 24)]
+        [ConfigItemComboBox]
+        public PandemicDistributionType SymptomEndDistributionType { get; set; }
+
+        /// <summary>Gets or sets symptom-end arithmetic mean days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 25)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomEndMeanDays { get; set; }
+
+        /// <summary>Gets or sets symptom-end standard deviation days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 26)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomEndStandardDeviationDays { get; set; }
+
+        /// <summary>Gets or sets minimum symptom-end offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 27)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomEndMinimumDays { get; set; }
+
+        /// <summary>Gets or sets maximum symptom-end offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 28)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomEndMaximumDays { get; set; }
+
+        /// <summary>Gets or sets deterministic symptom-end offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 29)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float SymptomEndFixedDays { get; set; }
+
+        /// <summary>Gets or sets the distribution for recovery offset.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 30)]
+        [ConfigItemComboBox]
+        public PandemicDistributionType RecoveryDistributionType { get; set; }
+
+        /// <summary>Gets or sets recovery arithmetic mean days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 31)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float RecoveryMeanDays { get; set; }
+
+        /// <summary>Gets or sets recovery standard deviation days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 32)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float RecoveryStandardDeviationDays { get; set; }
+
+        /// <summary>Gets or sets minimum recovery offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 33)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float RecoveryMinimumDays { get; set; }
+
+        /// <summary>Gets or sets maximum recovery offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 34)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float RecoveryMaximumDays { get; set; }
+
+        /// <summary>Gets or sets deterministic recovery offset days.</summary>
+        [ConfigItem("ScientificModel", "DiseaseTimeline", 35)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float RecoveryFixedDays { get; set; }
+
+        /// <summary>Gets or sets the infectiousness profile type.</summary>
+        [ConfigItem("ScientificModel", "Infectiousness", 0)]
+        [ConfigItemComboBox]
+        public PandemicInfectiousnessProfileType InfectiousnessProfileType { get; set; }
+
+        /// <summary>Gets or sets the multiplier at infectious-window start.</summary>
+        [ConfigItem("ScientificModel", "Infectiousness", 1)]
+        [ConfigItemSlider(0, 100, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousnessProfileStartMultiplier { get; set; }
+
+        /// <summary>Gets or sets the relative peak position in the infectious interval.</summary>
+        [ConfigItem("ScientificModel", "Infectiousness", 2)]
+        [ConfigItemSlider(0, 1, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousnessProfilePeakTimeFraction { get; set; }
+
+        /// <summary>Gets or sets the multiplier at the profile peak.</summary>
+        [ConfigItem("ScientificModel", "Infectiousness", 3)]
+        [ConfigItemSlider(0, 100, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousnessProfilePeakMultiplier { get; set; }
+
+        /// <summary>Gets or sets the multiplier at infectious-window end.</summary>
+        [ConfigItem("ScientificModel", "Infectiousness", 4)]
+        [ConfigItemSlider(0, 100, 0.01f, ValueType = SliderValueType.Default)]
+        public float InfectiousnessProfileEndMultiplier { get; set; }
+
+        /// <summary>Gets or sets the initial-case population sampling strategy.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 0)]
+        [ConfigItemComboBox]
+        public PandemicInitialSeedSamplingStrategy InitialSeedSamplingStrategy { get; set; }
+
+        /// <summary>Gets or sets whether initial infection age is fixed or distributed.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 1)]
+        [ConfigItemComboBox]
+        public PandemicInitialInfectionAgeMode InitialInfectionAgeMode { get; set; }
+
+        /// <summary>Gets or sets the initial-infection-age distribution type.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 2)]
+        [ConfigItemComboBox]
+        public PandemicDistributionType InitialInfectionAgeDistributionType { get; set; }
+
+        /// <summary>Gets or sets arithmetic mean initial infection age in days.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 3)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InitialInfectionAgeMeanDays { get; set; }
+
+        /// <summary>Gets or sets initial infection age standard deviation in days.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 4)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InitialInfectionAgeStandardDeviationDays { get; set; }
+
+        /// <summary>Gets or sets minimum initial infection age in days.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 5)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InitialInfectionAgeMinimumDays { get; set; }
+
+        /// <summary>Gets or sets maximum initial infection age in days.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 6)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InitialInfectionAgeMaximumDays { get; set; }
+
+        /// <summary>Gets or sets deterministic initial infection age in days.</summary>
+        [ConfigItem("ScientificModel", "InitialCases", 7)]
+        [ConfigItemSlider(0, 3650, 0.01f, ValueType = SliderValueType.Default)]
+        public float InitialInfectionAgeFixedDays { get; set; }
+
+        /// <summary>Gets or sets the relative mortality multiplier for asymptomatic courses.</summary>
+        [ConfigItem("ScientificModel", "Mortality", 0)]
+        [ConfigItemSlider(0, 100, 0.01f, ValueType = SliderValueType.Default)]
+        public float AsymptomaticMortalityMultiplier { get; set; }
+
+        /// <summary>Gets or sets the hospital-usage warning threshold.</summary>
+        [ConfigItem("ScientificModel", "Mortality", 1)]
+        [ConfigItemSlider(0, 100, 0.1f, ValueType = SliderValueType.Percentage)]
+        public float HealthcareWarningThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the hospital-usage critical threshold.</summary>
+        [ConfigItem("ScientificModel", "Mortality", 2)]
+        [ConfigItemSlider(0, 100, 0.1f, ValueType = SliderValueType.Percentage)]
+        public float HealthcareCriticalThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the mortality-hazard multiplier at warning saturation.</summary>
+        [ConfigItem("ScientificModel", "Mortality", 3)]
+        [ConfigItemSlider(0, 100, 0.01f, ValueType = SliderValueType.Default)]
+        public float HealthcareWarningMortalityMultiplier { get; set; }
+
+        /// <summary>Gets or sets the mortality-hazard multiplier at critical saturation.</summary>
+        [ConfigItem("ScientificModel", "Mortality", 4)]
+        [ConfigItemSlider(0, 100, 0.01f, ValueType = SliderValueType.Default)]
+        public float HealthcareCriticalMortalityMultiplier { get; set; }
 
         /// <summary>Gets or sets the infected count threshold for hub highlighting.</summary>
         [ConfigItem("PandemicMonitor", "Overlays", 0)]
@@ -458,6 +788,126 @@ namespace RealTime.Config
         [ConfigItem("PandemicLockdown", "Families", 15)]
         [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
         public float CloseEssentialServicesThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the education auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 16)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenEducationThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum education closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 17)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumEducationClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the education lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 18)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float EducationLockdownCooldownDurationDays { get; set; }
+
+        /// <summary>Gets or sets the public transport auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 19)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenPublicTransportThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum public transport closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 20)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumPublicTransportClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the public transport lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 21)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float PublicTransportLockdownCooldownDurationDays { get; set; }
+
+        /// <summary>Gets or sets the commercial auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 22)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenCommercialThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum commercial closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 23)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumCommercialClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the commercial lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 24)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float CommercialLockdownCooldownDurationDays { get; set; }
+
+        /// <summary>Gets or sets the leisure/tourism/parks auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 25)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenLeisureTourismParksThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum leisure/tourism/parks closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 26)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumLeisureTourismParksClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the leisure/tourism/parks lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 27)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float LeisureTourismParksLockdownCooldownDurationDays { get; set; }
+
+        /// <summary>Gets or sets the office auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 28)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenOfficeThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum office closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 29)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumOfficeClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the office lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 30)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float OfficeLockdownCooldownDurationDays { get; set; }
+
+        /// <summary>Gets or sets the industry auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 31)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenIndustryThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum industry closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 32)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumIndustryClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the industry lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 33)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float IndustryLockdownCooldownDurationDays { get; set; }
+
+        /// <summary>Gets or sets the government/other-public auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 34)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenGovernmentOtherPublicThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum government/other-public closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 35)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumGovernmentOtherPublicClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the government/other-public lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 36)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float GovernmentOtherPublicLockdownCooldownDurationDays { get; set; }
+
+        /// <summary>Gets or sets the essential-services auto-reopen threshold in percent.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 37)]
+        [ConfigItemSlider(0, 100, 1, ValueType = SliderValueType.Percentage)]
+        public float ReopenEssentialServicesThresholdPercent { get; set; }
+
+        /// <summary>Gets or sets the minimum essential-services closure duration in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 38)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float MinimumEssentialServicesClosureDurationDays { get; set; }
+
+        /// <summary>Gets or sets the essential-services lockdown transition cooldown in simulation days.</summary>
+        [ConfigItem("PandemicLockdown", "Families", 39)]
+        [ConfigItemSlider(0, 3650, 0.25f, ValueType = SliderValueType.Default)]
+        public float EssentialServicesLockdownCooldownDurationDays { get; set; }
 
         /// <summary>
         /// Gets or sets a value that determines the percentage of the Cims that will work second shift.
@@ -674,6 +1124,69 @@ namespace RealTime.Config
                 StaticBaselineNeutralizeAreaAndDlcRestrictions = true;
             }
 
+            if (Version < 8)
+            {
+                // Version 8 makes the previously hidden perfect-test assumptions explicit and reproducible.
+                TestSensitivityPercent = 100f;
+                TestSpecificityPercent = 100f;
+                QuarantineWhileAwaitingTestResult = true;
+                RetestIntervalDays = 7;
+            }
+
+            if (Version < 9)
+            {
+                EpidemicStepMinutes = 5;
+            }
+
+            if (Version < 10)
+            {
+                // Explicit, uncalibrated operational caps replace large-building all-to-all mixing.
+                MaxContactsPerPersonPerStepSchool = 10;
+                MaxContactsPerPersonPerStepWorkplace = 10;
+                MaxContactsPerPersonPerStepCommercial = 10;
+                MaxContactsPerPersonPerStepHealthcare = 10;
+                MaxContactsPerPersonPerStepTransit = 10;
+                MaxContactsPerPersonPerStepResidentialSharedArea = 10;
+                ResidentialSharedAreaTransmissionMultiplier = 1f / 96f;
+            }
+
+            if (Version < 11)
+            {
+                // Preserve the legacy threshold response while making every family policy explicit.
+                // Zero duration/cooldown values are deliberate compatibility defaults, not missing values.
+                ReopenEducationThresholdPercent = CloseEducationThresholdPercent;
+                ReopenPublicTransportThresholdPercent = ClosePublicTransportThresholdPercent;
+                ReopenCommercialThresholdPercent = CloseCommercialThresholdPercent;
+                ReopenLeisureTourismParksThresholdPercent = CloseLeisureTourismParksThresholdPercent;
+                ReopenOfficeThresholdPercent = CloseOfficeThresholdPercent;
+                ReopenIndustryThresholdPercent = CloseIndustryThresholdPercent;
+                ReopenGovernmentOtherPublicThresholdPercent = CloseGovernmentOtherPublicThresholdPercent;
+                ReopenEssentialServicesThresholdPercent = CloseEssentialServicesThresholdPercent;
+                MinimumEducationClosureDurationDays = 0f;
+                MinimumPublicTransportClosureDurationDays = 0f;
+                MinimumCommercialClosureDurationDays = 0f;
+                MinimumLeisureTourismParksClosureDurationDays = 0f;
+                MinimumOfficeClosureDurationDays = 0f;
+                MinimumIndustryClosureDurationDays = 0f;
+                MinimumGovernmentOtherPublicClosureDurationDays = 0f;
+                MinimumEssentialServicesClosureDurationDays = 0f;
+                EducationLockdownCooldownDurationDays = 0f;
+                PublicTransportLockdownCooldownDurationDays = 0f;
+                CommercialLockdownCooldownDurationDays = 0f;
+                LeisureTourismParksLockdownCooldownDurationDays = 0f;
+                OfficeLockdownCooldownDurationDays = 0f;
+                IndustryLockdownCooldownDurationDays = 0f;
+                GovernmentOtherPublicLockdownCooldownDurationDays = 0f;
+                EssentialServicesLockdownCooldownDurationDays = 0f;
+            }
+
+            if (Version < 12)
+            {
+                // Version 12 makes every previously fixed disease timeline, seed age, and
+                // mortality-saturation constant explicit while preserving legacy behavior.
+                SetScientificDefaultsFromLegacy();
+            }
+
             Version = LatestVersion;
         }
 
@@ -774,6 +1287,23 @@ namespace RealTime.Config
             IndoorDiseaseTransmissionProbability = FastMath.Clamp(IndoorDiseaseTransmissionProbability, 0f, 10f);
             OutdoorDiseaseTransmissionProbability = FastMath.Clamp(OutdoorDiseaseTransmissionProbability, 0f, 10f);
             SymptomProbability = FastMath.Clamp(SymptomProbability, 0f, 100f);
+            TestSensitivityPercent = FastMath.Clamp(TestSensitivityPercent, 0f, 100f);
+            TestSpecificityPercent = FastMath.Clamp(TestSpecificityPercent, 0f, 100f);
+            RetestIntervalDays = FastMath.Clamp(RetestIntervalDays, 0u, 28u);
+            EpidemicStepMinutes = FastMath.Clamp(EpidemicStepMinutes, 1u, 60u);
+            MaxContactsPerPersonPerStepSchool = FastMath.Clamp(MaxContactsPerPersonPerStepSchool, 1u, 100u);
+            MaxContactsPerPersonPerStepWorkplace = FastMath.Clamp(MaxContactsPerPersonPerStepWorkplace, 1u, 100u);
+            MaxContactsPerPersonPerStepCommercial = FastMath.Clamp(MaxContactsPerPersonPerStepCommercial, 1u, 100u);
+            MaxContactsPerPersonPerStepHealthcare = FastMath.Clamp(MaxContactsPerPersonPerStepHealthcare, 1u, 100u);
+            MaxContactsPerPersonPerStepTransit = FastMath.Clamp(MaxContactsPerPersonPerStepTransit, 1u, 100u);
+            MaxContactsPerPersonPerStepResidentialSharedArea = FastMath.Clamp(MaxContactsPerPersonPerStepResidentialSharedArea, 1u, 100u);
+            if (float.IsNaN(ResidentialSharedAreaTransmissionMultiplier)
+                || float.IsInfinity(ResidentialSharedAreaTransmissionMultiplier))
+            {
+                ResidentialSharedAreaTransmissionMultiplier = 1f / 96f;
+            }
+
+            ResidentialSharedAreaTransmissionMultiplier = FastMath.Clamp(ResidentialSharedAreaTransmissionMultiplier, 0f, 10f);
             HubHighlightThreshold = FastMath.Clamp(HubHighlightThreshold, 2, 30);
             SuperspreaderCitizenThreshold = FastMath.Clamp(SuperspreaderCitizenThreshold, 2, 20);
             SuperspreaderLocationThreshold = FastMath.Clamp(SuperspreaderLocationThreshold, 2, 50);
@@ -785,6 +1315,50 @@ namespace RealTime.Config
             CloseIndustryThresholdPercent = FastMath.Clamp(CloseIndustryThresholdPercent, 0f, 100f);
             CloseGovernmentOtherPublicThresholdPercent = FastMath.Clamp(CloseGovernmentOtherPublicThresholdPercent, 0f, 100f);
             CloseEssentialServicesThresholdPercent = FastMath.Clamp(CloseEssentialServicesThresholdPercent, 0f, 100f);
+            ReopenEducationThresholdPercent = ClampLockdownReopenThreshold(ReopenEducationThresholdPercent, CloseEducationThresholdPercent);
+            ReopenPublicTransportThresholdPercent = ClampLockdownReopenThreshold(ReopenPublicTransportThresholdPercent, ClosePublicTransportThresholdPercent);
+            ReopenCommercialThresholdPercent = ClampLockdownReopenThreshold(ReopenCommercialThresholdPercent, CloseCommercialThresholdPercent);
+            ReopenLeisureTourismParksThresholdPercent = ClampLockdownReopenThreshold(ReopenLeisureTourismParksThresholdPercent, CloseLeisureTourismParksThresholdPercent);
+            ReopenOfficeThresholdPercent = ClampLockdownReopenThreshold(ReopenOfficeThresholdPercent, CloseOfficeThresholdPercent);
+            ReopenIndustryThresholdPercent = ClampLockdownReopenThreshold(ReopenIndustryThresholdPercent, CloseIndustryThresholdPercent);
+            ReopenGovernmentOtherPublicThresholdPercent = ClampLockdownReopenThreshold(ReopenGovernmentOtherPublicThresholdPercent, CloseGovernmentOtherPublicThresholdPercent);
+            ReopenEssentialServicesThresholdPercent = ClampLockdownReopenThreshold(ReopenEssentialServicesThresholdPercent, CloseEssentialServicesThresholdPercent);
+            MinimumEducationClosureDurationDays = ClampLockdownDuration(MinimumEducationClosureDurationDays);
+            MinimumPublicTransportClosureDurationDays = ClampLockdownDuration(MinimumPublicTransportClosureDurationDays);
+            MinimumCommercialClosureDurationDays = ClampLockdownDuration(MinimumCommercialClosureDurationDays);
+            MinimumLeisureTourismParksClosureDurationDays = ClampLockdownDuration(MinimumLeisureTourismParksClosureDurationDays);
+            MinimumOfficeClosureDurationDays = ClampLockdownDuration(MinimumOfficeClosureDurationDays);
+            MinimumIndustryClosureDurationDays = ClampLockdownDuration(MinimumIndustryClosureDurationDays);
+            MinimumGovernmentOtherPublicClosureDurationDays = ClampLockdownDuration(MinimumGovernmentOtherPublicClosureDurationDays);
+            MinimumEssentialServicesClosureDurationDays = ClampLockdownDuration(MinimumEssentialServicesClosureDurationDays);
+            EducationLockdownCooldownDurationDays = ClampLockdownDuration(EducationLockdownCooldownDurationDays);
+            PublicTransportLockdownCooldownDurationDays = ClampLockdownDuration(PublicTransportLockdownCooldownDurationDays);
+            CommercialLockdownCooldownDurationDays = ClampLockdownDuration(CommercialLockdownCooldownDurationDays);
+            LeisureTourismParksLockdownCooldownDurationDays = ClampLockdownDuration(LeisureTourismParksLockdownCooldownDurationDays);
+            OfficeLockdownCooldownDurationDays = ClampLockdownDuration(OfficeLockdownCooldownDurationDays);
+            IndustryLockdownCooldownDurationDays = ClampLockdownDuration(IndustryLockdownCooldownDurationDays);
+            GovernmentOtherPublicLockdownCooldownDurationDays = ClampLockdownDuration(GovernmentOtherPublicLockdownCooldownDurationDays);
+            EssentialServicesLockdownCooldownDurationDays = ClampLockdownDuration(EssentialServicesLockdownCooldownDurationDays);
+            ExposedDurationDistributionType = ClampDistributionType(ExposedDurationDistributionType);
+            InfectiousStartDistributionType = ClampDistributionType(InfectiousStartDistributionType);
+            InfectiousEndDistributionType = ClampDistributionType(InfectiousEndDistributionType);
+            SymptomStartDistributionType = ClampDistributionType(SymptomStartDistributionType);
+            SymptomEndDistributionType = ClampDistributionType(SymptomEndDistributionType);
+            RecoveryDistributionType = ClampDistributionType(RecoveryDistributionType);
+            InitialInfectionAgeDistributionType = ClampDistributionType(InitialInfectionAgeDistributionType);
+            InitialSeedSamplingStrategy = (PandemicInitialSeedSamplingStrategy)FastMath.Clamp(
+                (int)InitialSeedSamplingStrategy,
+                (int)PandemicInitialSeedSamplingStrategy.UniformPopulation,
+                (int)PandemicInitialSeedSamplingStrategy.DistrictStratified);
+            InitialInfectionAgeMode = (PandemicInitialInfectionAgeMode)FastMath.Clamp(
+                (int)InitialInfectionAgeMode,
+                (int)PandemicInitialInfectionAgeMode.FixedInitialInfectionAge,
+                (int)PandemicInitialInfectionAgeMode.DistributedInitialInfectionAge);
+            InfectiousnessProfileType = (PandemicInfectiousnessProfileType)FastMath.Clamp(
+                (int)InfectiousnessProfileType,
+                (int)PandemicInfectiousnessProfileType.Flat,
+                (int)PandemicInfectiousnessProfileType.PiecewiseLinear);
+            ClampScientificNumbers();
         }
 
         /// <summary>Resets all values to their defaults.</summary>
@@ -854,9 +1428,11 @@ namespace RealTime.Config
             LockdownBehavior = LockdownBehavior.None;
 
             TransmissionProbabilityReduction = 2;
-            RatioIgnoreMasks = 30;
-            RatioOtherProtectionMask = 50;
-            RatioOwnProtectionMask = 50;
+            // Integer percentages nearest to the legacy 30:50:50 weighted assignment
+            // (23.08%, 38.46%, 38.46%), using a stable largest-remainder tie break.
+            RatioIgnoreMasks = 23;
+            RatioOtherProtectionMask = 39;
+            RatioOwnProtectionMask = 38;
             MaskBehavior = MaskBehavior.None;
             BuildingContactTracingProbability = 30f;
             AppBasedContactTracingProbability = 20f;
@@ -864,6 +1440,18 @@ namespace RealTime.Config
             PercentageOfTestsReservedForSickCitizens = 50f;
             MinimumTestDuration = 1;
             MaximumTestDuration = 3;
+            TestSensitivityPercent = 100f;
+            TestSpecificityPercent = 100f;
+            QuarantineWhileAwaitingTestResult = true;
+            RetestIntervalDays = 7;
+            EpidemicStepMinutes = 5;
+            MaxContactsPerPersonPerStepSchool = 10;
+            MaxContactsPerPersonPerStepWorkplace = 10;
+            MaxContactsPerPersonPerStepCommercial = 10;
+            MaxContactsPerPersonPerStepHealthcare = 10;
+            MaxContactsPerPersonPerStepTransit = 10;
+            MaxContactsPerPersonPerStepResidentialSharedArea = 10;
+            ResidentialSharedAreaTransmissionMultiplier = 1f / 96f;
 
             DiseaseDuration = 14;
             DetectionTime = 2;
@@ -901,8 +1489,242 @@ namespace RealTime.Config
             CloseGovernmentOtherPublicThresholdPercent = 40f;
             CloseEssentialServicesDuringLockdown = false;
             CloseEssentialServicesThresholdPercent = 100f;
+            ReopenEducationThresholdPercent = CloseEducationThresholdPercent;
+            ReopenPublicTransportThresholdPercent = ClosePublicTransportThresholdPercent;
+            ReopenCommercialThresholdPercent = CloseCommercialThresholdPercent;
+            ReopenLeisureTourismParksThresholdPercent = CloseLeisureTourismParksThresholdPercent;
+            ReopenOfficeThresholdPercent = CloseOfficeThresholdPercent;
+            ReopenIndustryThresholdPercent = CloseIndustryThresholdPercent;
+            ReopenGovernmentOtherPublicThresholdPercent = CloseGovernmentOtherPublicThresholdPercent;
+            ReopenEssentialServicesThresholdPercent = CloseEssentialServicesThresholdPercent;
+            MinimumEducationClosureDurationDays = 0f;
+            MinimumPublicTransportClosureDurationDays = 0f;
+            MinimumCommercialClosureDurationDays = 0f;
+            MinimumLeisureTourismParksClosureDurationDays = 0f;
+            MinimumOfficeClosureDurationDays = 0f;
+            MinimumIndustryClosureDurationDays = 0f;
+            MinimumGovernmentOtherPublicClosureDurationDays = 0f;
+            MinimumEssentialServicesClosureDurationDays = 0f;
+            EducationLockdownCooldownDurationDays = 0f;
+            PublicTransportLockdownCooldownDurationDays = 0f;
+            CommercialLockdownCooldownDurationDays = 0f;
+            LeisureTourismParksLockdownCooldownDurationDays = 0f;
+            OfficeLockdownCooldownDurationDays = 0f;
+            IndustryLockdownCooldownDurationDays = 0f;
+            GovernmentOtherPublicLockdownCooldownDurationDays = 0f;
+            EssentialServicesLockdownCooldownDurationDays = 0f;
+
+            SetScientificDefaultsFromLegacy();
 
             ShowIncompatibilityNotifications = true;
+        }
+
+        private void SetScientificDefaultsFromLegacy()
+        {
+            PreserveLegacyEffectiveMaskDistribution();
+            ExposedDurationDistributionType = PandemicDistributionType.Deterministic;
+            ExposedDurationMeanDays = StartInfection;
+            ExposedDurationStandardDeviationDays = 0f;
+            ExposedDurationMinimumDays = 0f;
+            ExposedDurationMaximumDays = 3650f;
+            ExposedDurationFixedDays = StartInfection;
+            InfectiousStartDistributionType = PandemicDistributionType.Deterministic;
+            InfectiousStartMeanDays = StartInfection;
+            InfectiousStartStandardDeviationDays = 0f;
+            InfectiousStartMinimumDays = 0f;
+            InfectiousStartMaximumDays = 3650f;
+            InfectiousStartFixedDays = StartInfection;
+            InfectiousEndDistributionType = PandemicDistributionType.Deterministic;
+            InfectiousEndMeanDays = EndInfection;
+            InfectiousEndStandardDeviationDays = 0f;
+            InfectiousEndMinimumDays = 0f;
+            InfectiousEndMaximumDays = 3650f;
+            InfectiousEndFixedDays = EndInfection;
+            SymptomStartDistributionType = PandemicDistributionType.Deterministic;
+            SymptomStartMeanDays = StartSymptoms;
+            SymptomStartStandardDeviationDays = 0f;
+            SymptomStartMinimumDays = 0f;
+            SymptomStartMaximumDays = 3650f;
+            SymptomStartFixedDays = StartSymptoms;
+            SymptomEndDistributionType = PandemicDistributionType.Deterministic;
+            SymptomEndMeanDays = EndSymptoms;
+            SymptomEndStandardDeviationDays = 0f;
+            SymptomEndMinimumDays = 0f;
+            SymptomEndMaximumDays = 3650f;
+            SymptomEndFixedDays = EndSymptoms;
+            RecoveryDistributionType = PandemicDistributionType.Deterministic;
+            RecoveryMeanDays = DiseaseDuration;
+            RecoveryStandardDeviationDays = 0f;
+            RecoveryMinimumDays = 0f;
+            RecoveryMaximumDays = 3650f;
+            RecoveryFixedDays = DiseaseDuration;
+
+            InfectiousnessProfileType = PandemicInfectiousnessProfileType.Flat;
+            InfectiousnessProfileStartMultiplier = 1f;
+            InfectiousnessProfilePeakTimeFraction = 0.5f;
+            InfectiousnessProfilePeakMultiplier = 1f;
+            InfectiousnessProfileEndMultiplier = 1f;
+            InitialSeedSamplingStrategy = PandemicInitialSeedSamplingStrategy.UniformPopulation;
+            InitialInfectionAgeMode = PandemicInitialInfectionAgeMode.FixedInitialInfectionAge;
+            InitialInfectionAgeDistributionType = PandemicDistributionType.Deterministic;
+            InitialInfectionAgeMeanDays = StartInfection;
+            InitialInfectionAgeStandardDeviationDays = 0f;
+            InitialInfectionAgeMinimumDays = 0f;
+            InitialInfectionAgeMaximumDays = 3650f;
+            InitialInfectionAgeFixedDays = StartInfection;
+            AsymptomaticMortalityMultiplier = 0.10f;
+            HealthcareWarningThresholdPercent = 75f;
+            HealthcareCriticalThresholdPercent = 90f;
+            HealthcareWarningMortalityMultiplier = 1.35f;
+            HealthcareCriticalMortalityMultiplier = 2f;
+        }
+
+        private void PreserveLegacyEffectiveMaskDistribution()
+        {
+            int[] weights =
+            {
+                ClampPercentage(RatioIgnoreMasks),
+                ClampPercentage(RatioOtherProtectionMask),
+                ClampPercentage(RatioOwnProtectionMask),
+            };
+            int total = weights[0] + weights[1] + weights[2];
+            if (total == 0)
+            {
+                // The legacy division-by-zero comparisons assigned no mask to anyone.
+                RatioIgnoreMasks = 100;
+                RatioOtherProtectionMask = 0;
+                RatioOwnProtectionMask = 0;
+                return;
+            }
+
+            int[] normalized = new int[3];
+            double[] remainders = new double[3];
+            int assigned = 0;
+            for (int i = 0; i < weights.Length; ++i)
+            {
+                double exact = weights[i] * 100d / total;
+                normalized[i] = (int)System.Math.Floor(exact);
+                remainders[i] = exact - normalized[i];
+                assigned += normalized[i];
+            }
+
+            while (assigned < 100)
+            {
+                int largest = 0;
+                for (int i = 1; i < remainders.Length; ++i)
+                {
+                    if (remainders[i] > remainders[largest])
+                    {
+                        largest = i;
+                    }
+                }
+
+                normalized[largest]++;
+                remainders[largest] = -1d;
+                assigned++;
+            }
+
+            RatioIgnoreMasks = normalized[0];
+            RatioOtherProtectionMask = normalized[1];
+            RatioOwnProtectionMask = normalized[2];
+        }
+
+        private static int ClampPercentage(int value)
+        {
+            return value < 0 ? 0 : value > 100 ? 100 : value;
+        }
+
+        private void ClampScientificNumbers()
+        {
+            ExposedDurationMeanDays = ClampScientificDays(ExposedDurationMeanDays);
+            ExposedDurationStandardDeviationDays = ClampScientificDays(ExposedDurationStandardDeviationDays);
+            ExposedDurationMinimumDays = ClampScientificDays(ExposedDurationMinimumDays);
+            ExposedDurationMaximumDays = ClampScientificDays(ExposedDurationMaximumDays);
+            ExposedDurationFixedDays = ClampScientificDays(ExposedDurationFixedDays);
+            InfectiousStartMeanDays = ClampScientificDays(InfectiousStartMeanDays);
+            InfectiousStartStandardDeviationDays = ClampScientificDays(InfectiousStartStandardDeviationDays);
+            InfectiousStartMinimumDays = ClampScientificDays(InfectiousStartMinimumDays);
+            InfectiousStartMaximumDays = ClampScientificDays(InfectiousStartMaximumDays);
+            InfectiousStartFixedDays = ClampScientificDays(InfectiousStartFixedDays);
+            InfectiousEndMeanDays = ClampScientificDays(InfectiousEndMeanDays);
+            InfectiousEndStandardDeviationDays = ClampScientificDays(InfectiousEndStandardDeviationDays);
+            InfectiousEndMinimumDays = ClampScientificDays(InfectiousEndMinimumDays);
+            InfectiousEndMaximumDays = ClampScientificDays(InfectiousEndMaximumDays);
+            InfectiousEndFixedDays = ClampScientificDays(InfectiousEndFixedDays);
+            SymptomStartMeanDays = ClampScientificDays(SymptomStartMeanDays);
+            SymptomStartStandardDeviationDays = ClampScientificDays(SymptomStartStandardDeviationDays);
+            SymptomStartMinimumDays = ClampScientificDays(SymptomStartMinimumDays);
+            SymptomStartMaximumDays = ClampScientificDays(SymptomStartMaximumDays);
+            SymptomStartFixedDays = ClampScientificDays(SymptomStartFixedDays);
+            SymptomEndMeanDays = ClampScientificDays(SymptomEndMeanDays);
+            SymptomEndStandardDeviationDays = ClampScientificDays(SymptomEndStandardDeviationDays);
+            SymptomEndMinimumDays = ClampScientificDays(SymptomEndMinimumDays);
+            SymptomEndMaximumDays = ClampScientificDays(SymptomEndMaximumDays);
+            SymptomEndFixedDays = ClampScientificDays(SymptomEndFixedDays);
+            RecoveryMeanDays = ClampScientificDays(RecoveryMeanDays);
+            RecoveryStandardDeviationDays = ClampScientificDays(RecoveryStandardDeviationDays);
+            RecoveryMinimumDays = ClampScientificDays(RecoveryMinimumDays);
+            RecoveryMaximumDays = ClampScientificDays(RecoveryMaximumDays);
+            RecoveryFixedDays = ClampScientificDays(RecoveryFixedDays);
+            InitialInfectionAgeMeanDays = ClampScientificDays(InitialInfectionAgeMeanDays);
+            InitialInfectionAgeStandardDeviationDays = ClampScientificDays(InitialInfectionAgeStandardDeviationDays);
+            InitialInfectionAgeMinimumDays = ClampScientificDays(InitialInfectionAgeMinimumDays);
+            InitialInfectionAgeMaximumDays = ClampScientificDays(InitialInfectionAgeMaximumDays);
+            InitialInfectionAgeFixedDays = ClampScientificDays(InitialInfectionAgeFixedDays);
+            InfectiousnessProfileStartMultiplier = ClampScientificMultiplier(InfectiousnessProfileStartMultiplier);
+            InfectiousnessProfilePeakTimeFraction = ClampFinite(InfectiousnessProfilePeakTimeFraction, 0f, 1f, 0.5f);
+            InfectiousnessProfilePeakMultiplier = ClampScientificMultiplier(InfectiousnessProfilePeakMultiplier);
+            InfectiousnessProfileEndMultiplier = ClampScientificMultiplier(InfectiousnessProfileEndMultiplier);
+            AsymptomaticMortalityMultiplier = ClampScientificMultiplier(AsymptomaticMortalityMultiplier);
+            HealthcareWarningThresholdPercent = ClampFinite(HealthcareWarningThresholdPercent, 0f, 100f, 75f);
+            HealthcareCriticalThresholdPercent = ClampFinite(HealthcareCriticalThresholdPercent, 0f, 100f, 90f);
+            HealthcareWarningMortalityMultiplier = ClampScientificMultiplier(HealthcareWarningMortalityMultiplier);
+            HealthcareCriticalMortalityMultiplier = ClampScientificMultiplier(HealthcareCriticalMortalityMultiplier);
+        }
+
+        private static PandemicDistributionType ClampDistributionType(PandemicDistributionType value)
+        {
+            return (PandemicDistributionType)FastMath.Clamp(
+                (int)value,
+                (int)PandemicDistributionType.Deterministic,
+                (int)PandemicDistributionType.Gamma);
+        }
+
+        private static float ClampScientificDays(float value)
+        {
+            return ClampFinite(value, 0f, 3650f, 0f);
+        }
+
+        private static float ClampScientificMultiplier(float value)
+        {
+            return ClampFinite(value, 0f, 100f, 0f);
+        }
+
+        private static float ClampFinite(float value, float minimum, float maximum, float fallback)
+        {
+            return float.IsNaN(value) || float.IsInfinity(value)
+                ? fallback
+                : FastMath.Clamp(value, minimum, maximum);
+        }
+
+        private static float ClampLockdownReopenThreshold(float value, float closeThreshold)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+            {
+                return closeThreshold;
+            }
+
+            return FastMath.Clamp(value, 0f, closeThreshold);
+        }
+
+        private static float ClampLockdownDuration(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+            {
+                return 0f;
+            }
+
+            return FastMath.Clamp(value, 0f, 3650f);
         }
     }
 }

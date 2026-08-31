@@ -52,6 +52,24 @@
       <_Parameter1>RealTimeTests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
+  <Target Name="GenerateTenusBuildIdentity" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <TenusGitCommit>unavailable</TenusGitCommit>
+      <TenusGitBranch>unavailable</TenusGitBranch>
+      <TenusRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..'))</TenusRepositoryRoot>
+      <TenusBuildIdentitySource>$(IntermediateOutputPath)TenusBuildIdentity.g.cs</TenusBuildIdentitySource>
+    </PropertyGroup>
+    <Exec Command="git -C &quot;$(TenusRepositoryRoot)&quot; rev-parse HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" Condition="Exists('$(TenusRepositoryRoot)\.git')">
+      <Output TaskParameter="ConsoleOutput" PropertyName="TenusGitCommit" />
+    </Exec>
+    <Exec Command="git -C &quot;$(TenusRepositoryRoot)&quot; branch --show-current" ConsoleToMSBuild="true" IgnoreExitCode="true" Condition="Exists('$(TenusRepositoryRoot)\.git')">
+      <Output TaskParameter="ConsoleOutput" PropertyName="TenusGitBranch" />
+    </Exec>
+    <WriteLinesToFile File="$(TenusBuildIdentitySource)" Lines="[assembly: RealTime.Experiments.TenusBuildIdentityAttribute(&quot;$(TenusGitCommit)&quot;, &quot;$(TenusGitBranch)&quot;)]" Overwrite="true" />
+    <ItemGroup>
+      <Compile Include="$(TenusBuildIdentitySource)" />
+    </ItemGroup>
+  </Target>
   <Target Name="DeployToModsDirectory" AfterTargets="Build" DependsOnTargets="Build" Condition="'$(RealTimeDeployDir)' != ''">
     <ItemGroup>
       <TranslationFiles Include="$(ProjectDir)Localization\Translations\*.xml" />

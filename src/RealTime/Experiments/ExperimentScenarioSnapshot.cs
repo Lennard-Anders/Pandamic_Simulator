@@ -102,6 +102,30 @@ namespace RealTime.Experiments
 
         public uint MinimumTestDuration { get; set; }
 
+        public float TestSensitivityPercent { get; set; }
+
+        public float TestSpecificityPercent { get; set; }
+
+        public bool QuarantineWhileAwaitingTestResult { get; set; }
+
+        public uint RetestIntervalDays { get; set; }
+
+        public uint EpidemicStepMinutes { get; set; }
+
+        public uint MaxContactsPerPersonPerStepSchool { get; set; }
+
+        public uint MaxContactsPerPersonPerStepWorkplace { get; set; }
+
+        public uint MaxContactsPerPersonPerStepCommercial { get; set; }
+
+        public uint MaxContactsPerPersonPerStepHealthcare { get; set; }
+
+        public uint MaxContactsPerPersonPerStepTransit { get; set; }
+
+        public uint MaxContactsPerPersonPerStepResidentialSharedArea { get; set; }
+
+        public float ResidentialSharedAreaTransmissionMultiplier { get; set; }
+
         public uint DiseaseDuration { get; set; }
 
         public uint DetectionTime { get; set; }
@@ -133,6 +157,114 @@ namespace RealTime.Experiments
         public float DeathSenior { get; set; }
 
         public float SymptomProbability { get; set; }
+
+        public PandemicDistributionType ExposedDurationDistributionType { get; set; }
+
+        public float ExposedDurationMeanDays { get; set; }
+
+        public float ExposedDurationStandardDeviationDays { get; set; }
+
+        public float ExposedDurationMinimumDays { get; set; }
+
+        public float ExposedDurationMaximumDays { get; set; }
+
+        public float ExposedDurationFixedDays { get; set; }
+
+        public PandemicDistributionType InfectiousStartDistributionType { get; set; }
+
+        public float InfectiousStartMeanDays { get; set; }
+
+        public float InfectiousStartStandardDeviationDays { get; set; }
+
+        public float InfectiousStartMinimumDays { get; set; }
+
+        public float InfectiousStartMaximumDays { get; set; }
+
+        public float InfectiousStartFixedDays { get; set; }
+
+        public PandemicDistributionType InfectiousEndDistributionType { get; set; }
+
+        public float InfectiousEndMeanDays { get; set; }
+
+        public float InfectiousEndStandardDeviationDays { get; set; }
+
+        public float InfectiousEndMinimumDays { get; set; }
+
+        public float InfectiousEndMaximumDays { get; set; }
+
+        public float InfectiousEndFixedDays { get; set; }
+
+        public PandemicDistributionType SymptomStartDistributionType { get; set; }
+
+        public float SymptomStartMeanDays { get; set; }
+
+        public float SymptomStartStandardDeviationDays { get; set; }
+
+        public float SymptomStartMinimumDays { get; set; }
+
+        public float SymptomStartMaximumDays { get; set; }
+
+        public float SymptomStartFixedDays { get; set; }
+
+        public PandemicDistributionType SymptomEndDistributionType { get; set; }
+
+        public float SymptomEndMeanDays { get; set; }
+
+        public float SymptomEndStandardDeviationDays { get; set; }
+
+        public float SymptomEndMinimumDays { get; set; }
+
+        public float SymptomEndMaximumDays { get; set; }
+
+        public float SymptomEndFixedDays { get; set; }
+
+        public PandemicDistributionType RecoveryDistributionType { get; set; }
+
+        public float RecoveryMeanDays { get; set; }
+
+        public float RecoveryStandardDeviationDays { get; set; }
+
+        public float RecoveryMinimumDays { get; set; }
+
+        public float RecoveryMaximumDays { get; set; }
+
+        public float RecoveryFixedDays { get; set; }
+
+        public PandemicInfectiousnessProfileType InfectiousnessProfileType { get; set; }
+
+        public float InfectiousnessProfileStartMultiplier { get; set; }
+
+        public float InfectiousnessProfilePeakTimeFraction { get; set; }
+
+        public float InfectiousnessProfilePeakMultiplier { get; set; }
+
+        public float InfectiousnessProfileEndMultiplier { get; set; }
+
+        public PandemicInitialSeedSamplingStrategy InitialSeedSamplingStrategy { get; set; }
+
+        public PandemicInitialInfectionAgeMode InitialInfectionAgeMode { get; set; }
+
+        public PandemicDistributionType InitialInfectionAgeDistributionType { get; set; }
+
+        public float InitialInfectionAgeMeanDays { get; set; }
+
+        public float InitialInfectionAgeStandardDeviationDays { get; set; }
+
+        public float InitialInfectionAgeMinimumDays { get; set; }
+
+        public float InitialInfectionAgeMaximumDays { get; set; }
+
+        public float InitialInfectionAgeFixedDays { get; set; }
+
+        public float AsymptomaticMortalityMultiplier { get; set; }
+
+        public float HealthcareWarningThresholdPercent { get; set; }
+
+        public float HealthcareCriticalThresholdPercent { get; set; }
+
+        public float HealthcareWarningMortalityMultiplier { get; set; }
+
+        public float HealthcareCriticalMortalityMultiplier { get; set; }
 
         public int HubHighlightThreshold { get; set; }
 
@@ -171,6 +303,54 @@ namespace RealTime.Experiments
         public bool CloseEssentialServicesDuringLockdown { get; set; }
 
         public float CloseEssentialServicesThresholdPercent { get; set; }
+
+        public float ReopenEducationThresholdPercent { get; set; }
+
+        public float MinimumEducationClosureDurationDays { get; set; }
+
+        public float EducationLockdownCooldownDurationDays { get; set; }
+
+        public float ReopenPublicTransportThresholdPercent { get; set; }
+
+        public float MinimumPublicTransportClosureDurationDays { get; set; }
+
+        public float PublicTransportLockdownCooldownDurationDays { get; set; }
+
+        public float ReopenCommercialThresholdPercent { get; set; }
+
+        public float MinimumCommercialClosureDurationDays { get; set; }
+
+        public float CommercialLockdownCooldownDurationDays { get; set; }
+
+        public float ReopenLeisureTourismParksThresholdPercent { get; set; }
+
+        public float MinimumLeisureTourismParksClosureDurationDays { get; set; }
+
+        public float LeisureTourismParksLockdownCooldownDurationDays { get; set; }
+
+        public float ReopenOfficeThresholdPercent { get; set; }
+
+        public float MinimumOfficeClosureDurationDays { get; set; }
+
+        public float OfficeLockdownCooldownDurationDays { get; set; }
+
+        public float ReopenIndustryThresholdPercent { get; set; }
+
+        public float MinimumIndustryClosureDurationDays { get; set; }
+
+        public float IndustryLockdownCooldownDurationDays { get; set; }
+
+        public float ReopenGovernmentOtherPublicThresholdPercent { get; set; }
+
+        public float MinimumGovernmentOtherPublicClosureDurationDays { get; set; }
+
+        public float GovernmentOtherPublicLockdownCooldownDurationDays { get; set; }
+
+        public float ReopenEssentialServicesThresholdPercent { get; set; }
+
+        public float MinimumEssentialServicesClosureDurationDays { get; set; }
+
+        public float EssentialServicesLockdownCooldownDurationDays { get; set; }
 
         public uint SecondShiftQuota { get; set; }
 

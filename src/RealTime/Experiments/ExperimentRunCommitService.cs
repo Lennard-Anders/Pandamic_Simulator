@@ -72,6 +72,20 @@ namespace RealTime.Experiments
 
         public int MasterSeed { get; set; }
 
+        public int PairId { get; set; }
+
+        public bool PairedSeedMode { get; set; }
+
+        public int InitialPopulationSeed { get; set; }
+
+        public int DiseaseProgressionSeed { get; set; }
+
+        public int TransmissionSeed { get; set; }
+
+        public int SymptomSeed { get; set; }
+
+        public int MortalitySeed { get; set; }
+
         public int PandemicSeed { get; set; }
 
         public int MaskSeed { get; set; }
@@ -80,9 +94,29 @@ namespace RealTime.Experiments
 
         public int ContactSeed { get; set; }
 
+        public int TestingSeed { get; set; }
+
+        public int ContactTracingSeed { get; set; }
+
+        public int InterventionSeed { get; set; }
+
+        public string TraitAssignmentAlgorithm { get; set; }
+
+        public string ConfigurationHashAlgorithm { get; set; }
+
+        public string ConfigurationHash { get; set; }
+
         public int FinalTrackedPopulation { get; set; }
 
+        public int FinalSusceptible { get; set; }
+
         public int FinalExposed { get; set; }
+
+        public int FinalInfectious { get; set; }
+
+        public int FinalPostInfectiousIll { get; set; }
+
+        public int FinalSymptomatic { get; set; }
 
         public int FinalSick { get; set; }
 
@@ -92,9 +126,33 @@ namespace RealTime.Experiments
 
         public int FinalTransmissionsTotal { get; set; }
 
+        public int InitialSeedCount { get; set; }
+
+        public int SecondaryTransmissionsTotal { get; set; }
+
+        public int CumulativeInfections { get; set; }
+
+        public int HospitalizationsTotal { get; set; }
+
         public double FinalAttackRatePercent { get; set; }
 
         public double FinalFatalityRatePercent { get; set; }
+
+        public double FinalPrevalencePercent { get; set; }
+
+        public double? ResolvedCaseFatalityRatioPercent { get; set; }
+
+        public double? EmpiricalSecondaryInfectionsPerInfector { get; set; }
+
+        public double ActualMaskUsagePercent { get; set; }
+
+        public double TotalIsolationPersonDays { get; set; }
+
+        public double TotalQuarantinePersonDays { get; set; }
+
+        public long PhysicalContactsTotal { get; set; }
+
+        public long TraceableContactsTotal { get; set; }
 
         public double ConfiguredDurationDays { get; set; }
 
@@ -113,6 +171,10 @@ namespace RealTime.Experiments
         public string ModVersion { get; set; }
 
         public string GameVersion { get; set; }
+
+        public string GitCommitSha { get; set; }
+
+        public string GitBranchOrTag { get; set; }
 
         public string OutputDirectory { get; set; }
 
@@ -166,6 +228,20 @@ namespace RealTime.Experiments
 
         public int MasterSeed { get; set; }
 
+        public int PairId { get; set; }
+
+        public bool PairedSeedMode { get; set; }
+
+        public int InitialPopulationSeed { get; set; }
+
+        public int DiseaseProgressionSeed { get; set; }
+
+        public int TransmissionSeed { get; set; }
+
+        public int SymptomSeed { get; set; }
+
+        public int MortalitySeed { get; set; }
+
         public int PandemicSeed { get; set; }
 
         public int MaskSeed { get; set; }
@@ -174,9 +250,25 @@ namespace RealTime.Experiments
 
         public int ContactSeed { get; set; }
 
+        public int TestingSeed { get; set; }
+
+        public int ContactTracingSeed { get; set; }
+
+        public int InterventionSeed { get; set; }
+
+        public string ConfigurationHash { get; set; }
+
         public int FinalTrackedPopulation { get; set; }
 
+        public int FinalSusceptible { get; set; }
+
         public int FinalExposed { get; set; }
+
+        public int FinalInfectious { get; set; }
+
+        public int FinalPostInfectiousIll { get; set; }
+
+        public int FinalSymptomatic { get; set; }
 
         public int FinalSick { get; set; }
 
@@ -186,9 +278,33 @@ namespace RealTime.Experiments
 
         public int FinalTransmissionsTotal { get; set; }
 
+        public int InitialSeedCount { get; set; }
+
+        public int SecondaryTransmissionsTotal { get; set; }
+
+        public int CumulativeInfections { get; set; }
+
+        public int HospitalizationsTotal { get; set; }
+
         public double FinalAttackRatePercent { get; set; }
 
         public double FinalFatalityRatePercent { get; set; }
+
+        public double FinalPrevalencePercent { get; set; }
+
+        public double? ResolvedCaseFatalityRatioPercent { get; set; }
+
+        public double? EmpiricalSecondaryInfectionsPerInfector { get; set; }
+
+        public double ActualMaskUsagePercent { get; set; }
+
+        public double TotalIsolationPersonDays { get; set; }
+
+        public double TotalQuarantinePersonDays { get; set; }
+
+        public long PhysicalContactsTotal { get; set; }
+
+        public long TraceableContactsTotal { get; set; }
 
         public double ConfiguredDurationDays { get; set; }
 
@@ -207,6 +323,10 @@ namespace RealTime.Experiments
         public string ModVersion { get; set; }
 
         public string GameVersion { get; set; }
+
+        public string GitCommitSha { get; set; }
+
+        public string GitBranchOrTag { get; set; }
 
         public string OutputDirectory { get; set; }
     }
@@ -279,10 +399,35 @@ namespace RealTime.Experiments
         public const string BatchSummaryFileName = "batch_runs.csv";
         public const string DataFileName = "data.csv";
         public const string ContactsFileName = "contacts.csv";
+        public const string RunSummaryFileName = "run_summary.csv";
+        public const string StateTimeSeriesFileName = "state_timeseries.csv";
+        public const string TransmissionEventsFileName = "transmission_events.csv";
+        public const string PhysicalContactsFileName = "physical_contacts.csv";
+        public const string TraceableContactsFileName = "traceable_contacts.csv";
+        public const string TestEventsFileName = "test_events.csv";
+        public const string InterventionEventsFileName = "intervention_events.csv";
+        public const string HealthcareTimeSeriesFileName = "healthcare_timeseries.csv";
+        public const string PopulationEventsFileName = "population_events.csv";
+        public const string ErrorsFileName = "errors.json";
         public const string SeedAlgorithmName = "TENUS-RNG-v1/FNV-1a-32";
 
         private const string PandemicRunPrefix = "pandemic_run_";
         private const string CsvSuffix = ".csv";
+        private static readonly string[] MandatoryNamedFiles =
+        {
+            DataFileName,
+            ContactsFileName,
+            RunSummaryFileName,
+            StateTimeSeriesFileName,
+            TransmissionEventsFileName,
+            PhysicalContactsFileName,
+            TraceableContactsFileName,
+            TestEventsFileName,
+            InterventionEventsFileName,
+            HealthcareTimeSeriesFileName,
+            PopulationEventsFileName,
+            ErrorsFileName,
+        };
         private readonly IAtomicJsonFileStore jsonStore;
 
         public ExperimentRunCommitService(IAtomicJsonFileStore jsonStore)
@@ -337,10 +482,23 @@ namespace RealTime.Experiments
                 RunId = run.RunId,
                 SeedAlgorithm = SeedAlgorithmName,
                 MasterSeed = run.MasterSeed,
+                PairId = run.PairId,
+                PairedSeedMode = plan.PairedSeedMode,
+                InitialPopulationSeed = run.Seeds.InitialPopulation,
+                DiseaseProgressionSeed = run.Seeds.DiseaseProgression,
+                TransmissionSeed = run.Seeds.Transmission,
+                SymptomSeed = run.Seeds.Symptom,
+                MortalitySeed = run.Seeds.Mortality,
                 PandemicSeed = run.Seeds.Pandemic,
                 MaskSeed = run.Seeds.Mask,
                 TestSeed = run.Seeds.Test,
                 ContactSeed = run.Seeds.Contact,
+                TestingSeed = run.Seeds.Testing,
+                ContactTracingSeed = run.Seeds.ContactTracing,
+                InterventionSeed = run.Seeds.Intervention,
+                TraitAssignmentAlgorithm = DeterministicCitizenTraitAssigner.AlgorithmName,
+                ConfigurationHashAlgorithm = ExperimentConfigurationHasher.AlgorithmName,
+                ConfigurationHash = ExperimentConfigurationHasher.Compute(run.Scenario),
                 ConfiguredDurationDays = run.Scenario.DurationDays,
                 EndMode = run.Scenario.EndMode.ToString(),
                 EndReason = endReason,
@@ -350,6 +508,8 @@ namespace RealTime.Experiments
                 CompletedUtc = completedUtc,
                 ModVersion = plan.ModVersion,
                 GameVersion = plan.GameVersion,
+                GitCommitSha = plan.GitCommitSha,
+                GitBranchOrTag = plan.GitBranchOrTag,
                 OutputDirectory = outputDirectory,
             };
         }
@@ -756,17 +916,20 @@ namespace RealTime.Experiments
                     return false;
                 }
 
-                string dataPath = Path.Combine(directory, DataFileName);
-                string contactsPath = Path.Combine(directory, ContactsFileName);
-                if (!File.Exists(dataPath) || !File.Exists(contactsPath))
+                entries.Add(CreateFileEntry("PandemicRun", directory, pandemicFiles[0]));
+                for (int i = 0; i < MandatoryNamedFiles.Length; ++i)
                 {
-                    error = "Both mandatory data.csv and contacts.csv exports are required.";
-                    return false;
+                    string fileName = MandatoryNamedFiles[i];
+                    string path = Path.Combine(directory, fileName);
+                    if (!File.Exists(path))
+                    {
+                        error = "A mandatory scientific run export is missing: " + fileName;
+                        return false;
+                    }
+
+                    entries.Add(CreateFileEntry(GetFileRole(fileName), directory, path));
                 }
 
-                entries.Add(CreateFileEntry("PandemicRun", directory, pandemicFiles[0]));
-                entries.Add(CreateFileEntry("ObserverData", directory, dataPath));
-                entries.Add(CreateFileEntry("Contacts", directory, contactsPath));
                 entries.Sort(CompareFileEntries);
             }
             catch (Exception exception)
@@ -805,6 +968,23 @@ namespace RealTime.Experiments
             };
         }
 
+        private static string GetFileRole(string fileName)
+        {
+            if (string.Equals(fileName, DataFileName, StringComparison.OrdinalIgnoreCase)) return "ObserverData";
+            if (string.Equals(fileName, ContactsFileName, StringComparison.OrdinalIgnoreCase)) return "LegacyContacts";
+            if (string.Equals(fileName, RunSummaryFileName, StringComparison.OrdinalIgnoreCase)) return "RunSummary";
+            if (string.Equals(fileName, StateTimeSeriesFileName, StringComparison.OrdinalIgnoreCase)) return "StateTimeSeries";
+            if (string.Equals(fileName, TransmissionEventsFileName, StringComparison.OrdinalIgnoreCase)) return "TransmissionEvents";
+            if (string.Equals(fileName, PhysicalContactsFileName, StringComparison.OrdinalIgnoreCase)) return "PhysicalContacts";
+            if (string.Equals(fileName, TraceableContactsFileName, StringComparison.OrdinalIgnoreCase)) return "TraceableContacts";
+            if (string.Equals(fileName, TestEventsFileName, StringComparison.OrdinalIgnoreCase)) return "TestEvents";
+            if (string.Equals(fileName, InterventionEventsFileName, StringComparison.OrdinalIgnoreCase)) return "InterventionEvents";
+            if (string.Equals(fileName, HealthcareTimeSeriesFileName, StringComparison.OrdinalIgnoreCase)) return "HealthcareTimeSeries";
+            if (string.Equals(fileName, PopulationEventsFileName, StringComparison.OrdinalIgnoreCase)) return "PopulationEvents";
+            if (string.Equals(fileName, ErrorsFileName, StringComparison.OrdinalIgnoreCase)) return "Errors";
+            throw new ArgumentOutOfRangeException(nameof(fileName), "The scientific file role is unknown.");
+        }
+
         private static bool ValidateManifestFields(ExperimentRunManifest manifest, out string error)
         {
             if (manifest == null)
@@ -840,6 +1020,11 @@ namespace RealTime.Experiments
                 || string.IsNullOrEmpty(manifest.CompletedUtc)
                 || string.IsNullOrEmpty(manifest.ModVersion)
                 || string.IsNullOrEmpty(manifest.GameVersion)
+                || string.IsNullOrEmpty(manifest.GitCommitSha)
+                || string.IsNullOrEmpty(manifest.GitBranchOrTag)
+                || string.IsNullOrEmpty(manifest.TraitAssignmentAlgorithm)
+                || string.IsNullOrEmpty(manifest.ConfigurationHashAlgorithm)
+                || string.IsNullOrEmpty(manifest.ConfigurationHash)
                 || string.IsNullOrEmpty(manifest.OutputDirectory)
                 || manifest.Baseline == null)
             {
@@ -850,6 +1035,13 @@ namespace RealTime.Experiments
             if (!string.Equals(manifest.SeedAlgorithm, SeedAlgorithmName, StringComparison.Ordinal))
             {
                 error = "The run manifest names an unsupported deterministic seed algorithm.";
+                return false;
+            }
+
+            if (!string.Equals(manifest.TraitAssignmentAlgorithm, DeterministicCitizenTraitAssigner.AlgorithmName, StringComparison.Ordinal)
+                || !string.Equals(manifest.ConfigurationHashAlgorithm, ExperimentConfigurationHasher.AlgorithmName, StringComparison.Ordinal))
+            {
+                error = "The run manifest names an unsupported deterministic trait or configuration-hash algorithm.";
                 return false;
             }
 
@@ -869,11 +1061,21 @@ namespace RealTime.Experiments
             }
 
             if (manifest.FinalTrackedPopulation < 0
+                || manifest.FinalSusceptible < 0
                 || manifest.FinalExposed < 0
+                || manifest.FinalInfectious < 0
+                || manifest.FinalPostInfectiousIll < 0
+                || manifest.FinalSymptomatic < 0
                 || manifest.FinalSick < 0
                 || manifest.FinalRecovered < 0
                 || manifest.FinalDead < 0
                 || manifest.FinalTransmissionsTotal < 0
+                || manifest.InitialSeedCount < 0
+                || manifest.SecondaryTransmissionsTotal < 0
+                || manifest.CumulativeInfections < 0
+                || manifest.HospitalizationsTotal < 0
+                || manifest.PhysicalContactsTotal < 0L
+                || manifest.TraceableContactsTotal < 0L
                 || double.IsNaN(manifest.FinalAttackRatePercent)
                 || double.IsInfinity(manifest.FinalAttackRatePercent)
                 || manifest.FinalAttackRatePercent < 0d
@@ -882,6 +1084,34 @@ namespace RealTime.Experiments
                 || manifest.FinalFatalityRatePercent < 0d)
             {
                 error = "The run manifest contains invalid final snapshot metrics.";
+                return false;
+            }
+
+            if (!IsFiniteNonnegative(manifest.FinalPrevalencePercent)
+                || !IsFiniteNonnegative(manifest.ActualMaskUsagePercent)
+                || !IsFiniteNonnegative(manifest.TotalIsolationPersonDays)
+                || !IsFiniteNonnegative(manifest.TotalQuarantinePersonDays)
+                || (manifest.ResolvedCaseFatalityRatioPercent.HasValue
+                    && !IsFiniteNonnegative(manifest.ResolvedCaseFatalityRatioPercent.Value))
+                || (manifest.EmpiricalSecondaryInfectionsPerInfector.HasValue
+                    && !IsFiniteNonnegative(manifest.EmpiricalSecondaryInfectionsPerInfector.Value)))
+            {
+                error = "The run manifest contains invalid scientific outcome metrics.";
+                return false;
+            }
+
+            if (manifest.FinalSusceptible + manifest.FinalExposed + manifest.FinalInfectious
+                + manifest.FinalPostInfectiousIll + manifest.FinalRecovered + manifest.FinalDead
+                != manifest.FinalTrackedPopulation)
+            {
+                error = "The final disease compartments do not equal the tracked population.";
+                return false;
+            }
+
+            if (manifest.SecondaryTransmissionsTotal != manifest.FinalTransmissionsTotal
+                || manifest.CumulativeInfections != manifest.InitialSeedCount + manifest.SecondaryTransmissionsTotal)
+            {
+                error = "The run manifest contains inconsistent seed and secondary-transmission metrics.";
                 return false;
             }
 
@@ -894,23 +1124,57 @@ namespace RealTime.Experiments
                 return false;
             }
 
+            if ((manifest.PairedSeedMode && manifest.PairId != manifest.RunIndex + 1)
+                || (!manifest.PairedSeedMode && manifest.PairId != 0))
+            {
+                error = "The run manifest contains an inconsistent paired-seed identifier.";
+                return false;
+            }
+
             if (manifest.MasterSeed < 0
+                || manifest.PairId < 0
+                || manifest.InitialPopulationSeed < 0
+                || manifest.DiseaseProgressionSeed < 0
+                || manifest.TransmissionSeed < 0
+                || manifest.SymptomSeed < 0
+                || manifest.MortalitySeed < 0
                 || manifest.PandemicSeed < 0
                 || manifest.MaskSeed < 0
                 || manifest.TestSeed < 0
-                || manifest.ContactSeed < 0)
+                || manifest.ContactSeed < 0
+                || manifest.TestingSeed < 0
+                || manifest.ContactTracingSeed < 0
+                || manifest.InterventionSeed < 0)
             {
                 error = "The run manifest contains a negative deterministic seed.";
                 return false;
             }
 
             ExperimentSeedSet expectedSeeds = new FnvExperimentSeedProvider().DeriveSeeds(manifest.MasterSeed);
-            if (manifest.PandemicSeed != expectedSeeds.Pandemic
+            if (manifest.InitialPopulationSeed != expectedSeeds.InitialPopulation
+                || manifest.DiseaseProgressionSeed != expectedSeeds.DiseaseProgression
+                || manifest.TransmissionSeed != expectedSeeds.Transmission
+                || manifest.SymptomSeed != expectedSeeds.Symptom
+                || manifest.MortalitySeed != expectedSeeds.Mortality
+                || manifest.PandemicSeed != expectedSeeds.Pandemic
                 || manifest.MaskSeed != expectedSeeds.Mask
                 || manifest.TestSeed != expectedSeeds.Test
-                || manifest.ContactSeed != expectedSeeds.Contact)
+                || manifest.ContactSeed != expectedSeeds.Contact
+                || manifest.TestingSeed != expectedSeeds.Testing
+                || manifest.ContactTracingSeed != expectedSeeds.ContactTracing
+                || manifest.InterventionSeed != expectedSeeds.Intervention)
             {
                 error = "The component seeds do not match the deterministic master-seed derivation.";
+                return false;
+            }
+
+            if (manifest.Scenario == null
+                || !string.Equals(
+                    manifest.ConfigurationHash,
+                    ExperimentConfigurationHasher.Compute(manifest.Scenario),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                error = "The configuration hash does not match the embedded scenario snapshot.";
                 return false;
             }
 
@@ -935,8 +1199,8 @@ namespace RealTime.Experiments
         private static bool ValidateManifestFiles(string directory, ExperimentRunManifest manifest, out string error)
         {
             int pandemicCount = 0;
-            bool hasData = false;
-            bool hasContacts = false;
+            var mandatoryNames = new HashSet<string>(MandatoryNamedFiles, StringComparer.OrdinalIgnoreCase);
+            var foundMandatoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, bool> paths = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             foreach (ExperimentGeneratedFileEntry entry in manifest.OutputFiles)
             {
@@ -974,19 +1238,15 @@ namespace RealTime.Experiments
                 {
                     ++pandemicCount;
                 }
-                else if (string.Equals(name, DataFileName, StringComparison.OrdinalIgnoreCase))
+                else if (mandatoryNames.Contains(name))
                 {
-                    hasData = true;
-                }
-                else if (string.Equals(name, ContactsFileName, StringComparison.OrdinalIgnoreCase))
-                {
-                    hasContacts = true;
+                    foundMandatoryNames.Add(name);
                 }
             }
 
-            if (pandemicCount != 1 || !hasData || !hasContacts)
+            if (pandemicCount != 1 || foundMandatoryNames.Count != MandatoryNamedFiles.Length)
             {
-                error = "The run manifest does not identify all three mandatory CSV exports.";
+                error = "The run manifest does not identify the complete mandatory scientific output package.";
                 return false;
             }
 
@@ -1002,11 +1262,15 @@ namespace RealTime.Experiments
                 }
             }
 
-            if (physicalPandemicCount != 1
-                || !File.Exists(Path.Combine(directory, DataFileName))
-                || !File.Exists(Path.Combine(directory, ContactsFileName)))
+            bool allMandatoryFilesExist = physicalPandemicCount == 1;
+            for (int i = 0; i < MandatoryNamedFiles.Length && allMandatoryFilesExist; ++i)
             {
-                error = "The run directory does not contain exactly the required mandatory CSV exports.";
+                allMandatoryFilesExist = File.Exists(Path.Combine(directory, MandatoryNamedFiles[i]));
+            }
+
+            if (!allMandatoryFilesExist)
+            {
+                error = "The run directory does not contain the complete mandatory scientific output package.";
                 return false;
             }
 
@@ -1021,6 +1285,11 @@ namespace RealTime.Experiments
             {
                 return string.Equals(ToHex(algorithm.ComputeHash(stream)), expected, StringComparison.OrdinalIgnoreCase);
             }
+        }
+
+        private static bool IsFiniteNonnegative(double value)
+        {
+            return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0d;
         }
 
         private static string ToHex(byte[] bytes)
@@ -1046,18 +1315,45 @@ namespace RealTime.Experiments
                 RunId = manifest.RunId,
                 SeedAlgorithm = manifest.SeedAlgorithm,
                 MasterSeed = manifest.MasterSeed,
+                PairId = manifest.PairId,
+                PairedSeedMode = manifest.PairedSeedMode,
+                InitialPopulationSeed = manifest.InitialPopulationSeed,
+                DiseaseProgressionSeed = manifest.DiseaseProgressionSeed,
+                TransmissionSeed = manifest.TransmissionSeed,
+                SymptomSeed = manifest.SymptomSeed,
+                MortalitySeed = manifest.MortalitySeed,
                 PandemicSeed = manifest.PandemicSeed,
                 MaskSeed = manifest.MaskSeed,
                 TestSeed = manifest.TestSeed,
                 ContactSeed = manifest.ContactSeed,
+                TestingSeed = manifest.TestingSeed,
+                ContactTracingSeed = manifest.ContactTracingSeed,
+                InterventionSeed = manifest.InterventionSeed,
+                ConfigurationHash = manifest.ConfigurationHash,
                 FinalTrackedPopulation = manifest.FinalTrackedPopulation,
+                FinalSusceptible = manifest.FinalSusceptible,
                 FinalExposed = manifest.FinalExposed,
+                FinalInfectious = manifest.FinalInfectious,
+                FinalPostInfectiousIll = manifest.FinalPostInfectiousIll,
+                FinalSymptomatic = manifest.FinalSymptomatic,
                 FinalSick = manifest.FinalSick,
                 FinalRecovered = manifest.FinalRecovered,
                 FinalDead = manifest.FinalDead,
                 FinalTransmissionsTotal = manifest.FinalTransmissionsTotal,
+                InitialSeedCount = manifest.InitialSeedCount,
+                SecondaryTransmissionsTotal = manifest.SecondaryTransmissionsTotal,
+                CumulativeInfections = manifest.CumulativeInfections,
+                HospitalizationsTotal = manifest.HospitalizationsTotal,
                 FinalAttackRatePercent = manifest.FinalAttackRatePercent,
                 FinalFatalityRatePercent = manifest.FinalFatalityRatePercent,
+                FinalPrevalencePercent = manifest.FinalPrevalencePercent,
+                ResolvedCaseFatalityRatioPercent = manifest.ResolvedCaseFatalityRatioPercent,
+                EmpiricalSecondaryInfectionsPerInfector = manifest.EmpiricalSecondaryInfectionsPerInfector,
+                ActualMaskUsagePercent = manifest.ActualMaskUsagePercent,
+                TotalIsolationPersonDays = manifest.TotalIsolationPersonDays,
+                TotalQuarantinePersonDays = manifest.TotalQuarantinePersonDays,
+                PhysicalContactsTotal = manifest.PhysicalContactsTotal,
+                TraceableContactsTotal = manifest.TraceableContactsTotal,
                 ConfiguredDurationDays = manifest.ConfiguredDurationDays,
                 EndMode = manifest.EndMode,
                 EndReason = manifest.EndReason,
@@ -1067,6 +1363,8 @@ namespace RealTime.Experiments
                 CompletedUtc = manifest.CompletedUtc,
                 ModVersion = manifest.ModVersion,
                 GameVersion = manifest.GameVersion,
+                GitCommitSha = manifest.GitCommitSha,
+                GitBranchOrTag = manifest.GitBranchOrTag,
                 OutputDirectory = manifest.OutputDirectory,
             };
         }
@@ -1076,11 +1374,12 @@ namespace RealTime.Experiments
             StringBuilder csv = new StringBuilder();
             csv.Append("SchemaVersion,BatchId,BatchName,BaselineAssetFullName,BaselineAssetChecksum,");
             csv.Append("ScenarioIndex,ScenarioNumber,ScenarioId,ScenarioName,RunIndex,RunNumber,RunId,");
-            csv.Append("SeedAlgorithm,MasterSeed,PandemicSeed,MaskSeed,TestSeed,ContactSeed,");
-            csv.Append("FinalTrackedPopulation,FinalExposed,FinalSick,FinalRecovered,FinalDead,");
-            csv.Append("FinalTransmissionsTotal,FinalAttackRatePercent,FinalFatalityRatePercent,ConfiguredDurationDays,");
+            csv.Append("SeedAlgorithm,MasterSeed,PairId,PairedSeedMode,InitialPopulationSeed,DiseaseProgressionSeed,TransmissionSeed,SymptomSeed,MortalitySeed,");
+            csv.Append("PandemicSeed,MaskSeed,TestSeed,ContactSeed,TestingSeed,ContactTracingSeed,InterventionSeed,ConfigurationHash,");
+            csv.Append("FinalTrackedPopulation,FinalSusceptible,FinalExposed,FinalInfectious,FinalPostInfectiousIll,FinalSymptomatic,FinalSick,FinalRecovered,FinalDead,");
+            csv.Append("FinalTransmissionsTotal,InitialSeedCount,SecondaryTransmissionsTotal,CumulativeInfections,HospitalizationsTotal,FinalAttackRatePercent,FinalFatalityRatePercent,FinalPrevalencePercent,ResolvedCaseFatalityRatioPercent,EmpiricalSecondaryInfectionsPerInfector,ActualMaskUsagePercent,TotalIsolationPersonDays,TotalQuarantinePersonDays,PhysicalContactsTotal,TraceableContactsTotal,ConfiguredDurationDays,");
             csv.Append("EndMode,EndReason,StartedUtc,TargetSimulationTimeUtc,SimulationEndedUtc,CompletedUtc,");
-            csv.Append("ModVersion,GameVersion,OutputDirectory\r\n");
+            csv.Append("ModVersion,GameVersion,GitCommitSha,GitBranchOrTag,OutputDirectory\r\n");
             foreach (ExperimentBatchRunSummaryRow row in rows)
             {
                 AppendCsvRow(csv, new[]
@@ -1099,18 +1398,45 @@ namespace RealTime.Experiments
                     row.RunId,
                     row.SeedAlgorithm,
                     row.MasterSeed.ToString(CultureInfo.InvariantCulture),
+                    row.PairId.ToString(CultureInfo.InvariantCulture),
+                    row.PairedSeedMode ? "1" : "0",
+                    row.InitialPopulationSeed.ToString(CultureInfo.InvariantCulture),
+                    row.DiseaseProgressionSeed.ToString(CultureInfo.InvariantCulture),
+                    row.TransmissionSeed.ToString(CultureInfo.InvariantCulture),
+                    row.SymptomSeed.ToString(CultureInfo.InvariantCulture),
+                    row.MortalitySeed.ToString(CultureInfo.InvariantCulture),
                     row.PandemicSeed.ToString(CultureInfo.InvariantCulture),
                     row.MaskSeed.ToString(CultureInfo.InvariantCulture),
                     row.TestSeed.ToString(CultureInfo.InvariantCulture),
                     row.ContactSeed.ToString(CultureInfo.InvariantCulture),
+                    row.TestingSeed.ToString(CultureInfo.InvariantCulture),
+                    row.ContactTracingSeed.ToString(CultureInfo.InvariantCulture),
+                    row.InterventionSeed.ToString(CultureInfo.InvariantCulture),
+                    row.ConfigurationHash,
                     row.FinalTrackedPopulation.ToString(CultureInfo.InvariantCulture),
+                    row.FinalSusceptible.ToString(CultureInfo.InvariantCulture),
                     row.FinalExposed.ToString(CultureInfo.InvariantCulture),
+                    row.FinalInfectious.ToString(CultureInfo.InvariantCulture),
+                    row.FinalPostInfectiousIll.ToString(CultureInfo.InvariantCulture),
+                    row.FinalSymptomatic.ToString(CultureInfo.InvariantCulture),
                     row.FinalSick.ToString(CultureInfo.InvariantCulture),
                     row.FinalRecovered.ToString(CultureInfo.InvariantCulture),
                     row.FinalDead.ToString(CultureInfo.InvariantCulture),
                     row.FinalTransmissionsTotal.ToString(CultureInfo.InvariantCulture),
+                    row.InitialSeedCount.ToString(CultureInfo.InvariantCulture),
+                    row.SecondaryTransmissionsTotal.ToString(CultureInfo.InvariantCulture),
+                    row.CumulativeInfections.ToString(CultureInfo.InvariantCulture),
+                    row.HospitalizationsTotal.ToString(CultureInfo.InvariantCulture),
                     row.FinalAttackRatePercent.ToString("R", CultureInfo.InvariantCulture),
                     row.FinalFatalityRatePercent.ToString("R", CultureInfo.InvariantCulture),
+                    row.FinalPrevalencePercent.ToString("R", CultureInfo.InvariantCulture),
+                    row.ResolvedCaseFatalityRatioPercent.HasValue ? row.ResolvedCaseFatalityRatioPercent.Value.ToString("R", CultureInfo.InvariantCulture) : string.Empty,
+                    row.EmpiricalSecondaryInfectionsPerInfector.HasValue ? row.EmpiricalSecondaryInfectionsPerInfector.Value.ToString("R", CultureInfo.InvariantCulture) : string.Empty,
+                    row.ActualMaskUsagePercent.ToString("R", CultureInfo.InvariantCulture),
+                    row.TotalIsolationPersonDays.ToString("R", CultureInfo.InvariantCulture),
+                    row.TotalQuarantinePersonDays.ToString("R", CultureInfo.InvariantCulture),
+                    row.PhysicalContactsTotal.ToString(CultureInfo.InvariantCulture),
+                    row.TraceableContactsTotal.ToString(CultureInfo.InvariantCulture),
                     row.ConfiguredDurationDays.ToString("R", CultureInfo.InvariantCulture),
                     row.EndMode,
                     row.EndReason,
@@ -1120,6 +1446,8 @@ namespace RealTime.Experiments
                     row.CompletedUtc,
                     row.ModVersion,
                     row.GameVersion,
+                    row.GitCommitSha,
+                    row.GitBranchOrTag,
                     row.OutputDirectory,
                 });
             }

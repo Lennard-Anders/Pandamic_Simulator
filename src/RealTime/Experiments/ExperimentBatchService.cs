@@ -30,6 +30,7 @@ namespace RealTime.Experiments
 
         private readonly string modPath;
         private readonly string modVersion;
+        private readonly ExperimentBuildIdentity buildIdentity;
         private readonly string sessionNonce = Guid.NewGuid().ToString("N");
         private readonly ExperimentJsonSerializer cloner = new ExperimentJsonSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
         private readonly AtomicJsonFileStore jsonStore = new AtomicJsonFileStore();
@@ -39,6 +40,7 @@ namespace RealTime.Experiments
         private readonly SaveGameReloadService reloadService;
         private readonly ExperimentPersistenceService persistence;
         private readonly ExperimentRunCommitService runCommitService;
+        private readonly ExperimentInvalidRunService invalidRunService;
         private readonly ExperimentActiveBatchLocatorService locator;
         private readonly ExperimentOutputRootResolver outputRootResolver;
 
@@ -73,9 +75,11 @@ namespace RealTime.Experiments
         {
             this.modPath = modPath;
             this.modVersion = modVersion;
+            buildIdentity = ExperimentBuildIdentity.Read(typeof(ExperimentBatchService).Assembly);
             reloadService = new SaveGameReloadService(saveCatalog);
             persistence = new ExperimentPersistenceService(jsonStore);
             runCommitService = new ExperimentRunCommitService(jsonStore);
+            invalidRunService = new ExperimentInvalidRunService(jsonStore);
 
             string experimentStateRoot = Path.Combine(
                 Path.Combine(DataLocation.localApplicationData, "TENUS"),
@@ -422,6 +426,34 @@ namespace RealTime.Experiments
             return Success(null);
         }
 
+        public ExperimentBatchPanelActionResult SetPairedSeedMode(bool enabled)
+        {
+            ExperimentBatchPanelActionResult editable = RequireEditable();
+            if (editable != null)
+            {
+                return editable;
+            }
+
+            draftPlan.PairedSeedMode = enabled;
+            return Success(enabled
+                ? "Paired seed mode enabled. Every scenario shares the repetition seed list."
+                : "Paired seed mode disabled.");
+        }
+
+        public ExperimentBatchPanelActionResult SetStopBatchOnRunFailure(bool enabled)
+        {
+            ExperimentBatchPanelActionResult editable = RequireEditable();
+            if (editable != null)
+            {
+                return editable;
+            }
+
+            draftPlan.StopBatchOnRunFailure = enabled;
+            return Success(enabled
+                ? "Invalid runs will be archived and the batch will stop at a freshly loaded baseline."
+                : "Invalid runs will be archived and excluded; execution will continue from a fresh baseline.");
+        }
+
         public ExperimentBatchPanelActionResult AddCurrentSettingsAsScenario()
         {
             ExperimentBatchPanelActionResult editable = RequireEditable();
@@ -539,7 +571,8 @@ namespace RealTime.Experiments
                 return Failure("Scenario name, repetitions, duration (0 < days <= 3650), and seed are invalid.");
             }
 
-            if (seedStrategy == ExperimentSeedStrategy.Sequential
+            if (!draftPlan.PairedSeedMode
+                && seedStrategy == ExperimentSeedStrategy.Sequential
                 && (long)firstSeed + runCount - 1L > int.MaxValue)
             {
                 return Failure("The sequential seed range exceeds Int32.MaxValue.");
@@ -798,6 +831,7 @@ namespace RealTime.Experiments
             }
 
             levelCore?.PandemicManager?.AbortBatchRun();
+            state.HaltAfterInvalidRunBaselineReload = false;
             ClearError();
             SetState(ExperimentBatchExecutionState.PreparingRun);
             PrepareCurrentRunAndReload();
@@ -844,6 +878,15 @@ namespace RealTime.Experiments
         {
             if (levelCore != null && levelCore.IsExperimentReady && Singleton<SimulationManager>.exists)
             {
+                if (state.HaltAfterInvalidRunBaselineReload)
+                {
+                    SetSimulationPaused(true);
+                    RestoreOriginalConfiguration(levelCore);
+                    state.HaltAfterInvalidRunBaselineReload = false;
+                    SetState(ExperimentBatchExecutionState.RunFailed);
+                    return;
+                }
+
                 if (returningToBaseline)
                 {
                     RestoreOriginalConfiguration(levelCore);
@@ -874,6 +917,12 @@ namespace RealTime.Experiments
             if (manager == null || !manager.IsBatchRunOwned)
             {
                 Fail(ExperimentBatchExecutionState.RunFailed, "RunOwnershipLost", "The controller-owned pandemic run is no longer available.", null, true);
+                return;
+            }
+
+            if (manager.TryGetRunIntegrityFailure(out ExperimentRunIntegrityFailure integrityFailure))
+            {
+                HandleInvalidRun(manager, integrityFailure);
                 return;
             }
 
@@ -910,6 +959,169 @@ namespace RealTime.Experiments
                         true);
                 }
             }
+        }
+
+        private void HandleInvalidRun(PandemicManager manager, ExperimentRunIntegrityFailure failure)
+        {
+            SetSimulationPaused(true);
+            try
+            {
+                if (!manager.FreezeInvalidBatchRun())
+                {
+                    throw new InvalidOperationException("The failed pandemic run could not be frozen for diagnostics.");
+                }
+
+                DateTime endUtc = DateTime.UtcNow;
+                state.RunSimulationEndedUtc = Singleton<SimulationManager>.exists
+                    ? SimulationIso(SimulationManager.instance.m_currentGameTime)
+                    : SimulationIso(failure.SimulationTime);
+                frozenExportRequest = new PandemicRunExportRequest(
+                    manager,
+                    manager.GetLiveSnapshot(),
+                    manager.GetScientificRunSnapshot(),
+                    currentRunContext.Output,
+                    runWallClockStartUtc,
+                    endUtc);
+                new ScientificRunExportService().ExportInvalid(frozenExportRequest, failure);
+
+                string normalFinalDirectory = new ExperimentPathResolver(activePlan.OutputRoot)
+                    .ResolveRunDirectory(activePlan, currentRun);
+                string invalidDirectory = ExperimentInvalidRunService.ResolveInvalidDirectory(
+                    normalFinalDirectory,
+                    state.CurrentAttemptId);
+                string invalidatedUtc = UtcNow();
+                ExperimentErrorInfo error = CreateIntegrityError(failure, invalidatedUtc);
+                var manifest = new ExperimentInvalidRunManifest
+                {
+                    BatchId = activePlan.BatchId,
+                    BatchName = activePlan.BatchName,
+                    RunId = currentRun.RunId,
+                    AttemptId = state.CurrentAttemptId,
+                    ScenarioIndex = currentRun.ScenarioIndex,
+                    ScenarioNumber = currentRun.ScenarioIndex + 1,
+                    ScenarioId = currentRun.Scenario.ScenarioId,
+                    ScenarioName = currentRun.Scenario.Name,
+                    RunIndex = currentRun.RunIndex,
+                    RunNumber = currentRun.RunIndex + 1,
+                    PairId = currentRun.PairId,
+                    MasterSeed = currentRun.MasterSeed,
+                    DerivedSeeds = Clone(currentRun.Seeds),
+                    Scenario = Clone(currentRun.Scenario),
+                    Baseline = Clone(activePlan.Baseline),
+                    ConfigurationHashAlgorithm = ExperimentConfigurationHasher.AlgorithmName,
+                    ConfigurationHash = ExperimentConfigurationHasher.Compute(currentRun.Scenario),
+                    GitCommitSha = activePlan.GitCommitSha,
+                    GitBranchOrTag = activePlan.GitBranchOrTag,
+                    ModVersion = activePlan.ModVersion,
+                    GameVersion = activePlan.GameVersion,
+                    RunSimulationStartedUtc = state.RunSimulationStartedUtc,
+                    RunSimulationEndedUtc = state.RunSimulationEndedUtc,
+                    InvalidatedUtc = invalidatedUtc,
+                    FailureSimulationTimeUtc = SimulationIso(failure.SimulationTime),
+                    Error = error,
+                };
+                ExperimentInvalidRunArchiveResult archived = invalidRunService.Archive(
+                    new ExperimentInvalidRunArchiveRequest
+                    {
+                        AttemptDirectory = currentAttemptDirectory,
+                        InvalidDirectory = invalidDirectory,
+                        Manifest = manifest,
+                    });
+                if (!archived.Success)
+                {
+                    throw new IOException(archived.Error);
+                }
+
+                var receipt = new ExperimentInvalidRun
+                {
+                    RunId = currentRun.RunId,
+                    AttemptId = state.CurrentAttemptId,
+                    ScenarioId = currentRun.Scenario.ScenarioId,
+                    ScenarioIndex = currentRun.ScenarioIndex,
+                    RunIndex = currentRun.RunIndex,
+                    MasterSeed = currentRun.MasterSeed,
+                    PairId = currentRun.PairId,
+                    InvalidatedUtc = invalidatedUtc,
+                    OutputDirectory = archived.PublishedDirectory,
+                    Error = error,
+                };
+
+                manager.CompleteBatchFinalization();
+                SetError(failure.Code, failure.Message, DetailException(failure.Detail), true);
+                if (activePlan.StopBatchOnRunFailure)
+                {
+                    AddInvalidRunReceipt(receipt);
+                    state.HaltAfterInvalidRunBaselineReload = true;
+                    PersistState();
+                    ClearFrozenRunReferences();
+                    RequestBaselineReload();
+                    return;
+                }
+
+                bool hasMore = sequencer.RecordInvalidRun(activePlan, state, currentRun, receipt);
+                PersistState();
+                ClearFrozenRunReferences();
+                ClearError();
+                if (hasMore)
+                {
+                    SetState(ExperimentBatchExecutionState.PreparingNextRun);
+                    SetState(ExperimentBatchExecutionState.PreparingRun);
+                    PrepareCurrentRunAndReload();
+                }
+                else
+                {
+                    CompleteBatchRuns();
+                }
+            }
+            catch (Exception exception)
+            {
+                manager.AbortBatchRun();
+                Fail(
+                    ExperimentBatchExecutionState.RunFailed,
+                    "InvalidRunArchiveFailed",
+                    "The invalid run could not be frozen and archived safely; it was not counted as completed.",
+                    exception,
+                    true);
+            }
+        }
+
+        private void AddInvalidRunReceipt(ExperimentInvalidRun receipt)
+        {
+            if (state.InvalidRuns == null)
+            {
+                state.InvalidRuns = new List<ExperimentInvalidRun>();
+            }
+
+            if (!state.InvalidRuns.Any(item => item != null
+                && string.Equals(item.AttemptId, receipt.AttemptId, StringComparison.Ordinal)))
+            {
+                state.InvalidRuns.Add(receipt);
+            }
+        }
+
+        private void ClearFrozenRunReferences()
+        {
+            currentRun = null;
+            currentRunContext = null;
+            frozenExportRequest = null;
+            currentAttemptDirectory = null;
+        }
+
+        private static ExperimentErrorInfo CreateIntegrityError(ExperimentRunIntegrityFailure failure, string occurredUtc)
+        {
+            return new ExperimentErrorInfo
+            {
+                Code = failure.Code,
+                Message = failure.Message,
+                Detail = failure.Detail,
+                OccurredUtc = occurredUtc,
+                Retryable = true,
+            };
+        }
+
+        private static Exception DetailException(string detail)
+        {
+            return string.IsNullOrEmpty(detail) ? null : new InvalidOperationException(detail);
         }
 
         private void PrepareCurrentRunAndReload()
@@ -1039,6 +1251,10 @@ namespace RealTime.Experiments
                     ScenarioIndex = currentRun.ScenarioIndex + 1,
                     RunNumber = currentRun.RunIndex + 1,
                     OverallRunNumber = CalculateOverallRunNumber(currentRun.ScenarioIndex, currentRun.RunIndex),
+                    PairId = currentRun.PairId,
+                    ConfigurationHash = ExperimentConfigurationHasher.Compute(currentRun.Scenario),
+                    GitCommitSha = activePlan.GitCommitSha,
+                    GitBranchOrTag = activePlan.GitBranchOrTag,
                 };
                 currentRunContext = new PandemicRunContext(
                     PandemicRunMode.Batch,
@@ -1098,6 +1314,7 @@ namespace RealTime.Experiments
             frozenExportRequest = new PandemicRunExportRequest(
                 manager,
                 manager.GetLiveSnapshot(),
+                manager.GetScientificRunSnapshot(),
                 currentRunContext.Output,
                 runWallClockStartUtc,
                 endUtc);
@@ -1144,23 +1361,38 @@ namespace RealTime.Experiments
             manifest.ReloadGeneration = state.ReloadGeneration;
             manifest.OutputRootKind = activePlan.OutputLocation.Kind.ToString();
             manifest.OutputRoot = activePlan.OutputRoot;
-            PandemicLiveSnapshot finalSnapshot = frozenExportRequest.Snapshot;
-            int infectedTotal = finalSnapshot.Exposed
-                + finalSnapshot.Sick
-                + finalSnapshot.Recovered
-                + finalSnapshot.Dead;
-            manifest.FinalTrackedPopulation = finalSnapshot.TrackedPopulation;
-            manifest.FinalExposed = finalSnapshot.Exposed;
-            manifest.FinalSick = finalSnapshot.Sick;
-            manifest.FinalRecovered = finalSnapshot.Recovered;
-            manifest.FinalDead = finalSnapshot.Dead;
-            manifest.FinalTransmissionsTotal = finalSnapshot.TransmissionsTotal;
-            manifest.FinalAttackRatePercent = finalSnapshot.TrackedPopulation > 0
-                ? infectedTotal * 100d / finalSnapshot.TrackedPopulation
-                : 0d;
-            manifest.FinalFatalityRatePercent = finalSnapshot.Recovered + finalSnapshot.Dead > 0
-                ? finalSnapshot.Dead * 100d / (finalSnapshot.Recovered + finalSnapshot.Dead)
-                : 0d;
+            ExperimentRecorderSnapshot recorderSnapshot = frozenExportRequest.ScientificSnapshot;
+            ScientificRunSummary scientific = ScientificRunExportService.CalculateSummary(
+                recorderSnapshot,
+                frozenExportRequest.Manager.GetTestRecords(),
+                frozenExportRequest.Manager.GetActualMaskUsagePercent());
+            PandemicStateTimePoint finalState = recorderSnapshot.StateTimeSeries.Count > 0
+                ? recorderSnapshot.StateTimeSeries[recorderSnapshot.StateTimeSeries.Count - 1]
+                : new PandemicStateTimePoint();
+            manifest.FinalTrackedPopulation = scientific.TrackedPopulation;
+            manifest.FinalSusceptible = finalState.Susceptible;
+            manifest.FinalExposed = finalState.Exposed;
+            manifest.FinalInfectious = finalState.Infectious;
+            manifest.FinalPostInfectiousIll = finalState.PostInfectiousIll;
+            manifest.FinalSymptomatic = finalState.Symptomatic;
+            manifest.FinalSick = finalState.Infectious + finalState.PostInfectiousIll;
+            manifest.FinalRecovered = finalState.Recovered;
+            manifest.FinalDead = finalState.Dead;
+            manifest.FinalTransmissionsTotal = scientific.SecondaryTransmissionsTotal;
+            manifest.InitialSeedCount = scientific.InitialSeedCount;
+            manifest.SecondaryTransmissionsTotal = scientific.SecondaryTransmissionsTotal;
+            manifest.CumulativeInfections = scientific.CumulativeInfections;
+            manifest.HospitalizationsTotal = scientific.HospitalizationsTotal;
+            manifest.FinalAttackRatePercent = scientific.AttackRatePercent;
+            manifest.FinalFatalityRatePercent = scientific.ResolvedCaseFatalityRatioPercent ?? 0d;
+            manifest.FinalPrevalencePercent = scientific.FinalPrevalencePercent;
+            manifest.ResolvedCaseFatalityRatioPercent = scientific.ResolvedCaseFatalityRatioPercent;
+            manifest.EmpiricalSecondaryInfectionsPerInfector = scientific.EmpiricalSecondaryInfectionsPerInfector;
+            manifest.ActualMaskUsagePercent = scientific.ActualMaskUsagePercent;
+            manifest.TotalIsolationPersonDays = scientific.TotalIsolationPersonDays;
+            manifest.TotalQuarantinePersonDays = scientific.TotalQuarantinePersonDays;
+            manifest.PhysicalContactsTotal = scientific.PhysicalContactsTotal;
+            manifest.TraceableContactsTotal = scientific.TraceableContactsTotal;
             SetState(ExperimentBatchExecutionState.CommittingRun);
             ExperimentRunCommitResult commit = runCommitService.Commit(new ExperimentRunCommitRequest
             {
@@ -1635,8 +1867,11 @@ namespace RealTime.Experiments
                 CreatedUtc = UtcNow(),
                 ModVersion = modVersion,
                 GameVersion = BuildConfig.applicationVersionFull,
+                GitCommitSha = buildIdentity.CommitSha,
+                GitBranchOrTag = buildIdentity.BranchOrTag,
                 SpeedMode = ExperimentSpeedMode.Unspecified,
                 ReturnToBaseline = true,
+                StopBatchOnRunFailure = true,
             };
 
             ExperimentOutputRootSelection selection = ChooseDefaultOutputRoot();
@@ -1668,6 +1903,8 @@ namespace RealTime.Experiments
         {
             draftPlan.ModVersion = modVersion;
             draftPlan.GameVersion = BuildConfig.applicationVersionFull;
+            draftPlan.GitCommitSha = buildIdentity.CommitSha;
+            draftPlan.GitBranchOrTag = buildIdentity.BranchOrTag;
             if (draftPlan.OutputLocation != null)
             {
                 draftPlan.OutputRoot = outputRootResolver.Resolve(draftPlan.OutputLocation);
@@ -1699,6 +1936,16 @@ namespace RealTime.Experiments
             {
                 locator.Clear(UtcNow());
                 return;
+            }
+
+            if (string.IsNullOrEmpty(loadedPlan.Value.GitCommitSha))
+            {
+                loadedPlan.Value.GitCommitSha = buildIdentity.CommitSha;
+            }
+
+            if (string.IsNullOrEmpty(loadedPlan.Value.GitBranchOrTag))
+            {
+                loadedPlan.Value.GitBranchOrTag = buildIdentity.BranchOrTag;
             }
 
             activePlan = loadedPlan.Value;

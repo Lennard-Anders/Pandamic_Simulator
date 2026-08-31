@@ -25,6 +25,7 @@
 15. [Optional Analytics Dashboard](#15-optional-analytics-dashboard)
 16. [In-Game Verification Checklist](#16-in-game-verification-checklist)
 17. [Frequently Asked Questions](#17-frequently-asked-questions)
+18. [Scientific Kernel and Reproducibility Reference](#18-scientific-kernel-and-reproducibility-reference)
 
 ---
 
@@ -66,37 +67,35 @@ Cities: Skylines already simulates tens of thousands of individual citizens ("Ci
 
 ### 2.2 Transmission
 
-The mod groups citizens by where they are:
-- **Outdoors** — Citizens walking on streets are grouped into a spatial grid. Any infectious citizen within a configurable distance of a susceptible citizen has a probability of transmitting the disease, calculated once per simulation step.
-- **Indoors (buildings)** — Citizens who are in the same building at the same time are considered in direct contact. The indoor transmission probability is typically higher than outdoor.
-- **Vehicles** — Citizens sharing a bus, tram, metro, train, ferry, or plane are treated like a shared indoor space with its own probability.
-- **Household** — Citizens who share a home face an additional chronic low-level exposure even when not in the same room, modelling cohabitation risk.
+The epidemiological kernel runs at the configured `EpidemicStepMinutes`, measured in game simulation time. Outdoors it retains spatial buckets. Vehicles and non-residential buildings use deterministic, context-specific contact caps rather than connecting every occupant to every other occupant. Household pairs remain explicit, while residential shared-area encounters use their own named multiplier.
 
-All probabilities are adjusted by:
-- Mask wearing (the `MaskManager` applies customisable reductions per citizen pair based on whether each person uses a mask that protects others, a mask that protects themselves, or no mask at all)
-- The simulation step duration (probabilities are mathematically scaled so that longer or shorter steps produce consistent cumulative risk)
+Only a living citizen in the personal half-open infectious interval may be a source, and only a living `Susceptible` citizen may be a target. For simultaneous exposures to one target, TENUS combines all probabilities as `1 - product(1 - p_i)`, performs one infection draw, and attributes a successful infection using source hazards `-ln(1 - p_i)`. Dictionary or citizen iteration order therefore does not award duplicate infections or choose the infector.
+
+Probabilities are converted from the configured hourly hazard to the exact step duration. A configurable `Flat` or `PiecewiseLinear` infectiousness profile then scales the hazard. Source-control masks affect the source; personal-protection masks affect the target. Persistent mask and tracing traits are derived from the master seed and citizen ID, not from first-access order.
 
 ### 2.3 Disease Timeline
 
-Each infected citizen goes through a personal timeline (all durations are configurable):
-1. **Exposure** — infected but not yet infectious
-2. **Infectious window** — can spread to others; starts before symptoms appear (asymptomatic spread)
-3. **Symptomatic window** — citizen feels sick; triggers testing and quarantine logic
-4. **Outcome** — either recovers (gains immunity) or dies, based on age-group-specific death rates
+Every infection owns one `DiseaseCourse`. The mutually exclusive primary states are `Susceptible`, `Exposed`, `Infectious`, `PostInfectiousIll`, `Recovered`, `Dead`, plus `Removed` for population lifecycle. Symptoms are an independent attribute (`None`, `PreSymptomatic`, `Symptomatic`, `PostSymptomatic`) and are never used as a substitute for infectiousness.
+
+Intervals are half-open: `InfectiousStart <= now < InfectiousEnd` and `SymptomStart <= now < SymptomEnd`. Recovery is terminal and prevents reinfection; death is terminal. Timeline offsets support `Deterministic`, `Normal`, `LogNormal`, and `Gamma` distributions with explicit means, standard deviations and bounds. Invalid draws are resampled and then deterministically bounded. Migrated configurations use deterministic legacy values; TENUS does not introduce an undocumented disease curve.
 
 ### 2.4 Policy Systems
 
-| System | Manager class | What it does |
+| System | Core component | What it does |
 |---|---|---|
-| Masks | `MaskManager` | Assigns each citizen a permanent random mask-wearing behaviour; adjusts transmission matrices |
-| Quarantine | `QuarantineManager` | Tracks citizens under isolation orders and enforces them via the citizen AI |
-| Testing | `TestManager` | Schedules tests, applies configurable delays, handles positives and contact notifications |
-| Contact Tracing | `ContactManager` | Records every physical contact between pairs of citizens (building or app based); allows targeted quarantine of exposed contacts |
-| Lockdown | `QuarantineManager.InLockDown` + per-family thresholds | Shuts down buildings by sector category and reroutes/withdraws public transport |
+| Masks | `MaskEngine` | Stable citizen assignment; separate source and wearer protection; context-aware hazard reduction |
+| Isolation / quarantine | `IsolationQuarantineEngine` | Separates case isolation from contact or pending-test quarantine without changing disease outcomes |
+| Testing | `TestingEngine` | Explicit request, queue, sample, pending, available, expired and cancelled states with capacity, sensitivity and specificity |
+| Physical contacts | `ContactEngine` + `ContactSamplingEngine` | Records canonical symmetric encounters independently of tracing and bounds mixing in large contexts |
+| Contact tracing | `ContactTracingEngine` | Derives app and manual traceability after a physical contact; app tracing requires both citizens to use the app |
+| Lockdown | `LockdownEngine` | Per-family close/reopen thresholds, minimum closure time and cooldown against a stable denominator |
+| Healthcare | `HealthcareEngine` | Applies explicit warning/critical saturation multipliers only to mortality hazard |
+
+Isolation and quarantine restrict external contacts only once the affected citizen has reached home. Household contact remains possible. Neither intervention heals, kills, shortens disease, or changes mortality by itself.
 
 ### 2.5 Analytics & Snapshots
 
-A `PandemicObserver` records SIDR (Susceptible / Infected / Dead / Recovered) counts at every observation tick. A `PandemicLiveSnapshot` is generated on demand for the UI so that the dashboard always reflects the most current state without blocking the simulation thread.
+The scientific recorder exports disjoint SEIRD compartments, symptom counts, contacts, transmissions, tests, interventions, population changes and full healthcare history. `S + E + I + PostInfectiousIll + R + D` equals the tracked epidemiological population. The legacy observer and live panel remain available for interactive compatibility, but batch analysis should use the scientific files described below.
 
 ---
 
@@ -657,7 +656,7 @@ Raising the Senior rate and lowering others simulates a disease that preferentia
 | **Ratio: Own Protection Mask** | % of citizens who wear a mask that protects *themselves* (reduces their own chance of being infected). |
 | **Mask Behavior** | Sets *where* masks are enforced when the mandate is active. Options: **None** (no effect), **Building** (only indoors), **Vehicle** (indoors + transit), **Full** (everywhere including outdoors). |
 
-> The three ratio sliders (Ignore, Other Protection, Own Protection) should together represent 100% of the population. The simulation normalises them automatically if they do not add up perfectly.
+> The three ratio sliders (Ignore, Other Protection, Own Protection) must sum to exactly 100%. Batch preflight rejects any other sum; it is never silently normalised. Legacy `30/50/50` weights are migrated to the nearest integer effective percentages `23/39/38`, preserving the old weighted assignment as closely as integer sliders allow.
 
 ---
 
@@ -676,10 +675,15 @@ Higher values mean more contacts can be identified and quarantined when someone 
 
 | Setting | What it does |
 |---|---|
-| **Relative Test Capacity** | Maximum daily tests as a % of the city population. 5% = 5 tests per 100 citizens per 7 days. Range: 0–100. |
+| **Relative Test Capacity** | Test slots per seven simulation days as a percentage of the tracked population. Range: 0–100. |
 | **% of Tests Reserved for Sick Citizens** | How many of the available tests are prioritised for symptomatic citizens. The rest go to asymptomatic screening. Range: 0–100. |
-| **Maximum Test Duration** | Maximum number of days that can pass between a test being requested and its result being delivered. Range: 0–28. |
-| **Minimum Test Duration** | Minimum delay (in days) before a test result comes back. Simulates lab processing time. Range: 0–28. |
+| **Maximum Test Duration** | Maximum request-to-sample wait. A request that cannot be sampled within this many days expires. Range: 0–28. |
+| **Minimum Test Duration** | Sample-to-result delay in simulation days. Until that timestamp the result remains `Unknown`. Range: 0–28. |
+| **Sensitivity** | Probability that a detectable infected sample produces a positive result. Before `Detection Time`, sensitivity is not applied. |
+| **Specificity** | Probability that an uninfected sample produces a negative result. |
+| **Quarantine while awaiting result** | Applies the same precautionary rule to all pending samples; the engine does not inspect their future result. |
+| **Retest interval** | Minimum interval after sampling before another request for that citizen is accepted. |
+| **Epidemic step minutes** | Fixed simulation-time step for the epidemiological kernel. A missed step invalidates a scientific batch run. |
 
 ---
 
@@ -687,7 +691,7 @@ Higher values mean more contacts can be identified and quarantined when someone 
 
 | Setting | What it does |
 |---|---|
-| **Quarantine Behavior** | Scope of isolation orders: **None** (no quarantine), **Self** (only the sick person), **Family** (sick person + no mixing with housemates), **Contacts** (sick person + all traced contacts) |
+| **Quarantine Behavior** | Scope of restrictions: **None**, the case itself, household contacts, or traceable contacts according to the selected mode. Household transmission remains possible while external contacts are restricted. |
 | **Only Tested Citizens to Quarantine** | If checked, only citizens with a confirmed positive test are sent to quarantine. If unchecked, citizens with visible symptoms can also be quarantined even without a positive test. |
 
 ---
@@ -702,12 +706,15 @@ Higher values mean more contacts can be identified and quarantined when someone 
 
 ### Pandemic Lockdown — Families
 
-For each of the nine sector families (Education, Public Transport, Commercial, Leisure/Tourism/Parks, Office, Industry, Government/Other Public, Essential Services, Healthcare) there are two settings:
+For each of the eight controlled sector families (Education, Public Transport, Commercial, Leisure/Tourism/Parks, Office, Industry, Government/Other Public and Essential Services), the policy contains:
 
 | Setting | What it does |
 |---|---|
 | **Close [Family] During Lockdown** | Checkbox. When ticked and lockdown is active, buildings in this family are forcibly closed. |
 | **Close [Family] Threshold %** | If greater than 0, buildings in this family automatically close once the infection rate among their occupants/workers exceeds this percentage, even *without* a full lockdown being declared. Set to 0 to disable automatic closure. |
+| **Reopen [Family] Threshold %** | Reopens only at or below this threshold; it must not exceed the close threshold. |
+| **Minimum Closure Duration** | Minimum simulation days before reopening is allowed. |
+| **Cooldown Duration** | Minimum simulation days after a state change before another change. |
 
 This lets you design nuanced policies: for example, close schools and transit during lockdown, but leave essential services and healthcare open always.
 
@@ -806,7 +813,7 @@ The map-theme metadata and published-package achievement flag are resolved in th
 
 1. Configure TENUS and the pandemic policies for the first scenario in the normal UI.
 2. Click **Experiments** and enter a batch name.
-3. Select a baseline save. Use **Refresh** if the save list changed; **Use currently loaded save** is offered only when its originating saved-game asset can be resolved exactly.
+3. Select a baseline save and use **Refresh** if the save list changed. There is deliberately no “currently loaded city” shortcut because the game does not expose a reliable originating asset or unsaved-change check.
 4. Click **Add current settings as scenario**. This captures values, not a reference to the live configuration.
 5. Give the scenario a name and choose its run count, duration, end mode and seed strategy.
 6. Repeat for additional scenarios. Scenarios can be duplicated, removed, updated from current settings, or moved up and down.
@@ -844,10 +851,12 @@ The execution-speed setting either preserves the current supported game-speed be
 
 - **Fixed** uses the configured master seed for every repetition.
 - **Sequential** uses `first seed + zero-based run offset`, so a first seed of `10001` produces `10001`, `10002`, and so on.
-- Each TENUS random component receives a stable FNV-1a-derived seed from the run's master seed and one of the identifiers `pandemic`, `mask`, `testing`, `contact-tracing`, or `quarantine`.
+- **Paired seed mode** gives the same run index in every scenario the same master seed and `pair_id`, enabling within-pair scenario differences.
+- FNV-1a v1 derives independent streams named `initial-population`, `disease-progression`, `transmission`, `symptom`, `mortality`, `testing`, `contact-tracing`, and `intervention`. Legacy `pandemic`, `mask`, `contact`, and `test` derivations remain in the manifest for schema compatibility.
+- Stable per-citizen mask, tracing-app and manual-tracing assignments hash the master seed, citizen ID and feature namespace. Query order cannot alter these baseline traits.
 - Retrying an incomplete run reuses the same scenario/run index and seed.
 
-Completed manifests record the master and component seeds. Identical TENUS seeds reproduce stochastic decisions controlled by TENUS as far as the mod controls them. Bit-identical whole-game execution is **not** guaranteed: Cities: Skylines and other mods can contain independent random generators, update ordering and state that TENUS cannot seed.
+Completed manifests record the master and every component seed. TENUS never reseeds the game randomizer, Unity's global RNG, Real Time's game randomizer, or another mod. Identical inputs reproduce TENUS-owned decisions; bit-identical whole-game execution is **not** guaranteed because the host game and other mods have independent state and ordering.
 
 ### Progress, pause, abort and recovery
 
@@ -928,27 +937,37 @@ Every batch has a unique ID in addition to its readable name. Every scenario als
 ```text
 Pandemic Data/
 └── Experiments/
-    └── MasterThesis_Main__<batch-id>/
+    └── <chosen-folder>_<UTC timestamp>_<short-batch-id>/
         ├── batch_manifest.json
         ├── batch_state.json
         ├── batch_runs.csv
-        ├── 001_Baseline__<scenario-id>/
+        ├── 001_Baseline_<short-scenario-id>/
         │   ├── scenario.json
-        │   ├── run_0001_seed_10001/
+        │   ├── run_001/
         │   │   ├── run_manifest.json
-        │   │   ├── pandemic_run_Baseline_run_0001_seed_10001.csv
+        │   │   ├── pandemic_run_Baseline_001.csv
         │   │   ├── data.csv
-        │   │   └── contacts.csv
-        │   └── run_0002_seed_10002/
-        └── 002_Masks__<scenario-id>/
+        │   │   ├── contacts.csv
+        │   │   ├── run_summary.csv
+        │   │   ├── state_timeseries.csv
+        │   │   ├── transmission_events.csv
+        │   │   ├── physical_contacts.csv
+        │   │   ├── traceable_contacts.csv
+        │   │   ├── test_events.csv
+        │   │   ├── intervention_events.csv
+        │   │   ├── healthcare_timeseries.csv
+        │   │   ├── population_events.csv
+        │   │   └── errors.json
+        │   └── run_002/
+        └── 002_Masks_<short-scenario-id>/
             └── ...
 ```
 
-The rich CSV is the primary analytical output. `data.csv` preserves Observer raw data and `contacts.csv` preserves ContactManager raw data for that run. No run overwrites another run, another scenario, or an older batch.
+The readable folder prefix is editable before confirmation; sanitisation and the timestamp/short ID preserve uniqueness. Each scenario gets its own ordered folder, so three scenarios with ten repetitions produce three scenario folders containing ten run folders each. The rich CSV remains available, while the scientific files are authoritative for reproducible analysis. No run overwrites another run, scenario or older batch.
 
 `batch_manifest.json`, `scenario.json`, `batch_state.json` and `run_manifest.json` are versioned machine-readable records. A completed run manifest identifies the baseline and validated fingerprints, batch and scenario, run numbers, settings and initial policy state, configured duration and end mode, master/component seeds, simulation and UTC times, mod/game/config versions, execution speed, status and generated files. `batch_runs.csv` receives one row only after a run exports successfully and provides compact outcomes and the relative rich-CSV path for later statistics.
 
-Important state and metadata files are written through a temporary file and atomically published. A run stays in an internal `.in-progress` directory until every mandatory export is closed and verified. A crash or export error therefore cannot make a partial run look completed. Recovery repeats that incomplete run with the same seed; it never overwrites a previously completed directory.
+Important state and metadata files are written through a temporary file and atomically published. A run stays in `run_NNN.__inprogress_<attempt-id>` until every mandatory export is closed, hashed and verified. A crash or export error therefore cannot make a partial run look completed. Recovery completes a valid interrupted commit or repeats an incomplete run with the same seed; it never overwrites a completed directory.
 
 ---
 
@@ -970,7 +989,7 @@ Then open `http://localhost:8050`. By default the application reads:
 
 Set `PANDEMIC_DATA_DIR` before launch to analyse a different root. The dashboard recursively discovers both top-level manual `pandemic_run_*.csv` files and completed files nested under `Experiments`. Temporary and in-progress paths are ignored. When a sibling `run_manifest.json` is available, selectors use a label such as `MasterThesis_Main / Masks / Run 7`; malformed or missing optional label metadata falls back to a readable relative path.
 
-Direct CSV drag-and-drop/upload remains supported, as do the existing charts, full summary and multi-run comparison. The parser continues to accept old manual files that do not contain Batch metadata.
+Direct CSV drag-and-drop/upload remains supported, as do the existing charts and full summary. Multi-run scenario aggregation reports mean, median, standard deviation, minimum, maximum, 5th/25th/75th/95th percentiles and IQR. When valid `pair_id` values exist, it additionally reports per-pair differences plus their mean and median. Invalid/failed runs and in-progress directories are excluded. The parser continues to accept old manual files without batch metadata.
 
 ---
 
@@ -1073,4 +1092,96 @@ Automatic continuation is limited to reloads deliberately requested by the runni
 
 ---
 
-*Documentation updated for the TENUS Experiment Batch Runner — Cities: Skylines — August 2026*
+## 18. Scientific Kernel and Reproducibility Reference
+
+### Scope and scientific status
+
+TENUS is a reproducible agent-based scenario simulator, not a validated forecasting model. Defaults introduced for compatibility reproduce prior deterministic behaviour where practical. Contact caps, shared-area multipliers, disease distributions, infectiousness profiles, mortality multipliers and calibration targets remain explicit **uncalibrated model parameters** until compared with an identified external data source. A plausible implementation is not evidence of empirical validity.
+
+### Disease, mortality and healthcare contracts
+
+- `DiseaseStateEngine` is the authority for one primary state per logical citizen. Only `S -> E -> I -> PostInfectiousIll/R/D` forward progress is possible; recovered and dead citizens cannot be exposed again.
+- A successful non-seed `S -> E` transition produces exactly one transmission event. Initial seeds have their own count and never increment secondary transmissions, origin transmissions or superspreader counts.
+- `DiseaseProgressionEngine` samples each personal timeline from the dedicated progression stream. All final boundaries are finite, nonnegative and ordered. Initial seed age can be fixed or distributed and is clamped before recovery.
+- Mortality is a step hazard derived from the configured age-course probability over the unresolved mortality window. `AsymptomaticMortalityMultiplier` and healthcare warning/critical multipliers are explicit. Test or quarantine state never decides death.
+- Hospitalization totals count actual admissions (currently hospitalized or discharged), not merely seeking care or care that was unavailable.
+
+### Testing workflow
+
+The state sequence is `Requested -> Queued -> Scheduled -> SampleTaken -> ResultPending -> ResultAvailable`, with `Expired` and `Cancelled` terminal alternatives. Capacity is split into symptomatic-reserved and routine slots. `MaximumTestDuration` is request-to-sample expiry; `MinimumTestDuration` is the sample-to-result delay. The hidden pending result remains inaccessible until `ResultAvailableAt`. Detection time, sensitivity and specificity are evaluated from the disease state at sample time. Negative tests may be repeated after `RetestIntervalDays`; an old positive stops blocking after its configured isolation window.
+
+### Contact and tracing semantics
+
+Physical contact, traceability and transmission are distinct layers. Contact pairs are canonical (`min(id), max(id)`) and multiple encounters at different simulation steps are preserved. App traceability requires both citizens to be stable app users. Manual traceability is evaluated independently and cannot combine one app-only citizen with one manual-only citizen. Household mixing is explicit; school, university, workplace, healthcare, commercial, leisure, transit and residential shared-area mixing is deterministically bounded. Outdoor contacts use spatial buckets, not a population-wide loop.
+
+When an intervention prevents a sampled external encounter, `contacts_prevented_by_intervention` counts that directly suppressed modeled pair. It is not an estimate of real-world counterfactual contacts. Household pairs are never suppressed merely because a member is isolated or quarantined.
+
+### RNG architecture and paired runs
+
+Seed derivation is FNV-1a 32-bit with prefix `TENUS-RNG-v1\0`, four little-endian master-seed bytes and the exact ASCII component tag. The result is masked to a nonnegative `Int32`. Independent streams isolate initial population sampling, disease progression, transmission, symptoms, mortality, testing, contact tracing and intervention decisions. Retrying a run reuses the same seed set. Paired mode aligns `pair_id` and the master-seed list across scenarios. It supports controlled comparisons but does not make Cities: Skylines or third-party mods deterministic.
+
+### New scientific configuration parameters
+
+The versioned configuration and immutable scenario snapshot include:
+
+- Testing: `TestSensitivityPercent`, `TestSpecificityPercent`, `QuarantineWhileAwaitingTestResult`, `RetestIntervalDays`, `EpidemicStepMinutes`.
+- Contact model: `MaxContactsPerPersonPerStepSchool`, `...Workplace`, `...Commercial`, `...Healthcare`, `...Transit`, `...ResidentialSharedArea`, and `ResidentialSharedAreaTransmissionMultiplier`.
+- For each lockdown family: `Reopen...ThresholdPercent`, `Minimum...ClosureDurationDays`, and `...LockdownCooldownDurationDays` in addition to the existing close threshold.
+- Each of exposed duration, infectious start, infectious end, symptom start, symptom end and recovery: distribution type, arithmetic mean days, standard-deviation days, minimum days, maximum days and deterministic fixed days.
+- Infectiousness: `InfectiousnessProfileType`, start multiplier, peak-time fraction, peak multiplier and end multiplier.
+- Initial cases: `InitialSeedSamplingStrategy`, `InitialInfectionAgeMode`, plus distribution type/mean/standard deviation/minimum/maximum/fixed days for infection age.
+- Mortality/healthcare: `AsymptomaticMortalityMultiplier`, warning and critical usage thresholds, and warning and critical mortality-hazard multipliers.
+- Batch: `PairedSeedMode`, `StopBatchOnRunFailure`, readable `OutputFolderName`, configuration hash and embedded Git identity.
+
+All probability percentages accept a genuine zero. Batch preflight rejects non-finite values, invalid timelines or bounds, unsupported enums, mask ratios not summing to 100, invalid lockdown hysteresis, zero step size, zero contact caps and seed overflow. It does not reinterpret zero as “missing”.
+
+### Scientific run files and columns
+
+Every successful batch run contains one rich `pandemic_run_*.csv`, legacy `data.csv`/`contacts.csv`, `run_manifest.json`, and these mandatory scientific files:
+
+```text
+run_summary.csv
+initial_seed_count,secondary_transmissions_total,cumulative_infections,active_exposed,active_infectious,active_post_infectious_ill,active_symptomatic,recovered_total,deaths_total,hospitalizations_total,tracked_population,final_incidence_per_100000_per_interval,final_prevalence_pct,attack_rate_pct,resolved_case_fatality_ratio_pct,rt,rt_method,empirical_secondary_infections_per_infector,actual_mask_usage_pct,total_isolation_person_days,total_quarantine_person_days,tests_requested,tests_performed,tests_positive,tests_negative,mean_test_wait_days,median_test_wait_days,contacts_prevented_by_intervention,physical_contacts_total,traceable_contacts_total,household_contacts_total,work_contacts_total,school_contacts_total,transit_contacts_total,added_population,removed_population
+
+state_timeseries.csv
+simulation_time,pandemic_day,susceptible,exposed,infectious,post_infectious_ill,symptomatic,recovered,dead,removed,tracked_population,initial_seed_count,secondary_transmissions_total,new_exposures_per_interval,hospitalizations_total,isolated_citizens,quarantined_citizens,incidence_per_100000_per_interval,prevalence_pct,attack_rate_pct
+
+transmission_events.csv
+event_id,simulation_time,pandemic_day,source_citizen_id,target_citizen_id,source_infection_age_days,target_previous_state,target_new_state,context,origin_category,building_id,vehicle_id,district_id,source_mask_type,target_mask_type,transmission_probability,source_probability,infectiousness_multiplier,is_initial_seed
+
+physical_contacts.csv
+contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,position_x,position_y,position_z,distance,traceable_by_app,traceable_by_manual
+
+traceable_contacts.csv
+contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,traceable_by_app,traceable_by_manual
+
+test_events.csv
+test_id,citizen_id,request_time,scheduled_time,sample_time,result_available_time,state,result,reason,priority,wait_duration_days,result_duration_days,citizen_disease_state_at_sample,infection_age_at_sample_days
+
+intervention_events.csv
+event_id,simulation_time,pandemic_day,citizen_id,intervention_type,action,reason,context
+
+healthcare_timeseries.csv
+simulation_time,pandemic_day,hospital_usage_pct,ambulance_usage_pct
+
+population_events.csv
+event_id,simulation_time,pandemic_day,citizen_id,action,population_category,count,reason
+```
+
+`errors.json` contains `schemaVersion`, `status`, and the structured `errors` list. `run_manifest.json` contains the full baseline identity/fingerprint, scenario snapshot, zero- and one-based run positions, pair ID, master and derived seeds, algorithms, configuration SHA-256, Git commit/branch, mod/game/schema versions, timing, final metrics, output root and a length/SHA-256 entry for every generated file.
+
+The rich CSV keeps all legacy sections and adds `[BATCH METADATA]`. Its age section separates `share_of_infections_pct` from `infection_prevalence_within_age_group_pct`; they are not interchangeable. `resolved_case_fatality_ratio_pct` means `dead / (recovered + dead)`. TENUS does not currently have an explicit generation-interval distribution, so `rt` is empty and `rt_method` states that it is unavailable; `empirical_secondary_infections_per_infector` is exported instead.
+
+### Invalidation and recovery rules
+
+NaN/infinite probabilities, illegal state transitions, disease/transmission/testing/contact/intervention/metrics exceptions, population-integrity failures, time moving backwards, missed strict epidemic steps, configuration drift and export-integrity failures cannot become normal successful runs. Core failures freeze diagnostics into a `run_NNN.__invalid_<attempt-id>` directory with `Status = Invalid`; they are excluded from `batch_runs.csv` and dashboard aggregation. Depending on `StopBatchOnRunFailure`, TENUS reloads the exact baseline and either stops or proceeds to the next descriptor. A failed archive/export is reported as failed and never counted as completed.
+
+### Population and calibration
+
+The primary epidemiological cohort consists of eligible residents with a home. Newly eligible residents receive new logical IDs and start susceptible; reused game-buffer slots never inherit disease state. Removals and additions are exported, with Resident, Immigrant, Emigrant, Tourist and Commuter categories used where the game exposes sufficient flags. Strict scientific batch mode invalidates an unexpected removal of a tracked citizen rather than silently transferring its state.
+
+`CalibrationTargetSet` supports explicit targets, tolerances and weights for attack rate, peak prevalence, time to peak, Rt, hospitalization rate, mortality rate and household secondary attack rate. Missing observations remain unavailable and cannot pass calibration. The synthetic, Unity-independent core can execute explicit contact graphs for behavior tests and later calibration harnesses; no bundled target set is presented as medically validated.
+
+---
+
+*Documentation updated for the TENUS scientific kernel and Experiment Batch Runner — Cities: Skylines — August 2026*

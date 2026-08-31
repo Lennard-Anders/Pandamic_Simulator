@@ -6,6 +6,7 @@ namespace RealTimeTests.Experiments
 {
     using System;
     using System.Collections.Generic;
+    using RealTime.Config;
     using RealTime.Experiments;
     using NUnit.Framework;
 
@@ -22,6 +23,12 @@ namespace RealTimeTests.Experiments
             overflow.Scenarios[0].FirstSeed = int.MaxValue;
             overflow.Scenarios[0].RunCount = 2;
             Assert.That(new ExperimentPlanValidator().Validate(overflow).IsValid, Is.False);
+
+            ExperimentBatchPlan pairedOverflow = CreateValidPlan();
+            pairedOverflow.PairedSeedMode = true;
+            pairedOverflow.Scenarios[0].FirstSeed = int.MaxValue;
+            pairedOverflow.Scenarios[0].RunCount = 2;
+            Assert.That(new ExperimentPlanValidator().Validate(pairedOverflow).Errors, Has.Some.Contains("paired master-seed"));
         }
 
         [Test]
@@ -53,13 +60,77 @@ namespace RealTimeTests.Experiments
             Assert.That(ExperimentControlGate.IsControlLocked, Is.False);
         }
 
+        [Test]
+        public void ValidatorPreservesValidZeroTransmissionProbabilities()
+        {
+            ExperimentBatchPlan plan = CreateValidPlan();
+            plan.Scenarios[0].Settings.IndoorDiseaseTransmissionProbability = 0f;
+            plan.Scenarios[0].Settings.OutdoorDiseaseTransmissionProbability = 0f;
+
+            Assert.That(new ExperimentPlanValidator().Validate(plan).IsValid, Is.True);
+        }
+
+        [Test]
+        public void ValidatorRejectsInvalidTimelineAndMaskPercentages()
+        {
+            ExperimentBatchPlan plan = CreateValidPlan();
+            plan.Scenarios[0].Settings.StartInfection = plan.Scenarios[0].Settings.EndInfection;
+            plan.Scenarios[0].Settings.RatioIgnoreMasks = 30;
+            plan.Scenarios[0].Settings.RatioOtherProtectionMask = 50;
+            plan.Scenarios[0].Settings.RatioOwnProtectionMask = 50;
+
+            ExperimentValidationResult result = new ExperimentPlanValidator().Validate(plan);
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Some.Contains("StartInfection"));
+            Assert.That(result.Errors, Has.Some.Contains("mask percentages"));
+        }
+
+        [Test]
+        public void ValidatorRejectsInvalidMaskReductionFactor()
+        {
+            ExperimentBatchPlan plan = CreateValidPlan();
+            plan.Scenarios[0].Settings.TransmissionProbabilityReduction = 0;
+
+            ExperimentValidationResult result = new ExperimentPlanValidator().Validate(plan);
+
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Some.Contains("TransmissionProbabilityReduction"));
+        }
+
+        [Test]
+        public void ValidatorRejectsInvalidLockdownHysteresisAndDurations()
+        {
+            ExperimentBatchPlan plan = CreateValidPlan();
+            plan.Scenarios[0].Settings.CloseOfficeThresholdPercent = 20f;
+            plan.Scenarios[0].Settings.ReopenOfficeThresholdPercent = 21f;
+            plan.Scenarios[0].Settings.MinimumOfficeClosureDurationDays = float.NaN;
+            plan.Scenarios[0].Settings.OfficeLockdownCooldownDurationDays = -1f;
+
+            ExperimentValidationResult result = new ExperimentPlanValidator().Validate(plan);
+
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Some.Contains("ReopenThresholdPercent <= CloseThresholdPercent"));
+            Assert.That(result.Errors, Has.Some.Contains("MinimumClosureDurationDays"));
+            Assert.That(result.Errors, Has.Some.Contains("CooldownDurationDays"));
+        }
+
         private static ExperimentBatchPlan CreateValidPlan()
         {
+            var configuration = new RealTimeConfig(true)
+            {
+                RatioIgnoreMasks = 30,
+                RatioOtherProtectionMask = 35,
+                RatioOwnProtectionMask = 35,
+            };
             return new ExperimentBatchPlan
             {
                 BatchId = "batch",
                 BatchName = "Batch",
                 CreatedUtc = "2026-01-01T00:00:00Z",
+                ModVersion = "test-mod",
+                GameVersion = "test-game",
+                GitCommitSha = "0123456789012345678901234567890123456789",
+                GitBranchOrTag = "Beta",
                 OutputRoot = "output",
                 SpeedMode = ExperimentSpeedMode.PreserveStartingSpeed,
                 Baseline = new BaselineSaveIdentity
@@ -71,7 +142,12 @@ namespace RealTimeTests.Experiments
                 },
                 Scenarios = new List<ExperimentScenario>
                 {
-                    new ExperimentScenario { ScenarioId = "scenario", Name = "Scenario" },
+                    new ExperimentScenario
+                    {
+                        ScenarioId = "scenario",
+                        Name = "Scenario",
+                        Settings = ExperimentScenarioSnapshot.Capture(configuration, false),
+                    },
                 },
             };
         }

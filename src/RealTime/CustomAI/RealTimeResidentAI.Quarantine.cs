@@ -51,7 +51,7 @@ namespace RealTime.CustomAI
                 simulation = GameObject.Find("SimulationManager").GetComponent<SimulationManager>();
             }
 
-            if (!QuarantineManager.Instance.IsInQuarantine(citizenId, simulation.m_currentGameTime) && !QuarantineManager.Instance.IsInProphylacticQuarantine(citizenId, simulation.m_currentGameTime))
+            if (!ShouldBeInQuarantine(citizenId))
             {
                 schedule.Schedule(ResidentState.Unknown);
                 return true;

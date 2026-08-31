@@ -20,12 +20,31 @@ namespace RealTime.Experiments
     {
         public int Master { get; set; }
 
+        public int InitialPopulation { get; set; }
+
+        public int DiseaseProgression { get; set; }
+
+        public int Transmission { get; set; }
+
+        public int Symptom { get; set; }
+
+        public int Mortality { get; set; }
+
+        public int Testing { get; set; }
+
+        public int ContactTracing { get; set; }
+
+        public int Intervention { get; set; }
+
+        /// <summary>Legacy schema-v1 aggregate seed retained only for older manifests.</summary>
         public int Pandemic { get; set; }
 
         public int Mask { get; set; }
 
+        /// <summary>Legacy schema-v1 test seed retained only for older manifests.</summary>
         public int Test { get; set; }
 
+        /// <summary>Legacy schema-v1 contact seed retained only for older manifests.</summary>
         public int Contact { get; set; }
     }
 
@@ -71,6 +90,14 @@ namespace RealTime.Experiments
             return new ExperimentSeedSet
             {
                 Master = masterSeed,
+                InitialPopulation = Derive(masterSeed, "initial-population"),
+                DiseaseProgression = Derive(masterSeed, "disease-progression"),
+                Transmission = Derive(masterSeed, "transmission"),
+                Symptom = Derive(masterSeed, "symptom"),
+                Mortality = Derive(masterSeed, "mortality"),
+                Testing = Derive(masterSeed, "testing"),
+                ContactTracing = Derive(masterSeed, "contact-tracing"),
+                Intervention = Derive(masterSeed, "intervention"),
                 Pandemic = Derive(masterSeed, "pandemic"),
                 Mask = Derive(masterSeed, "mask"),
                 Contact = Derive(masterSeed, "contact"),

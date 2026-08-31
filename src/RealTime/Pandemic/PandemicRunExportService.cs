@@ -20,12 +20,14 @@ namespace RealTime.Pandemic
         public PandemicRunExportRequest(
             PandemicManager manager,
             PandemicLiveSnapshot snapshot,
+            ExperimentRecorderSnapshot scientificSnapshot,
             PandemicOutputContext output,
             DateTime wallClockStart,
             DateTime wallClockEnd)
         {
             Manager = manager ?? throw new ArgumentNullException(nameof(manager));
             Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
+            ScientificSnapshot = scientificSnapshot;
             Output = output ?? throw new ArgumentNullException(nameof(output));
             WallClockStart = wallClockStart;
             WallClockEnd = wallClockEnd;
@@ -34,6 +36,8 @@ namespace RealTime.Pandemic
         public PandemicManager Manager { get; }
 
         public PandemicLiveSnapshot Snapshot { get; }
+
+        public ExperimentRecorderSnapshot ScientificSnapshot { get; }
 
         public PandemicOutputContext Output { get; }
 
@@ -97,6 +101,15 @@ namespace RealTime.Pandemic
             WriteAllText(richPath, richCsv, request.Output.AllowReplaceExisting);
             WriteAllText(request.Output.ObserverCsvPath, observerCsv, request.Output.AllowReplaceExisting);
             WriteAllText(request.Output.ContactsCsvPath, contactsCsv, request.Output.AllowReplaceExisting);
+            if (context != null && context.IsBatch)
+            {
+                if (request.ScientificSnapshot == null)
+                {
+                    throw new InvalidOperationException("A batch export requires a frozen scientific recorder snapshot.");
+                }
+
+                new ScientificRunExportService().Export(request);
+            }
 
             return new PandemicRunExportResult(richPath, request.Output.ObserverCsvPath, request.Output.ContactsCsvPath);
         }
@@ -117,7 +130,7 @@ namespace RealTime.Pandemic
             List<PandemicObservation> sorted = observations != null && observations.Count > 0
                 ? observations.OrderBy(observation => observation.SimulationTime).ToList()
                 : new List<PandemicObservation>();
-            AppendSeirdSeries(csv, sorted, gameStart);
+            AppendSeirdSeries(csv, sorted, request.ScientificSnapshot, gameStart);
             AppendPolicyTimeline(csv, snapshot, gameStart);
             AppendHealthcareSeries(csv, manager, gameStart);
             AppendPeakStatistics(csv, sorted, gameStart);
@@ -164,10 +177,10 @@ namespace RealTime.Pandemic
             PandemicBatchExportMetadata metadata = context.BatchMetadata;
             PandemicComponentSeeds seeds = context.ComponentSeeds;
             csv.AppendLine("[BATCH METADATA]");
-            csv.AppendLine("batch_id,batch_name,scenario_id,scenario_name,scenario_index,run_number,overall_run_number,master_seed,duration_days,completion_policy,completion_reason,pandemic_seed,mask_seed,test_seed,contact_seed");
+            csv.AppendLine("batch_id,batch_name,scenario_id,scenario_name,scenario_index,run_number,overall_run_number,master_seed,duration_days,completion_policy,completion_reason,pandemic_seed,mask_seed,test_seed,contact_seed,pair_id,initial_population_seed,disease_progression_seed,transmission_seed,symptom_seed,mortality_seed,testing_seed,contact_tracing_seed,intervention_seed,configuration_hash_algorithm,configuration_hash,trait_assignment_algorithm,git_commit_sha,git_branch_or_tag");
             csv.AppendFormat(
                 CultureInfo.InvariantCulture,
-                "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14}",
+                "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22},{23},{24},{25},{26},{27},{28}",
                 CsvEscape(metadata?.BatchId),
                 CsvEscape(metadata?.BatchName),
                 CsvEscape(metadata?.ScenarioId),
@@ -179,10 +192,24 @@ namespace RealTime.Pandemic
                 context.Policy.DurationDays.ToString("0.########", CultureInfo.InvariantCulture),
                 context.Policy.StopOnExtinction ? "DurationOrExtinction" : "FixedDuration",
                 completionReason,
-                seeds.PandemicManagerSeed,
-                seeds.MaskManagerSeed,
-                seeds.TestManagerSeed,
-                seeds.ContactManagerSeed);
+                seeds.DiseaseProgressionSeed,
+                seeds.MaskSeed,
+                seeds.TestingSeed,
+                seeds.ContactTracingSeed,
+                metadata?.PairId ?? 0,
+                seeds.InitialPopulationSeed,
+                seeds.DiseaseProgressionSeed,
+                seeds.TransmissionSeed,
+                seeds.SymptomSeed,
+                seeds.MortalitySeed,
+                seeds.TestingSeed,
+                seeds.ContactTracingSeed,
+                seeds.InterventionSeed,
+                ExperimentConfigurationHasher.AlgorithmName,
+                CsvEscape(metadata?.ConfigurationHash),
+                DeterministicCitizenTraitAssigner.AlgorithmName,
+                CsvEscape(metadata?.GitCommitSha),
+                CsvEscape(metadata?.GitBranchOrTag));
             csv.AppendLine();
             csv.AppendLine();
         }
@@ -236,25 +263,36 @@ namespace RealTime.Pandemic
         private static void AppendBreakdowns(StringBuilder csv, PandemicLiveSnapshot snapshot)
         {
             csv.AppendLine("[AGE GROUPS]");
-            csv.AppendLine("age_group,infected_count,infected_percent");
+            csv.AppendLine("age_group,infected_count,population_count,share_of_infections_pct,infection_prevalence_within_age_group_pct");
             foreach (PandemicAgeGroupSnapshot age in snapshot.AgeGroups)
             {
-                csv.AppendFormat(CultureInfo.InvariantCulture, "{0},{1},{2}", CsvEscape(age.Label), age.InfectedCount, age.InfectedPercent.ToString("F2", CultureInfo.InvariantCulture));
+                csv.AppendFormat(
+                    CultureInfo.InvariantCulture,
+                    "{0},{1},{2},{3},{4}",
+                    CsvEscape(age.Label),
+                    age.InfectedCount,
+                    age.PopulationCount,
+                    age.ShareOfInfectionsPercent.ToString("F2", CultureInfo.InvariantCulture),
+                    age.InfectionPrevalenceWithinAgeGroupPercent.ToString("F2", CultureInfo.InvariantCulture));
                 csv.AppendLine();
             }
 
             csv.AppendLine();
             csv.AppendLine("[LOCKDOWN FAMILIES]");
-            csv.AppendLine("family,is_closed,infected_pct,threshold_pct,manual_closed");
+            csv.AppendLine("family,is_closed,metric_value_pct,metric_name,close_threshold_pct,reopen_threshold_pct,minimum_closure_days,cooldown_days,manual_closed");
             foreach (PandemicLockdownFamilySnapshot family in snapshot.LockdownFamilies)
             {
                 csv.AppendFormat(
                     CultureInfo.InvariantCulture,
-                    "{0},{1},{2},{3},{4}",
+                    "{0},{1},{2},{3},{4},{5},{6},{7},{8}",
                     CsvEscape(family.Label),
                     family.IsClosed ? "1" : "0",
                     family.CurrentInfectedPercent.ToString("F2", CultureInfo.InvariantCulture),
+                    CsvEscape(family.ThresholdMetric),
                     family.AutoCloseThresholdPercent.ToString("F2", CultureInfo.InvariantCulture),
+                    family.AutoReopenThresholdPercent.ToString("F2", CultureInfo.InvariantCulture),
+                    family.MinimumClosureDurationDays.ToString("R", CultureInfo.InvariantCulture),
+                    family.CooldownDurationDays.ToString("R", CultureInfo.InvariantCulture),
                     family.ManualClosed ? "1" : "0");
                 csv.AppendLine();
             }
@@ -307,10 +345,48 @@ namespace RealTime.Pandemic
             csv.AppendLine();
         }
 
-        private static void AppendSeirdSeries(StringBuilder csv, IEnumerable<PandemicObservation> observations, DateTime gameStart)
+        private static void AppendSeirdSeries(
+            StringBuilder csv,
+            IEnumerable<PandemicObservation> observations,
+            ExperimentRecorderSnapshot scientific,
+            DateTime gameStart)
         {
             csv.AppendLine("[SEIRD TIME SERIES]");
-            csv.AppendLine("sim_time,pandemic_day,healthy,exposed,sick,recovered,dead,total,delta_sick,delta_dead");
+            csv.AppendLine("sim_time,pandemic_day,susceptible,exposed,infectious,post_infectious_ill,symptomatic,recovered,dead,total,new_exposures,healthy,sick,delta_sick,delta_dead");
+            if (scientific != null && scientific.StateTimeSeries.Count > 0)
+            {
+                int previousScientificSick = 0;
+                int previousScientificDead = 0;
+                foreach (PandemicStateTimePoint point in scientific.StateTimeSeries.OrderBy(item => item.SimulationTime))
+                {
+                    int sick = point.Infectious + point.PostInfectiousIll;
+                    csv.AppendFormat(
+                        CultureInfo.InvariantCulture,
+                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14}",
+                        point.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
+                        PandemicDay(gameStart, point.SimulationTime),
+                        point.Susceptible,
+                        point.Exposed,
+                        point.Infectious,
+                        point.PostInfectiousIll,
+                        point.Symptomatic,
+                        point.Recovered,
+                        point.Dead,
+                        point.TrackedPopulation,
+                        point.NewExposures,
+                        point.Susceptible,
+                        sick,
+                        sick - previousScientificSick,
+                        point.Dead - previousScientificDead);
+                    csv.AppendLine();
+                    previousScientificSick = sick;
+                    previousScientificDead = point.Dead;
+                }
+
+                csv.AppendLine();
+                return;
+            }
+
             int previousSick = 0;
             int previousDead = 0;
             foreach (PandemicObservation observation in observations)
@@ -321,15 +397,20 @@ namespace RealTime.Pandemic
                 int total = (int)(observation.HealthyCitizens + observation.ExposedCitizens + observation.SickCitizens + observation.RecoveredCitizens + observation.DeadCitizens);
                 csv.AppendFormat(
                     CultureInfo.InvariantCulture,
-                    "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}",
+                    "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14}",
                     observation.SimulationTime.ToString("o", CultureInfo.InvariantCulture),
                     PandemicDay(gameStart, observation.SimulationTime),
                     observation.HealthyCitizens,
                     exposed,
                     sick,
+                    0,
+                    sick,
                     observation.RecoveredCitizens,
                     dead,
                     total,
+                    0,
+                    observation.HealthyCitizens,
+                    sick,
                     sick - previousSick,
                     dead - previousDead);
                 csv.AppendLine();
@@ -383,7 +464,7 @@ namespace RealTime.Pandemic
         private static void AppendPeakStatistics(StringBuilder csv, IList<PandemicObservation> observations, DateTime gameStart)
         {
             csv.AppendLine("[PEAK STATISTICS]");
-            csv.AppendLine("peak_sick_count,peak_sick_day,final_exposed,final_sick,final_recovered,final_dead,total_tracked,attack_rate_pct,case_fatality_rate_pct");
+            csv.AppendLine("peak_sick_count,peak_sick_day,final_exposed,final_sick,final_recovered,final_dead,total_tracked,attack_rate_pct,resolved_case_fatality_ratio_pct");
             if (observations.Count > 0)
             {
                 PandemicObservation peak = observations.OrderByDescending(observation => observation.SickCitizens).First();
@@ -447,15 +528,72 @@ namespace RealTime.Pandemic
                 AppendSetting(csv, "PercentOfTestsForSick", config.PercentageOfTestsReservedForSickCitizens);
                 csv.AppendLine("MaximumTestDuration," + config.MaximumTestDuration);
                 csv.AppendLine("MinimumTestDuration," + config.MinimumTestDuration);
+                AppendExactSetting(csv, "TestSensitivityPercent", config.TestSensitivityPercent);
+                AppendExactSetting(csv, "TestSpecificityPercent", config.TestSpecificityPercent);
+                csv.AppendLine("QuarantineWhileAwaitingTestResult," + (config.QuarantineWhileAwaitingTestResult ? "1" : "0"));
+                csv.AppendLine("RetestIntervalDays," + config.RetestIntervalDays);
+                csv.AppendLine("EpidemicStepMinutes," + config.EpidemicStepMinutes);
+                csv.AppendLine("MaxContactsPerPersonPerStepSchool," + config.MaxContactsPerPersonPerStepSchool);
+                csv.AppendLine("MaxContactsPerPersonPerStepWorkplace," + config.MaxContactsPerPersonPerStepWorkplace);
+                csv.AppendLine("MaxContactsPerPersonPerStepCommercial," + config.MaxContactsPerPersonPerStepCommercial);
+                csv.AppendLine("MaxContactsPerPersonPerStepHealthcare," + config.MaxContactsPerPersonPerStepHealthcare);
+                csv.AppendLine("MaxContactsPerPersonPerStepTransit," + config.MaxContactsPerPersonPerStepTransit);
+                csv.AppendLine("MaxContactsPerPersonPerStepResidentialSharedArea," + config.MaxContactsPerPersonPerStepResidentialSharedArea);
+                AppendExactSetting(csv, "ResidentialSharedAreaTransmissionMultiplier", config.ResidentialSharedAreaTransmissionMultiplier);
+                AppendDistributionSettings(csv, "ExposedDuration", config.ExposedDurationDistributionType, config.ExposedDurationMeanDays, config.ExposedDurationStandardDeviationDays, config.ExposedDurationMinimumDays, config.ExposedDurationMaximumDays, config.ExposedDurationFixedDays);
+                AppendDistributionSettings(csv, "InfectiousStart", config.InfectiousStartDistributionType, config.InfectiousStartMeanDays, config.InfectiousStartStandardDeviationDays, config.InfectiousStartMinimumDays, config.InfectiousStartMaximumDays, config.InfectiousStartFixedDays);
+                AppendDistributionSettings(csv, "InfectiousEnd", config.InfectiousEndDistributionType, config.InfectiousEndMeanDays, config.InfectiousEndStandardDeviationDays, config.InfectiousEndMinimumDays, config.InfectiousEndMaximumDays, config.InfectiousEndFixedDays);
+                AppendDistributionSettings(csv, "SymptomStart", config.SymptomStartDistributionType, config.SymptomStartMeanDays, config.SymptomStartStandardDeviationDays, config.SymptomStartMinimumDays, config.SymptomStartMaximumDays, config.SymptomStartFixedDays);
+                AppendDistributionSettings(csv, "SymptomEnd", config.SymptomEndDistributionType, config.SymptomEndMeanDays, config.SymptomEndStandardDeviationDays, config.SymptomEndMinimumDays, config.SymptomEndMaximumDays, config.SymptomEndFixedDays);
+                AppendDistributionSettings(csv, "Recovery", config.RecoveryDistributionType, config.RecoveryMeanDays, config.RecoveryStandardDeviationDays, config.RecoveryMinimumDays, config.RecoveryMaximumDays, config.RecoveryFixedDays);
+                csv.AppendLine("InfectiousnessProfileType," + config.InfectiousnessProfileType);
+                AppendExactSetting(csv, "InfectiousnessProfileStartMultiplier", config.InfectiousnessProfileStartMultiplier);
+                AppendExactSetting(csv, "InfectiousnessProfilePeakTimeFraction", config.InfectiousnessProfilePeakTimeFraction);
+                AppendExactSetting(csv, "InfectiousnessProfilePeakMultiplier", config.InfectiousnessProfilePeakMultiplier);
+                AppendExactSetting(csv, "InfectiousnessProfileEndMultiplier", config.InfectiousnessProfileEndMultiplier);
+                csv.AppendLine("InitialSeedSamplingStrategy," + config.InitialSeedSamplingStrategy);
+                csv.AppendLine("InitialInfectionAgeMode," + config.InitialInfectionAgeMode);
+                AppendDistributionSettings(csv, "InitialInfectionAge", config.InitialInfectionAgeDistributionType, config.InitialInfectionAgeMeanDays, config.InitialInfectionAgeStandardDeviationDays, config.InitialInfectionAgeMinimumDays, config.InitialInfectionAgeMaximumDays, config.InitialInfectionAgeFixedDays);
+                AppendExactSetting(csv, "AsymptomaticMortalityMultiplier", config.AsymptomaticMortalityMultiplier);
+                AppendExactSetting(csv, "HealthcareWarningThresholdPercent", config.HealthcareWarningThresholdPercent);
+                AppendExactSetting(csv, "HealthcareCriticalThresholdPercent", config.HealthcareCriticalThresholdPercent);
+                AppendExactSetting(csv, "HealthcareWarningMortalityMultiplier", config.HealthcareWarningMortalityMultiplier);
+                AppendExactSetting(csv, "HealthcareCriticalMortalityMultiplier", config.HealthcareCriticalMortalityMultiplier);
                 csv.AppendLine("QuarantineBehavior," + config.QuarantineBehavior);
                 csv.AppendLine("OnlyTestedCitizensToQuarantine," + (config.OnlyTestedCitizensToQuarantine ? "1" : "0"));
                 csv.AppendLine("LockdownBehavior," + config.LockdownBehavior);
+                AppendLockdownSettings(csv, config);
                 csv.AppendLine("HubHighlightThreshold," + config.HubHighlightThreshold);
                 csv.AppendLine("SuperspreaderCitizenThreshold," + config.SuperspreaderCitizenThreshold);
                 csv.AppendLine("SuperspreaderLocationThreshold," + config.SuperspreaderLocationThreshold);
             }
 
             csv.AppendLine();
+        }
+
+        internal static string BuildSettingsSectionForTesting(RealTimeConfig config)
+        {
+            var csv = new StringBuilder();
+            AppendSettings(csv, config);
+            return csv.ToString();
+        }
+
+        private static void AppendDistributionSettings(
+            StringBuilder csv,
+            string prefix,
+            RealTime.Config.PandemicDistributionType type,
+            float mean,
+            float standardDeviation,
+            float minimum,
+            float maximum,
+            float fixedValue)
+        {
+            csv.AppendLine(prefix + "DistributionType," + type);
+            AppendExactSetting(csv, prefix + "MeanDays", mean);
+            AppendExactSetting(csv, prefix + "StandardDeviationDays", standardDeviation);
+            AppendExactSetting(csv, prefix + "MinimumDays", minimum);
+            AppendExactSetting(csv, prefix + "MaximumDays", maximum);
+            AppendExactSetting(csv, prefix + "FixedDays", fixedValue);
         }
 
         private static void AppendOriginSeries(StringBuilder csv, IEnumerable<PandemicObservation> observations, DateTime gameStart)
@@ -572,6 +710,62 @@ namespace RealTime.Pandemic
         private static void AppendSetting(StringBuilder csv, string name, float value)
         {
             csv.AppendFormat(CultureInfo.InvariantCulture, "{0},{1}" + Environment.NewLine, name, value.ToString("F2", CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendExactSetting(StringBuilder csv, string name, float value)
+        {
+            csv.AppendFormat(CultureInfo.InvariantCulture, "{0},{1}" + Environment.NewLine, name, value.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendLockdownSettings(StringBuilder csv, RealTimeConfig config)
+        {
+            csv.AppendLine("CloseEducationDuringLockdown," + (config.CloseEducationDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "CloseEducationThresholdPercent", config.CloseEducationThresholdPercent);
+            AppendExactSetting(csv, "ReopenEducationThresholdPercent", config.ReopenEducationThresholdPercent);
+            AppendExactSetting(csv, "MinimumEducationClosureDurationDays", config.MinimumEducationClosureDurationDays);
+            AppendExactSetting(csv, "EducationLockdownCooldownDurationDays", config.EducationLockdownCooldownDurationDays);
+
+            csv.AppendLine("ClosePublicTransportDuringLockdown," + (config.ClosePublicTransportDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "ClosePublicTransportThresholdPercent", config.ClosePublicTransportThresholdPercent);
+            AppendExactSetting(csv, "ReopenPublicTransportThresholdPercent", config.ReopenPublicTransportThresholdPercent);
+            AppendExactSetting(csv, "MinimumPublicTransportClosureDurationDays", config.MinimumPublicTransportClosureDurationDays);
+            AppendExactSetting(csv, "PublicTransportLockdownCooldownDurationDays", config.PublicTransportLockdownCooldownDurationDays);
+
+            csv.AppendLine("CloseCommercialDuringLockdown," + (config.CloseCommercialDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "CloseCommercialThresholdPercent", config.CloseCommercialThresholdPercent);
+            AppendExactSetting(csv, "ReopenCommercialThresholdPercent", config.ReopenCommercialThresholdPercent);
+            AppendExactSetting(csv, "MinimumCommercialClosureDurationDays", config.MinimumCommercialClosureDurationDays);
+            AppendExactSetting(csv, "CommercialLockdownCooldownDurationDays", config.CommercialLockdownCooldownDurationDays);
+
+            csv.AppendLine("CloseLeisureTourismParksDuringLockdown," + (config.CloseLeisureTourismParksDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "CloseLeisureTourismParksThresholdPercent", config.CloseLeisureTourismParksThresholdPercent);
+            AppendExactSetting(csv, "ReopenLeisureTourismParksThresholdPercent", config.ReopenLeisureTourismParksThresholdPercent);
+            AppendExactSetting(csv, "MinimumLeisureTourismParksClosureDurationDays", config.MinimumLeisureTourismParksClosureDurationDays);
+            AppendExactSetting(csv, "LeisureTourismParksLockdownCooldownDurationDays", config.LeisureTourismParksLockdownCooldownDurationDays);
+
+            csv.AppendLine("CloseOfficeDuringLockdown," + (config.CloseOfficeDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "CloseOfficeThresholdPercent", config.CloseOfficeThresholdPercent);
+            AppendExactSetting(csv, "ReopenOfficeThresholdPercent", config.ReopenOfficeThresholdPercent);
+            AppendExactSetting(csv, "MinimumOfficeClosureDurationDays", config.MinimumOfficeClosureDurationDays);
+            AppendExactSetting(csv, "OfficeLockdownCooldownDurationDays", config.OfficeLockdownCooldownDurationDays);
+
+            csv.AppendLine("CloseIndustryDuringLockdown," + (config.CloseIndustryDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "CloseIndustryThresholdPercent", config.CloseIndustryThresholdPercent);
+            AppendExactSetting(csv, "ReopenIndustryThresholdPercent", config.ReopenIndustryThresholdPercent);
+            AppendExactSetting(csv, "MinimumIndustryClosureDurationDays", config.MinimumIndustryClosureDurationDays);
+            AppendExactSetting(csv, "IndustryLockdownCooldownDurationDays", config.IndustryLockdownCooldownDurationDays);
+
+            csv.AppendLine("CloseGovernmentOtherPublicDuringLockdown," + (config.CloseGovernmentOtherPublicDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "CloseGovernmentOtherPublicThresholdPercent", config.CloseGovernmentOtherPublicThresholdPercent);
+            AppendExactSetting(csv, "ReopenGovernmentOtherPublicThresholdPercent", config.ReopenGovernmentOtherPublicThresholdPercent);
+            AppendExactSetting(csv, "MinimumGovernmentOtherPublicClosureDurationDays", config.MinimumGovernmentOtherPublicClosureDurationDays);
+            AppendExactSetting(csv, "GovernmentOtherPublicLockdownCooldownDurationDays", config.GovernmentOtherPublicLockdownCooldownDurationDays);
+
+            csv.AppendLine("CloseEssentialServicesDuringLockdown," + (config.CloseEssentialServicesDuringLockdown ? "1" : "0"));
+            AppendExactSetting(csv, "CloseEssentialServicesThresholdPercent", config.CloseEssentialServicesThresholdPercent);
+            AppendExactSetting(csv, "ReopenEssentialServicesThresholdPercent", config.ReopenEssentialServicesThresholdPercent);
+            AppendExactSetting(csv, "MinimumEssentialServicesClosureDurationDays", config.MinimumEssentialServicesClosureDurationDays);
+            AppendExactSetting(csv, "EssentialServicesLockdownCooldownDurationDays", config.EssentialServicesLockdownCooldownDurationDays);
         }
 
         private static string CsvEscape(string value)

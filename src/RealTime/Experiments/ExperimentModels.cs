@@ -11,7 +11,7 @@ namespace RealTime.Experiments
     public static class ExperimentSchema
     {
         /// <summary>The schema version understood by this build.</summary>
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 4;
     }
 
     /// <summary>Defines how seeds are assigned to repeated runs.</summary>
@@ -167,6 +167,7 @@ namespace RealTime.Experiments
             SchemaVersion = ExperimentSchema.CurrentVersion;
             Scenarios = new List<ExperimentScenario>();
             ReturnToBaseline = true;
+            StopBatchOnRunFailure = true;
             OutputLocation = new ExperimentOutputRootSelection();
             ModelProvenance = new ExperimentModelProvenance();
         }
@@ -185,6 +186,10 @@ namespace RealTime.Experiments
 
         public string GameVersion { get; set; }
 
+        public string GitCommitSha { get; set; }
+
+        public string GitBranchOrTag { get; set; }
+
         public ExperimentModelProvenance ModelProvenance { get; set; }
 
         public BaselineSaveIdentity Baseline { get; set; }
@@ -201,7 +206,16 @@ namespace RealTime.Experiments
 
         public ExperimentSpeedMode SpeedMode { get; set; }
 
+        /// <summary>
+        /// Gets or sets whether repetition N in every scenario uses the same master seed. The
+        /// sequence starts at the first scenario's FirstSeed and advances by repetition index.
+        /// </summary>
+        public bool PairedSeedMode { get; set; }
+
         public bool ReturnToBaseline { get; set; }
+
+        /// <summary>Stops at the reloaded baseline after archiving an invalid run; otherwise continues with the next run.</summary>
+        public bool StopBatchOnRunFailure { get; set; }
 
         public string OutputRoot { get; set; }
 
@@ -235,40 +249,30 @@ namespace RealTime.Experiments
         {
             SchemaVersion = ExperimentSchema.CurrentVersion;
             RandomAlgorithm = "TENUS-RNG-v1/FNV-1a-32";
-            DiseaseUpdateIntervalMinutes = 5;
+            TraitAssignmentAlgorithm = DeterministicCitizenTraitAssigner.AlgorithmName;
+            ConfigurationHashAlgorithm = ExperimentConfigurationHasher.AlgorithmName;
+            RandomStreamCount = 9;
+            DiseaseProgressionModel = "TENUS-DISEASE-v2/configured-distributions";
+            TransmissionModel = "TENUS-TRANSMISSION-v2/competing-hazards";
+            EpidemicStepPolicy = "scenario-configured simulation minutes";
             CitizenReconciliationIntervalMinutes = 360;
             ObservationStoreIntervalMinutes = 5;
             ResidentialSharedAreaWindowMinutes = 15;
             QuarantineDurationDays = 10;
-            QuarantineFateDays = 14;
-            TestRepeatWindowDays = 7;
-            FalsePositiveRate = 0d;
-            FalseNegativeRate = 0d;
-            BlockTestedCitizensWhileAwaitingResult = true;
-            HealthcareWarningThresholdPercent = 75d;
-            HealthcareCriticalThresholdPercent = 90d;
-            HealthcareWarningMortalityMultiplier = 1.35d;
-            HealthcareCriticalMortalityMultiplier = 2d;
-            AsymptomaticMortalityMultiplier = 0.10d;
         }
 
         public int SchemaVersion { get; set; }
         public string RandomAlgorithm { get; set; }
-        public int DiseaseUpdateIntervalMinutes { get; set; }
+        public string TraitAssignmentAlgorithm { get; set; }
+        public string ConfigurationHashAlgorithm { get; set; }
+        public int RandomStreamCount { get; set; }
+        public string DiseaseProgressionModel { get; set; }
+        public string TransmissionModel { get; set; }
+        public string EpidemicStepPolicy { get; set; }
         public int CitizenReconciliationIntervalMinutes { get; set; }
         public int ObservationStoreIntervalMinutes { get; set; }
         public int ResidentialSharedAreaWindowMinutes { get; set; }
         public int QuarantineDurationDays { get; set; }
-        public int QuarantineFateDays { get; set; }
-        public int TestRepeatWindowDays { get; set; }
-        public double FalsePositiveRate { get; set; }
-        public double FalseNegativeRate { get; set; }
-        public bool BlockTestedCitizensWhileAwaitingResult { get; set; }
-        public double HealthcareWarningThresholdPercent { get; set; }
-        public double HealthcareCriticalThresholdPercent { get; set; }
-        public double HealthcareWarningMortalityMultiplier { get; set; }
-        public double HealthcareCriticalMortalityMultiplier { get; set; }
-        public double AsymptomaticMortalityMultiplier { get; set; }
     }
 
     /// <summary>A scenario and its repetition policy.</summary>
@@ -312,6 +316,7 @@ namespace RealTime.Experiments
             SchemaVersion = ExperimentSchema.CurrentVersion;
             State = ExperimentBatchExecutionState.Idle;
             CompletedRuns = new List<ExperimentCompletedRun>();
+            InvalidRuns = new List<ExperimentInvalidRun>();
         }
 
         public int SchemaVersion { get; set; }
@@ -325,6 +330,8 @@ namespace RealTime.Experiments
         public int RunIndex { get; set; }
 
         public int CurrentMasterSeed { get; set; }
+
+        public int CurrentPairId { get; set; }
 
         public string CurrentRunId { get; set; }
 
@@ -356,7 +363,12 @@ namespace RealTime.Experiments
 
         public string CommitId { get; set; }
 
+        /// <summary>Persists a requested halt while the controller reloads the exact baseline after an invalid run.</summary>
+        public bool HaltAfterInvalidRunBaselineReload { get; set; }
+
         public List<ExperimentCompletedRun> CompletedRuns { get; set; }
+
+        public List<ExperimentInvalidRun> InvalidRuns { get; set; }
     }
 
     /// <summary>Structured, durable error information suitable for recovery UI.</summary>
@@ -386,9 +398,35 @@ namespace RealTime.Experiments
 
         public int MasterSeed { get; set; }
 
+        public int PairId { get; set; }
+
         public string CompletedUtc { get; set; }
 
         public string OutputDirectory { get; set; }
+    }
+
+    /// <summary>Durable receipt for an archived run excluded from successful aggregation.</summary>
+    public sealed class ExperimentInvalidRun
+    {
+        public string RunId { get; set; }
+
+        public string AttemptId { get; set; }
+
+        public string ScenarioId { get; set; }
+
+        public int ScenarioIndex { get; set; }
+
+        public int RunIndex { get; set; }
+
+        public int MasterSeed { get; set; }
+
+        public int PairId { get; set; }
+
+        public string InvalidatedUtc { get; set; }
+
+        public string OutputDirectory { get; set; }
+
+        public ExperimentErrorInfo Error { get; set; }
     }
 
     /// <summary>Resolved immutable identity of the run currently selected by the sequencer.</summary>
@@ -403,6 +441,9 @@ namespace RealTime.Experiments
         public ExperimentScenario Scenario { get; set; }
 
         public int MasterSeed { get; set; }
+
+        /// <summary>One-based paired repetition identifier, or zero outside paired mode.</summary>
+        public int PairId { get; set; }
 
         public ExperimentSeedSet Seeds { get; set; }
     }

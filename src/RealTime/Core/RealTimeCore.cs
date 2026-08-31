@@ -340,6 +340,7 @@ namespace RealTime.Core
             ParkPatch.SpareTimeBehavior = null;
             OutsideConnectionAIPatch.SpareTimeBehavior = null;
             CitizenManagerPatch.NewCitizenBehavior = null;
+            CitizenManagerPatch.CitizenReleased = null;
 
             vanillaEvents.Revert();
 
@@ -428,6 +429,7 @@ namespace RealTime.Core
             AddPatchIfAvailable(patches, UIGraphPatch.VisibleEndTime, nameof(UIGraphPatch.VisibleEndTime));
             AddPatchIfAvailable(patches, UIGraphPatch.BuildLabels, nameof(UIGraphPatch.BuildLabels));
             AddPatchIfAvailable(patches, WeatherManagerPatch.SimulationStepImpl, nameof(WeatherManagerPatch.SimulationStepImpl));
+            AddPatchIfAvailable(patches, CitizenManagerPatch.ReleaseCitizenPatch, nameof(CitizenManagerPatch.ReleaseCitizenPatch));
             AddPatchIfAvailable(patches, ParkPatch.DistrictParkSimulation, nameof(ParkPatch.DistrictParkSimulation));
             AddPatchIfAvailable(patches, OutsideConnectionAIPatch.DummyTrafficProbability, nameof(OutsideConnectionAIPatch.DummyTrafficProbability));
             AddPatchIfAvailable(patches, PublicTransportAIPatch.DepotCreateVehicle, nameof(PublicTransportAIPatch.DepotCreateVehicle));

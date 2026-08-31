@@ -130,6 +130,13 @@ namespace RealTime.Pandemic
 
         public int InfectedCount { get; set; }
 
+        public int PopulationCount { get; set; }
+
+        public float ShareOfInfectionsPercent { get; set; }
+
+        public float InfectionPrevalenceWithinAgeGroupPercent { get; set; }
+
+        /// <summary>Legacy alias for <see cref="ShareOfInfectionsPercent"/>.</summary>
         public float InfectedPercent { get; set; }
     }
 
@@ -198,6 +205,14 @@ namespace RealTime.Pandemic
         public bool ManualClosed { get; set; }
 
         public float AutoCloseThresholdPercent { get; set; }
+
+        public float AutoReopenThresholdPercent { get; set; }
+
+        public float MinimumClosureDurationDays { get; set; }
+
+        public float CooldownDurationDays { get; set; }
+
+        public string ThresholdMetric { get; set; }
 
         public float CurrentInfectedPercent { get; set; }
     }

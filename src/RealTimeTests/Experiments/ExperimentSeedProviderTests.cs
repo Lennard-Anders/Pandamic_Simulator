@@ -16,10 +16,31 @@ namespace RealTimeTests.Experiments
             ExperimentSeedSet seeds = new FnvExperimentSeedProvider().DeriveSeeds(42);
 
             Assert.That(seeds.Master, Is.EqualTo(42));
+            Assert.That(seeds.InitialPopulation, Is.EqualTo(298721136));
+            Assert.That(seeds.DiseaseProgression, Is.EqualTo(2085446224));
+            Assert.That(seeds.Transmission, Is.EqualTo(797134664));
+            Assert.That(seeds.Symptom, Is.EqualTo(1375536039));
+            Assert.That(seeds.Mortality, Is.EqualTo(1859217673));
             Assert.That(seeds.Pandemic, Is.EqualTo(1915926915));
             Assert.That(seeds.Mask, Is.EqualTo(1429821284));
+            Assert.That(seeds.Testing, Is.EqualTo(525376056));
+            Assert.That(seeds.ContactTracing, Is.EqualTo(1553439791));
+            Assert.That(seeds.Intervention, Is.EqualTo(1678075125));
             Assert.That(seeds.Contact, Is.EqualTo(687098664));
             Assert.That(seeds.Test, Is.EqualTo(1090736272));
+
+            Assert.That(new[]
+            {
+                seeds.InitialPopulation,
+                seeds.DiseaseProgression,
+                seeds.Transmission,
+                seeds.Symptom,
+                seeds.Mortality,
+                seeds.Mask,
+                seeds.Testing,
+                seeds.ContactTracing,
+                seeds.Intervention,
+            }, Is.Unique);
         }
 
         [Test]

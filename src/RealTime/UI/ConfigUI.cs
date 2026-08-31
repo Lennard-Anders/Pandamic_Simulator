@@ -233,6 +233,7 @@ namespace RealTime.UI
                 case "Symptoms":
                 case "PandemicMonitor":
                 case "PandemicLockdown":
+                case "ScientificModel":
                     return true;
 
                 default:
