@@ -162,6 +162,7 @@ namespace RealTimeTests.Pandemic
             Assert.That(csv, Does.Contain("InfectiousnessProfileType,Flat"));
             Assert.That(csv, Does.Contain("InitialSeedSamplingStrategy,UniformPopulation"));
             Assert.That(csv, Does.Contain("InitialInfectionAgeMode,FixedInitialInfectionAge"));
+            Assert.That(csv, Does.Contain("StrictPopulationIntegrity,0"));
             Assert.That(csv, Does.Contain("AsymptomaticMortalityMultiplier,"));
             Assert.That(csv, Does.Contain("HealthcareCriticalMortalityMultiplier,"));
         }

@@ -533,6 +533,7 @@ namespace RealTime.Pandemic
                 csv.AppendLine("QuarantineWhileAwaitingTestResult," + (config.QuarantineWhileAwaitingTestResult ? "1" : "0"));
                 csv.AppendLine("RetestIntervalDays," + config.RetestIntervalDays);
                 csv.AppendLine("EpidemicStepMinutes," + config.EpidemicStepMinutes);
+                csv.AppendLine("StrictPopulationIntegrity," + (config.StrictPopulationIntegrity ? "1" : "0"));
                 csv.AppendLine("MaxContactsPerPersonPerStepSchool," + config.MaxContactsPerPersonPerStepSchool);
                 csv.AppendLine("MaxContactsPerPersonPerStepWorkplace," + config.MaxContactsPerPersonPerStepWorkplace);
                 csv.AppendLine("MaxContactsPerPersonPerStepCommercial," + config.MaxContactsPerPersonPerStepCommercial);

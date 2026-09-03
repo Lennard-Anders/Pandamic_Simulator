@@ -17,7 +17,7 @@ namespace RealTime.Config
         /// <summary>The storage ID for the configuration objects.</summary>
         public const string StorageId = "PandemicConfiguration";
 
-        private const int LatestVersion = 12;
+        private const int LatestVersion = 13;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeConfig"/> class.</summary>
         public RealTimeConfig()
@@ -308,6 +308,14 @@ namespace RealTime.Config
         [ConfigItem("Pandemic", "Testing", 8)]
         [ConfigItemSlider(1, 60, 1, ValueType = SliderValueType.Default)]
         public uint EpidemicStepMinutes { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether an unexpected resident or immigrant removal
+        /// invalidates a scientific batch run. Expected tourist and commuter departures are never fatal.
+        /// </summary>
+        [ConfigItem("ScientificModel", "PopulationLifecycle", 0)]
+        [ConfigItemCheckBox]
+        public bool StrictPopulationIntegrity { get; set; }
 
         /// <summary>Gets or sets the per-step school contact cap used for deterministic sampling.</summary>
         [ConfigItem("Pandemic", "ContactModel", 0)]
@@ -1187,6 +1195,13 @@ namespace RealTime.Config
                 SetScientificDefaultsFromLegacy();
             }
 
+            if (Version < 13)
+            {
+                // Population turnover was previously treated as strict in every scientific batch.
+                // Keep normal city turnover usable unless strict invalidation is explicitly selected.
+                StrictPopulationIntegrity = false;
+            }
+
             Version = LatestVersion;
         }
 
@@ -1445,6 +1460,7 @@ namespace RealTime.Config
             QuarantineWhileAwaitingTestResult = true;
             RetestIntervalDays = 7;
             EpidemicStepMinutes = 5;
+            StrictPopulationIntegrity = false;
             MaxContactsPerPersonPerStepSchool = 10;
             MaxContactsPerPersonPerStepWorkplace = 10;
             MaxContactsPerPersonPerStepCommercial = 10;

@@ -112,6 +112,8 @@ namespace RealTime.Experiments
 
         public uint EpidemicStepMinutes { get; set; }
 
+        public bool StrictPopulationIntegrity { get; set; }
+
         public uint MaxContactsPerPersonPerStepSchool { get; set; }
 
         public uint MaxContactsPerPersonPerStepWorkplace { get; set; }

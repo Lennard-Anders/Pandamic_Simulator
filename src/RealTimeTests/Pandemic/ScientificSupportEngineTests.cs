@@ -137,6 +137,14 @@ namespace RealTimeTests.Pandemic
             Assert.That(engine.ClassifyCurrent(false, false, false, true), Is.EqualTo(PandemicPopulationCategory.Resident));
             Assert.That(engine.ClassifyRemoval(PandemicPopulationCategory.Resident), Is.EqualTo(PandemicPopulationCategory.Emigrant));
             Assert.That(engine.ClassifyRemoval(PandemicPopulationCategory.Tourist), Is.EqualTo(PandemicPopulationCategory.Tourist));
+            Assert.That(engine.IsExpectedTransientDeparture(PandemicPopulationCategory.Tourist), Is.True);
+            Assert.That(engine.IsExpectedTransientDeparture(PandemicPopulationCategory.Commuter), Is.True);
+            Assert.That(engine.IsExpectedTransientDeparture(PandemicPopulationCategory.Resident), Is.False);
+            Assert.That(engine.IsExpectedTransientDeparture(PandemicPopulationCategory.Immigrant), Is.False);
+            Assert.That(engine.ClassifyDeparture(PandemicPopulationCategory.Tourist, true), Is.EqualTo(PandemicPopulationDepartureKind.ExpectedTransient));
+            Assert.That(engine.ClassifyDeparture(PandemicPopulationCategory.Commuter, true), Is.EqualTo(PandemicPopulationDepartureKind.ExpectedTransient));
+            Assert.That(engine.ClassifyDeparture(PandemicPopulationCategory.Resident, true), Is.EqualTo(PandemicPopulationDepartureKind.ExpectedEmigration));
+            Assert.That(engine.ClassifyDeparture(PandemicPopulationCategory.Resident, false), Is.EqualTo(PandemicPopulationDepartureKind.UnexpectedDrift));
         }
     }
 }

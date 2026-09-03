@@ -4989,16 +4989,21 @@ namespace RealTime.Pandemic
                 : PandemicPopulationCategory.Resident;
             bool expectedDeadRelease = diseaseStateEngine.GetState(logicalCitizenId, currentDateTime)
                 == DiseaseState.Dead;
+            PandemicPopulationDepartureKind departureKind = populationLifecycleEngine.ClassifyDeparture(
+                previousCategory,
+                string.Equals(reason, "CitizenReleased", StringComparison.Ordinal));
             experimentRecorder.RecordPopulation(new PandemicPopulationEvent
             {
                 SimulationTime = currentDateTime,
                 CitizenId = logicalCitizenId,
-                Action = "Removed",
+                Action = expectedDeadRelease ? "Detached" : "Removed",
                 PopulationCategory = expectedDeadRelease
                     ? previousCategory.ToString()
                     : populationLifecycleEngine.ClassifyRemoval(previousCategory).ToString(),
                 Count = 1,
-                Reason = expectedDeadRelease ? "DeceasedCitizenReleased" : reason,
+                Reason = expectedDeadRelease
+                    ? "DeceasedCitizenReleased"
+                    : GetPopulationDepartureReason(previousCategory, departureKind, reason),
             });
 
             usedCitizens.Remove(realCitizenId);
@@ -5012,18 +5017,36 @@ namespace RealTime.Pandemic
             }
 
             RemoveTrackedCitizen(logicalCitizenId);
-            if (runContext?.IsBatch != true)
+            if (runContext?.IsBatch != true
+                || !Config.StrictPopulationIntegrity
+                || departureKind != PandemicPopulationDepartureKind.UnexpectedDrift)
             {
                 return true;
             }
 
             runIntegrityMonitor.Fail(
                 "PopulationIntegrityViolation",
-                "A tracked citizen disappeared during strict scientific batch execution.",
+                "An unexpected " + previousCategory + " citizen departure occurred during strict scientific batch execution.",
                 currentDateTime,
                 null);
             active = false;
             return false;
+        }
+
+        private static string GetPopulationDepartureReason(
+            PandemicPopulationCategory previousCategory,
+            PandemicPopulationDepartureKind departureKind,
+            string fallbackReason)
+        {
+            switch (departureKind)
+            {
+                case PandemicPopulationDepartureKind.ExpectedTransient:
+                    return previousCategory + "Departed";
+                case PandemicPopulationDepartureKind.ExpectedEmigration:
+                    return "EmigrantDeparted";
+                default:
+                    return fallbackReason;
+            }
         }
 
         private uint AllocateLogicalCitizenId()
