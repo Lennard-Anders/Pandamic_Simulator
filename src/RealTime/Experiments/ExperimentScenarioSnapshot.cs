@@ -114,6 +114,11 @@ namespace RealTime.Experiments
 
         public bool StrictPopulationIntegrity { get; set; }
 
+        public RealTime.Pandemic.PolicyTriggerMetric AutomaticPolicyTriggerMetric { get; set; }
+        public float MaskCompliancePercent { get; set; } = 100f;
+        public float IsolationCompliancePercent { get; set; } = 100f;
+        public float QuarantineCompliancePercent { get; set; } = 100f;
+
         public uint MaxContactsPerPersonPerStepSchool { get; set; }
 
         public uint MaxContactsPerPersonPerStepWorkplace { get; set; }

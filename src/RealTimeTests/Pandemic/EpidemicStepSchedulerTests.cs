@@ -10,6 +10,14 @@ namespace RealTimeTests.Pandemic
         private static readonly DateTime Start = new DateTime(2030, 1, 1);
 
         [Test]
+        public void BackwardGameClockIsStillAnIntegrityFailure()
+        {
+            var decision = EpidemicStepScheduler.Evaluate(Start.AddHours(6), Start.AddHours(6).AddSeconds(-1), 5, true);
+            Assert.That(decision.Kind, Is.EqualTo(EpidemicStepDecisionKind.IntegrityViolation));
+            Assert.That(decision.ErrorCode, Is.EqualTo("SimulationTimeMovedBackwards"));
+        }
+
+        [Test]
         public void StepIsDueAtExactConfiguredBoundary()
         {
             EpidemicStepDecision decision = EpidemicStepScheduler.Evaluate(Start, Start.AddMinutes(5), 5, true);

@@ -22,6 +22,12 @@ namespace RealTime.Pandemic
 
         internal TestingEngine Engine => engine;
 
+        internal void UpdatePolicy(RealTimeConfig source, int population, DateTime activationTime)
+        {
+            config = source;
+            engine.UpdatePolicy(CreatePolicy(source, population), activationTime);
+        }
+
         internal void Reset()
         {
             engine = null;

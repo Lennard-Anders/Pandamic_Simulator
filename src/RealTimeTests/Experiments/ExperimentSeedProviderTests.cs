@@ -52,7 +52,7 @@ namespace RealTimeTests.Experiments
         [Test]
         public void SequentialMasterSeedsAdvanceByRunIndex()
         {
-            ExperimentScenario scenario = new ExperimentScenario { FirstSeed = 7, RunCount = 3 };
+            ExperimentScenario scenario = new ExperimentScenario { FirstSeed = 7, RunCount = 3, SeedStrategy = ExperimentSeedStrategy.Sequential };
             FnvExperimentSeedProvider provider = new FnvExperimentSeedProvider();
 
             Assert.That(provider.GetMasterSeed(scenario, 0), Is.EqualTo(7));
@@ -66,7 +66,14 @@ namespace RealTimeTests.Experiments
 
             Assert.That(scenario.DurationDays, Is.EqualTo(30d));
             Assert.That(scenario.EndMode, Is.EqualTo(ExperimentEndMode.FixedDuration));
-            Assert.That(scenario.SeedStrategy, Is.EqualTo(ExperimentSeedStrategy.Sequential));
+            Assert.That(scenario.SeedStrategy, Is.EqualTo(ExperimentSeedStrategy.Fixed));
+            Assert.That(scenario.RunCount, Is.EqualTo(2));
+            var plan = new ExperimentBatchPlan { Scenarios = { scenario } };
+            Assert.That(plan.SpeedMode, Is.EqualTo(ExperimentSpeedMode.Speed3));
+            Assert.That(plan.PairedSeedMode, Is.False);
+            var provider = new FnvExperimentSeedProvider();
+            Assert.That(provider.GetMasterSeed(scenario, 0), Is.EqualTo(1));
+            Assert.That(provider.GetMasterSeed(scenario, 1), Is.EqualTo(1));
             Assert.That(scenario.FirstSeed, Is.EqualTo(1));
         }
     }

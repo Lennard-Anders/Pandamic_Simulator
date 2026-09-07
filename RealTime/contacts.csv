@@ -1,7 +1,0 @@
-citizen_id;contact_id;last_contact_time_ms
-
-#tracked_citizens;0
-#tracked_pairs;0
-#total_recorded_contacts;0
-#recorded_building_contacts;0
-#recorded_non_building_contacts;0

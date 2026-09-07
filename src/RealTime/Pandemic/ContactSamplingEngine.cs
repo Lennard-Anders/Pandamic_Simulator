@@ -7,9 +7,10 @@ namespace RealTime.Pandemic
     using System;
     using System.Collections.Generic;
     using System.Globalization;
+    using System.Text;
     using RealTime.Experiments;
 
-    internal sealed class ContactPair
+    internal struct ContactPair
     {
         public uint CitizenA { get; set; }
 
@@ -22,7 +23,16 @@ namespace RealTime.Pandemic
     /// </summary>
     internal sealed class ContactSamplingEngine
     {
-        public IList<ContactPair> SampleBounded(
+        private readonly HashSet<uint> unique = new HashSet<uint>();
+        private readonly List<ParticipantOrder> order = new List<ParticipantOrder>();
+        private readonly List<uint> rotation = new List<uint>();
+
+        public IList<ContactPair> SampleBounded(IEnumerable<uint> citizenIds, int maximumContactsPerPerson, int samplingSeed, long simulationStepKey, int contextKey)
+        {
+            using (PandemicProfiler.Measure("ContactSamplingEngine")) return SampleBoundedCore(citizenIds, maximumContactsPerPerson, samplingSeed, simulationStepKey, contextKey);
+        }
+
+        private IList<ContactPair> SampleBoundedCore(
             IEnumerable<uint> citizenIds,
             int maximumContactsPerPerson,
             int samplingSeed,
@@ -44,7 +54,7 @@ namespace RealTime.Pandemic
                 throw new ArgumentOutOfRangeException(nameof(samplingSeed));
             }
 
-            var unique = new Dictionary<uint, bool>();
+            unique.Clear();
             foreach (uint citizenId in citizenIds)
             {
                 if (citizenId == 0u)
@@ -52,7 +62,7 @@ namespace RealTime.Pandemic
                     throw new ArgumentException("Contact participants must have nonzero IDs.", nameof(citizenIds));
                 }
 
-                unique[citizenId] = true;
+                unique.Add(citizenId);
             }
 
             if (unique.Count < 2)
@@ -65,10 +75,9 @@ namespace RealTime.Pandemic
                 "contact-sampling:{0}:{1}",
                 simulationStepKey,
                 contextKey);
-            var order = new List<ParticipantOrder>(unique.Count);
-            var orderedCitizenIds = new List<uint>(unique.Keys);
-            orderedCitizenIds.Sort();
-            foreach (uint citizenId in orderedCitizenIds)
+            byte[] feature = Encoding.ASCII.GetBytes(featureNamespace);
+            order.Clear();
+            foreach (uint citizenId in unique)
             {
                 order.Add(new ParticipantOrder
                 {
@@ -76,12 +85,12 @@ namespace RealTime.Pandemic
                     Score = DeterministicCitizenTraitAssigner.GetUnitInterval(
                         samplingSeed,
                         citizenId,
-                        featureNamespace),
+                        feature),
                 });
             }
 
             order.Sort(CompareParticipants);
-            var rotation = new List<uint>(order.Count + 1);
+            rotation.Clear();
             for (int i = 0; i < order.Count; ++i)
             {
                 rotation.Add(order[i].CitizenId);
@@ -168,7 +177,7 @@ namespace RealTime.Pandemic
             values[1] = last;
         }
 
-        private sealed class ParticipantOrder
+        private struct ParticipantOrder
         {
             public uint CitizenId { get; set; }
 

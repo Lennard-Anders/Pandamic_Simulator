@@ -14,6 +14,32 @@ namespace RealTimeTests.Experiments
     public sealed class ExperimentRunCommitServiceTests
     {
         [Test]
+        public void InvalidArchiveDoesNotPreventNextScenarioCommitOrSummaryRecovery()
+        {
+            string root = CreateTemporaryDirectory();
+            try
+            {
+                var service = CreateService();
+                var invalid = CreateRequest(root, 0, 0, "failed-run", "Batch A", "Baseline");
+                string archive = invalid.FinalDirectory + ".__invalid_attempt";
+                Directory.CreateDirectory(archive);
+                string manifestPath = Path.Combine(archive, ExperimentRunCommitService.RunManifestFileName);
+                const string diagnostic = "{\"Status\":\"Invalid\",\"RunId\":\"failed-run\"}";
+                File.WriteAllText(manifestPath, diagnostic);
+                var next = CreateRequest(root, 1, 0, "valid-run", "Batch A", "Next scenario");
+                var committed = service.Commit(next);
+                Assert.That(committed.Success, Is.True, committed.Error);
+                var summary = service.RebuildBatchSummary(next.BatchDirectory);
+                Assert.That(summary.Success, Is.True, summary.Error);
+                Assert.That(summary.Rows.Count, Is.EqualTo(1));
+                Assert.That(File.ReadAllText(manifestPath), Is.EqualTo(diagnostic));
+                // Corrupt manifests in actual final directories must still fail closed.
+                File.WriteAllText(Path.Combine(next.FinalDirectory, ExperimentRunCommitService.RunManifestFileName), diagnostic);
+                Assert.That(service.RebuildBatchSummary(next.BatchDirectory).Success, Is.False);
+            }
+            finally { DeleteTemporaryDirectory(root); }
+        }
+        [Test]
         public void CommitVerifiesWritesManifestMovesDirectoryAndBuildsSummary()
         {
             string root = CreateTemporaryDirectory();
@@ -81,6 +107,51 @@ namespace RealTimeTests.Experiments
         }
 
         [Test]
+        public void ExperimentLibraryLoadsVerifiedRunsAndRejectsChangedScientificFiles()
+        {
+            string root = CreateTemporaryDirectory();
+            try
+            {
+                var service = CreateService();
+                var request = CreateRequest(root, 0, 0, "library-run", "Batch", "Scenario");
+                File.WriteAllText(Path.Combine(request.AttemptDirectory, "run_summary.csv"), "cumulative_infections,deaths_total\n140,5\n");
+                File.WriteAllText(Path.Combine(request.AttemptDirectory, "state_timeseries.csv"), "simulation_time,susceptible,exposed,infectious,post_infectious_ill,recovered,dead,tracked_population\n2030-01-01T00:00:00,860,20,15,0,100,5,1000\n");
+                Assert.That(service.Commit(request).Success, Is.True);
+                Assert.That(File.Exists(Path.Combine(request.BatchDirectory, "batch_quality_report.txt")), Is.True);
+                var library = ExperimentResultsAnalysis.Scan(new[] { root, root });
+                Assert.That(library.Runs.Count, Is.EqualTo(1));
+                Assert.That(library.Runs[0].Metrics["peak_prevalence_pct"], Is.EqualTo(3.5));
+                Assert.That(library.Runs[0].Metrics.ContainsKey("closure_family_days"), Is.False);
+                File.AppendAllText(Path.Combine(request.FinalDirectory, "run_summary.csv"), "broken");
+                library = ExperimentResultsAnalysis.Scan(new[] { root });
+                Assert.That(library.Runs, Is.Empty);
+                Assert.That(library.Excluded, Is.EqualTo(1));
+            }
+            finally { DeleteTemporaryDirectory(root); }
+        }
+
+        [Test]
+        public void ClosureBurdenStopsAtScientificEndpointEvenWhenLegacyManifestEndsLater()
+        {
+            string root = CreateTemporaryDirectory();
+            try
+            {
+                var service = CreateService();
+                var request = CreateRequest(root, 0, 0, "closure-run", "Batch", "Scenario");
+                File.WriteAllText(Path.Combine(request.AttemptDirectory, "run_summary.csv"), "cumulative_infections,deaths_total\n140,5\n");
+                File.WriteAllText(Path.Combine(request.AttemptDirectory, "state_timeseries.csv"),
+                    "simulation_time,susceptible,exposed,infectious,post_infectious_ill,recovered,dead,tracked_population\n2026-09-17T00:00:00,860,20,15,0,100,5,1000\n");
+                File.WriteAllText(Path.Combine(request.AttemptDirectory, "intervention_events.csv"),
+                    "simulation_time,reason,context,action\n2026-09-16T00:00:00,EffectiveFamilyState,Schools,Close\n");
+                Assert.That(service.Commit(request).Success, Is.True);
+                var library = ExperimentResultsAnalysis.Scan(new[] { root });
+                Assert.That(library.Runs.Count, Is.EqualTo(1));
+                Assert.That(library.Runs[0].Metrics["closure_family_days"], Is.EqualTo(1));
+            }
+            finally { DeleteTemporaryDirectory(root); }
+        }
+
+        [Test]
         public void CommitRejectsMissingMandatoryFileWithoutPublishing()
         {
             string root = CreateTemporaryDirectory();
@@ -102,6 +173,26 @@ namespace RealTimeTests.Experiments
             {
                 DeleteTemporaryDirectory(root);
             }
+        }
+
+        [Test]
+        public void ExtendedPackageRequiresAndFingerprintsNetworkAndCalibrationFiles()
+        {
+            string root = CreateTemporaryDirectory();
+            try
+            {
+                ExperimentRunCommitService service = CreateService();
+                ExperimentRunCommitRequest request = CreateRequest(root, 0, 0, "extended", "Batch", "Scenario");
+                request.Manifest.ScientificExtensionsVersion = 1;
+                Assert.That(service.Commit(request).Success, Is.False);
+                foreach (string name in ExperimentRunCommitService.ScientificExtensionFiles)
+                    File.WriteAllText(Path.Combine(request.AttemptDirectory, name), "column\nvalue\n");
+                Assert.That(service.Commit(request).Success, Is.True);
+                Assert.That(service.ValidateRunDirectory(request.FinalDirectory).Success, Is.True);
+                File.AppendAllText(Path.Combine(request.FinalDirectory, "contact_network_summary.csv"), "corrupt\n");
+                Assert.That(service.ValidateRunDirectory(request.FinalDirectory).Success, Is.False);
+            }
+            finally { DeleteTemporaryDirectory(root); }
         }
 
         [Test]

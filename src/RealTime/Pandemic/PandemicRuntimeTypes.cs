@@ -15,6 +15,13 @@ namespace RealTime.Pandemic
         Infected,
         Recovered,
         Dead,
+        TransmissionHotspots,
+        ResidentialInfectionClusters,
+        DistrictActiveInfections,
+        DistrictPrevalence,
+        DistrictDetectedPrevalence,
+        DistrictIncidence,
+        DistrictTransmissions,
     }
 
     internal enum PandemicXRayLocationMode
@@ -75,6 +82,11 @@ namespace RealTime.Pandemic
     {
         Masks,
         Lockdown,
+        Testing,
+        Isolation,
+        Quarantine,
+        Tracing,
+        PublicTransport,
     }
 
     internal sealed class PandemicInfectionOriginInfo

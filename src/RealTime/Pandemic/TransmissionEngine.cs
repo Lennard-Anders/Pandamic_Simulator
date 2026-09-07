@@ -52,7 +52,8 @@ namespace RealTime.Pandemic
                 throw new ArgumentNullException(nameof(random));
             }
 
-            var byTarget = new SortedDictionary<uint, List<TransmissionExposure<TContext>>>();
+            var byTarget = new Dictionary<uint, List<TransmissionExposure<TContext>>>();
+            var targetIds = new List<uint>();
             foreach (TransmissionExposure<TContext> exposure in exposures)
             {
                 ValidateExposure(exposure);
@@ -65,19 +66,22 @@ namespace RealTime.Pandemic
                 {
                     targetExposures = new List<TransmissionExposure<TContext>>();
                     byTarget.Add(exposure.TargetCitizenId, targetExposures);
+                    targetIds.Add(exposure.TargetCitizenId);
                 }
 
                 targetExposures.Add(exposure);
             }
 
             var resolved = new List<ResolvedTransmission<TContext>>();
-            foreach (KeyValuePair<uint, List<TransmissionExposure<TContext>>> target in byTarget)
+            targetIds.Sort();
+            foreach (uint targetId in targetIds)
             {
-                target.Value.Sort(CompareExposures);
+                List<TransmissionExposure<TContext>> target = byTarget[targetId];
+                target.Sort(ExposureOrder<TContext>.Compare);
                 double survivalProbability = 1d;
-                for (int i = 0; i < target.Value.Count; i++)
+                for (int i = 0; i < target.Count; i++)
                 {
-                    survivalProbability *= 1d - target.Value[i].Probability;
+                    survivalProbability *= 1d - target[i].Probability;
                 }
 
                 double combinedProbability = 1d - survivalProbability;
@@ -86,7 +90,7 @@ namespace RealTime.Pandemic
                     continue;
                 }
 
-                TransmissionExposure<TContext> source = SelectSource(target.Value, random);
+                TransmissionExposure<TContext> source = SelectSource(target, random);
                 resolved.Add(new ResolvedTransmission<TContext>
                 {
                     SourceCitizenId = source.SourceCitizenId,
@@ -100,17 +104,22 @@ namespace RealTime.Pandemic
             return resolved;
         }
 
+        private static class ExposureOrder<TContext>
+        {
+            internal static readonly Comparison<TransmissionExposure<TContext>> Compare = CompareExposures;
+        }
+
         private static TransmissionExposure<TContext> SelectSource<TContext>(
             IList<TransmissionExposure<TContext>> exposures,
             Random random)
         {
-            var certain = new List<TransmissionExposure<TContext>>();
+            int certainCount = 0;
             double totalHazard = 0d;
             for (int i = 0; i < exposures.Count; i++)
             {
                 if (exposures[i].Probability >= 1d)
                 {
-                    certain.Add(exposures[i]);
+                    certainCount++;
                 }
                 else
                 {
@@ -118,9 +127,11 @@ namespace RealTime.Pandemic
                 }
             }
 
-            if (certain.Count > 0)
+            if (certainCount > 0)
             {
-                return certain[(int)(random.NextDouble() * certain.Count) % certain.Count];
+                int selected = (int)(random.NextDouble() * certainCount) % certainCount;
+                for (int i = 0; i < exposures.Count; i++)
+                    if (exposures[i].Probability >= 1d && selected-- == 0) return exposures[i];
             }
 
             double threshold = random.NextDouble() * totalHazard;

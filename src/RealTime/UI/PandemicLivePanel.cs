@@ -86,6 +86,9 @@ namespace RealTime.UI
         private DateTime realWorldStartTime;
         private PandemicLifecycleState lastKnownLifecycleState = PandemicLifecycleState.Dormant;
         private bool collapsed;
+        private bool observedView;
+        private int districtMetric;
+        private UIPanel transmissionDetailPanel;
         private bool settingsBuilt;
         private bool layoutDirty = true;
         private bool suppressScrollbarEvent;
@@ -246,7 +249,9 @@ namespace RealTime.UI
             Refresh();
         }
 
-        internal void Refresh()
+        internal void Refresh() { using (RealTime.Pandemic.PandemicProfiler.Measure("PandemicLivePanel")) RefreshProfiled(); }
+
+        private void RefreshProfiled()
         {
             if (panel == null)
             {
@@ -432,6 +437,9 @@ namespace RealTime.UI
             districtToggleButton = CreateSectionButton(districtCard, "District Infection Rates");
             districtToggleButton.eventClicked += (c, e) => ToggleSection(DashboardSection.Districts);
             districtSummaryLabel = CreateCardSummary(districtCard);
+            districtSummaryLabel.isInteractive = true;
+            districtSummaryLabel.tooltip = "Click to select true prevalence, detected prevalence, new-infection incidence or transmission-event counts. Prevalence uses the living residential population within each district.";
+            districtSummaryLabel.eventClicked += (c, e) => { districtMetric = (districtMetric + 1) % 4; RefreshDistrictRows(currentSnapshot); };
             districtContentPanel = CreateCardContent(districtCard);
 
             settingsCard = CreateCardPanel(detailContentPanel);
@@ -583,10 +591,13 @@ namespace RealTime.UI
             xrayTypeButton.text = "Type: " + GetXRayMetricLabel(snapshot.XRayMetric);
             xrayTypeButton.color = snapshot.XRayEnabled ? GetXRayMetricColor(snapshot.XRayMetric) : new Color32(84, 84, 84, 255);
             xrayTypeButton.isEnabled = true;
+            xrayTypeButton.tooltip = "Current Infectious Occupancy: actual infectious citizens. Transmission Hotspots: recorded local transmission-event positions. Residential Infection Clusters: home locations of unresolved infections. District modes use living residents for prevalence (%) and interval incidence (per 100,000); transmissions are counted at event locations. All maps scale from zero to the current maximum, so colors alone cannot compare runs. District values are available in the district list. Boundaries refresh every 30 seconds; the terrain grid interpolates borders.";
 
-            xrayBasisButton.text = "Basis: " + GetXRayLocationLabel(snapshot.XRayLocationMode);
+            bool districtMap = snapshot.XRayMetric >= PandemicXRayMetric.DistrictActiveInfections;
+            bool fixedBasis = districtMap || snapshot.XRayMetric == PandemicXRayMetric.TransmissionHotspots || snapshot.XRayMetric == PandemicXRayMetric.ResidentialInfectionClusters;
+            xrayBasisButton.text = "Basis: " + (districtMap ? "District" : snapshot.XRayMetric == PandemicXRayMetric.TransmissionHotspots ? "Event" : snapshot.XRayMetric == PandemicXRayMetric.ResidentialInfectionClusters ? "Home" : GetXRayLocationLabel(snapshot.XRayLocationMode));
             xrayBasisButton.color = snapshot.XRayEnabled ? new Color32(70, 110, 170, 255) : new Color32(84, 84, 84, 255);
-            xrayBasisButton.isEnabled = true;
+            xrayBasisButton.isEnabled = !fixedBasis;
         }
 
         private void RefreshSummary(PandemicLiveSnapshot snapshot)
@@ -631,16 +642,17 @@ namespace RealTime.UI
                     ? new Color32(124, 84, 34, 255)
                     : new Color32(72, 72, 72, 255);
 
-            metricTitles[1].text = "SEIRD";
-            metricValues[1].text =
-                "S " + snapshot.Healthy.ToString("N0", cultureInfo) + " | E " + snapshot.Exposed.ToString("N0", cultureInfo) + "\n"
-                + "I " + snapshot.Sick.ToString("N0", cultureInfo) + " | R " + snapshot.Recovered.ToString("N0", cultureInfo) + " | D " + snapshot.Dead.ToString("N0", cultureInfo);
-            metricPanels[1].color = new Color32(82, 82, 82, 255);
+            metricTitles[1].text = observedView ? "Observed ↔" : "Ground Truth ↔";
+            metricValues[1].text = observedView
+                ? "Active " + snapshot.PositiveTests.ToString("N0", cultureInfo) + "\nNew " + snapshot.DetectedNewCases.ToString("N0", cultureInfo)
+                : "E " + snapshot.Exposed.ToString("N0", cultureInfo) + " | I " + snapshot.ActiveInfectious.ToString("N0", cultureInfo) + "\n"
+                    + "R " + snapshot.Recovered.ToString("N0", cultureInfo) + " | D " + snapshot.Dead.ToString("N0", cultureInfo);
+            metricPanels[1].color = observedView ? new Color32(39, 94, 132, 255) : new Color32(126, 68, 55, 255);
 
-            metricTitles[2].text = "Change";
-            metricValues[2].text =
-                "dI " + FormatSigned(snapshot.DeltaSick) + " | dR " + FormatSigned(snapshot.DeltaRecovered) + "\n"
-                + "dD " + FormatSigned(snapshot.DeltaDead) + " | Obs " + snapshot.ObservationCount.ToString("N0", cultureInfo);
+            metricTitles[2].text = "New / incidence";
+            metricValues[2].text = "True +" + snapshot.NewInfections.ToString("N0", cultureInfo)
+                + "\nObserved " + snapshot.ObservedIncidence.ToString("N1", cultureInfo);
+            metricPanels[2].tooltip = "True new secondary infections in the latest epidemiological interval. Observed incidence: first detected positive cases per 100,000 in that interval.";
             metricPanels[2].color = new Color32(82, 82, 82, 255);
 
             metricTitles[3].text = "Healthcare";
@@ -718,7 +730,7 @@ namespace RealTime.UI
                     }
                     .Concat(snapshot.LockdownFamilies
                     .Select(family => family.Label + " | " + (family.IsClosed ? "Closed" : "Open")
-                        + " | infected " + FormatPercent(family.CurrentInfectedPercent)
+                        + " | " + snapshot.PolicyTriggerLabel + " " + FormatPercent(family.CurrentInfectedPercent)
                         + " | threshold " + FormatPercent(family.AutoCloseThresholdPercent)
                         + " | manual " + (family.ManualClosed ? "ON" : "OFF")))
                     .ToList();
@@ -751,15 +763,17 @@ namespace RealTime.UI
             List<string> texts = snapshot == null || snapshot.Districts.Count == 0
                 ? new List<string> { "No user-defined districts available." }
                 : snapshot.Districts
-                    .Select(district => district.DistrictName + " | " + FormatPercent(district.InfectedPercent)
-                        + " | " + district.InfectedResidents.ToString("N0", cultureInfo)
-                        + " / " + district.ResidentCount.ToString("N0", cultureInfo))
+                    .Select(district => district.DistrictName + " | "
+                        + (districtMetric == 0 ? FormatPercent(district.InfectedPercent) + " | " + district.InfectedResidents + " / " + district.ResidentCount
+                            : districtMetric == 1 ? FormatPercent(district.DetectedPrevalencePercent) + " | " + district.DetectedResidents + " / " + district.ResidentCount
+                            : districtMetric == 2 ? district.IncidencePer100000.ToString("N1", cultureInfo) + " / 100k / interval"
+                            : district.SecondaryTransmissions.ToString("N0", cultureInfo) + " local transmission events"))
                     .ToList();
 
             SetLabelRows(districtContentPanel, districtRows, texts, ref districtVisibleRows);
             districtSummaryLabel.text = snapshot == null
                 ? "No district data."
-                : "Districts: " + snapshot.Districts.Count.ToString("N0", cultureInfo);
+                : new[] { "True prevalence", "Detected prevalence", "New-infection incidence", "Transmission locations" }[districtMetric] + " ↔ | " + snapshot.Districts.Count.ToString("N0", cultureInfo) + " districts";
         }
 
         private void RefreshPopulationLocationRows(PandemicLiveSnapshot snapshot)
@@ -811,8 +825,8 @@ namespace RealTime.UI
                     PandemicSuperspreaderCitizenSnapshot entry = snapshot.TopSpreaders[i];
                     button.text = entry.Label + " | " + entry.InfectionCount.ToString("N0", cultureInfo)
                         + (entry.IsSuperspreader ? " | Superspreader" : string.Empty);
-                    button.isEnabled = entry.CanFocus;
-                    button.tooltip = "Jump to citizen";
+                    button.isEnabled = true;
+                    button.tooltip = "Inspect infection timeline, contexts, locations and recent transmission links; focus the citizen when available.";
                 }
                 else
                 {
@@ -1210,10 +1224,38 @@ namespace RealTime.UI
             }
 
             PandemicSuperspreaderCitizenSnapshot entry = currentSnapshot.TopSpreaders[index];
+            if (entry != null) ShowTransmissionDetails(entry.CitizenId);
             if (entry != null && entry.CanFocus)
             {
                 FocusCitizen(entry);
             }
+        }
+
+        private void ShowTransmissionDetails(uint citizenId)
+        {
+            if (transmissionDetailPanel != null) UnityEngine.Object.Destroy(transmissionDetailPanel.gameObject);
+            transmissionDetailPanel = panel.AddUIComponent<UIPanel>();
+            transmissionDetailPanel.relativePosition = new Vector3(30, 180);
+            transmissionDetailPanel.size = new Vector2(700, 520);
+            transmissionDetailPanel.backgroundSprite = "GenericPanel";
+            transmissionDetailPanel.color = new Color32(25, 38, 52, 255);
+            transmissionDetailPanel.isInteractive = true;
+            var details = transmissionDetailPanel.AddUIComponent<UILabel>();
+            details.autoSize = false;
+            details.relativePosition = new Vector3(14, 56);
+            details.size = new Vector2(672, 450);
+            details.textScale = 0.75f;
+            details.wordWrap = true;
+            Action<double> show = days => details.text = PandemicManager.Instance?.BuildTransmissionDrilldown(citizenId, days, 12) ?? "Run unavailable.";
+            var day = CreateActionButton(transmissionDetailPanel, "24h", 14, 12, 90);
+            day.eventClicked += (c, e) => show(1);
+            var week = CreateActionButton(transmissionDetailPanel, "7 days", 112, 12, 90);
+            week.eventClicked += (c, e) => show(7);
+            var all = CreateActionButton(transmissionDetailPanel, "All", 210, 12, 90);
+            all.eventClicked += (c, e) => show(3650);
+            var close = CreateActionButton(transmissionDetailPanel, "Close", 570, 12, 112);
+            close.eventClicked += (c, e) => transmissionDetailPanel.isVisible = false;
+            show(7);
         }
 
         private void FocusLocation(int index)
@@ -1763,6 +1805,14 @@ namespace RealTime.UI
                 value.textColor = new Color32(245, 245, 245, 255);
                 metricValues[i] = value;
             }
+            metricTitles[1].isInteractive = true;
+            metricTitles[1].tooltip = "Click to switch Ground Truth / Observed. Truth uses actual disease states; observed uses published positive tests and includes false positives. This changes only the display.";
+            metricTitles[1].eventClicked += (c, e) =>
+            {
+                observedView = !observedView;
+                trendChart?.SetObservedMode(observedView);
+                RefreshSummary(currentSnapshot);
+            };
         }
 
         private UIButton CreateActionButton(UIComponent parent, string label, float x, float y, float width)
@@ -2118,8 +2168,17 @@ namespace RealTime.UI
                     return "Recovered";
                 case PandemicXRayMetric.Dead:
                     return "Dead";
+                case PandemicXRayMetric.TransmissionHotspots:
+                    return "Trx hotspots";
+                case PandemicXRayMetric.ResidentialInfectionClusters:
+                    return "Clusters";
+                case PandemicXRayMetric.DistrictActiveInfections: return "Dist active";
+                case PandemicXRayMetric.DistrictPrevalence: return "Dist prev %";
+                case PandemicXRayMetric.DistrictDetectedPrevalence: return "Dist obs %";
+                case PandemicXRayMetric.DistrictIncidence: return "Dist inc/100k";
+                case PandemicXRayMetric.DistrictTransmissions: return "Dist trx";
                 default:
-                    return "Infected";
+                    return "Infectious";
             }
         }
 

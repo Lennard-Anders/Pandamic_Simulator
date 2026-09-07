@@ -11,6 +11,10 @@ namespace RealTime.Experiments
     /// <summary>Validates durable state transitions.</summary>
     public static class ExperimentBatchStateMachine
     {
+        internal static bool ShouldPollRun(ExperimentBatchExecutionState state, bool gamePaused) =>
+            state == ExperimentBatchExecutionState.Running
+            || (state == ExperimentBatchExecutionState.Paused && !gamePaused);
+
         public static bool TryTransition(
             ExperimentBatchState state,
             ExperimentBatchExecutionState target,

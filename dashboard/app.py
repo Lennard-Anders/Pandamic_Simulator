@@ -1354,6 +1354,11 @@ def render_dashboard(stored):
 # ?????? Multi-run comparison callback ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
 AGGREGATE_METRICS = [
+    ("true_active_infectious", "True active infectious"),
+    ("detected_active_cases", "Observed active cases"),
+    ("observed_incidence", "Observed incidence / 100,000 / interval"),
+    ("case_detection_ratio", "Active infection detection ratio"),
+    ("mean_contacts_per_person_day", "Contacts / tracked person-day"),
     ("attack_rate_pct", "Attack rate %"),
     ("final_prevalence_pct", "Final prevalence %"),
     ("deaths_total", "Deaths"),
@@ -1379,6 +1384,8 @@ def scenario_statistics_table(aggregate):
                 continue
             rows.append(html.Tr([
                 html.Td(scenario.get("scenario_name", scenario_id)),
+                html.Td(scenario.get("preset_id", "")),
+                html.Td(scenario.get("sensitivity_parameter", "")),
                 html.Td(label),
                 html.Td(str(int(statistics["n"]))),
                 html.Td(_stat_cell(statistics["mean"])),
@@ -1397,7 +1404,7 @@ def scenario_statistics_table(aggregate):
             "No completed scientific run_summary.csv + manifest pairs were found in this selection.",
             style={"color": C["muted"]},
         )
-    headers = ["Scenario", "Metric", "n", "Mean", "Median", "SD (sample)",
+    headers = ["Scenario", "Preset", "Sensitivity parameter", "Metric", "n", "Mean", "Median", "SD (sample)",
                "Min", "P5", "P25", "P75", "P95", "Max", "IQR"]
     return html.Div(
         html.Table(

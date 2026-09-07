@@ -1,4 +1,4 @@
-// <copyright file="ExperimentRecorder.cs" company="dymanoid">
+﻿// <copyright file="ExperimentRecorder.cs" company="dymanoid">
 // Copyright (c) dymanoid. All rights reserved.
 // </copyright>
 
@@ -17,6 +17,9 @@ namespace RealTime.Pandemic
         Quarantine,
         Lockdown,
         PublicTransportShutdown,
+        ScheduledPolicy,
+        Testing,
+        Tracing,
     }
 
     internal sealed class PandemicStateTimePoint
@@ -47,15 +50,29 @@ namespace RealTime.Pandemic
 
         public int NewExposures { get; set; }
 
+        public int DetectedNewCases { get; set; }
+
+        public int DetectedActiveCases { get; set; }
+
+        public int UndetectedActiveInfections { get; set; }
+
+        public double? CaseDetectionRatio { get; set; }
+
         public int HospitalizationsTotal { get; set; }
 
         public int IsolatedCitizens { get; set; }
 
         public int QuarantinedCitizens { get; set; }
+        public int? IsolationFollowingCitizens { get; set; }
+        public int? QuarantineFollowingCitizens { get; set; }
     }
 
     internal sealed class PandemicTransmissionEvent
     {
+        public float PositionX { get; set; }
+        public float PositionY { get; set; }
+        public float PositionZ { get; set; }
+        public bool HasPosition { get; set; }
         public long EventId { get; set; }
 
         public DateTime SimulationTime { get; set; }
@@ -108,6 +125,13 @@ namespace RealTime.Pandemic
         public string Reason { get; set; }
 
         public string Context { get; set; }
+
+        public string TriggerMetric { get; set; }
+
+        public double? TriggerValue { get; set; }
+
+        public double? TriggerThreshold { get; set; }
+        public bool? ActuallyFollowed { get; set; }
     }
 
     internal sealed class PandemicPopulationEvent
@@ -129,6 +153,12 @@ namespace RealTime.Pandemic
 
     internal sealed class ExperimentRecorderSnapshot
     {
+        public string ContactNetworkSummaryCsv { get; set; }
+        public string AgeMixingCsv { get; set; }
+        public string DegreeDistributionCsv { get; set; }
+        public string ContactDurationCsv { get; set; }
+        public string ContactTimeOfDayCsv { get; set; }
+
         public ExperimentRecorderSnapshot()
         {
             StateTimeSeries = new List<PandemicStateTimePoint>();
@@ -170,6 +200,18 @@ namespace RealTime.Pandemic
     /// </summary>
     internal sealed class ExperimentRecorder : IDisposable
     {
+        private static readonly char[] CsvEscapeCharacters = { ',', '"', '\r', '\n' };
+        private readonly ContactCsvWriter contactCsvWriter = new ContactCsvWriter();
+        private DateTime cachedContactStart;
+        private DateTime cachedContactEnd;
+        private string cachedContactStartIso;
+        private string cachedContactEndIso;
+        private ContactNetworkMetrics network;
+        private readonly Dictionary<byte, int> districtTransmissions = new Dictionary<byte, int>();
+        internal int GetDistrictTransmissions(byte district) => districtTransmissions.TryGetValue(district, out int count) ? count : 0;
+        internal IList<PandemicStateTimePoint> StateTimeSeries => stateTimeSeries;
+        internal IList<PandemicTransmissionEvent> TransmissionEvents => transmissionEvents;
+        internal PandemicStateTimePoint LatestState => stateTimeSeries.Count == 0 ? null : stateTimeSeries[stateTimeSeries.Count - 1];
         public const string TransmissionEventsFileName = "transmission_events.csv";
         public const string PhysicalContactsFileName = "physical_contacts.csv";
         public const string TraceableContactsFileName = "traceable_contacts.csv";
@@ -186,6 +228,7 @@ namespace RealTime.Pandemic
         private long nextInterventionEventId;
         private long nextPopulationEventId;
         private int lastSecondaryTransmissionCount;
+        private int lastDetectedCasesTotal;
         private int pendingStreamRows;
         private bool frozen;
         private long physicalContactsTotal;
@@ -207,6 +250,8 @@ namespace RealTime.Pandemic
             }
 
             RunStartTime = startTime;
+            network = new ContactNetworkMetrics();
+            network.Begin(startTime);
             outputDirectory = string.IsNullOrEmpty(batchOutputDirectory)
                 ? null
                 : Path.GetFullPath(batchOutputDirectory);
@@ -221,7 +266,7 @@ namespace RealTime.Pandemic
             Directory.CreateDirectory(outputDirectory);
             transmissionWriter = CreateStreamingWriter(
                 TransmissionEventsFileName,
-                "event_id,simulation_time,pandemic_day,source_citizen_id,target_citizen_id,source_infection_age_days,target_previous_state,target_new_state,context,origin_category,building_id,vehicle_id,district_id,source_mask_type,target_mask_type,transmission_probability,source_probability,infectiousness_multiplier,is_initial_seed");
+                "event_id,simulation_time,pandemic_day,source_citizen_id,target_citizen_id,source_infection_age_days,target_previous_state,target_new_state,context,origin_category,building_id,vehicle_id,district_id,source_mask_type,target_mask_type,transmission_probability,source_probability,infectiousness_multiplier,is_initial_seed,position_x,position_y,position_z,has_position");
             physicalContactWriter = CreateStreamingWriter(
                 PhysicalContactsFileName,
                 "contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,position_x,position_y,position_z,distance,traceable_by_app,traceable_by_manual");
@@ -238,7 +283,10 @@ namespace RealTime.Pandemic
             int secondaryTransmissionCount,
             int hospitalizationsTotal,
             int isolatedCitizens,
-            int quarantinedCitizens)
+            int quarantinedCitizens,
+            EpidemicMetricsSnapshot surveillance = null,
+            int? isolationFollowingCitizens = null,
+            int? quarantineFollowingCitizens = null)
         {
             EnsureMutable();
             if (counts == null)
@@ -296,11 +344,18 @@ namespace RealTime.Pandemic
                 InitialSeedCount = initialSeedCount,
                 SecondaryTransmissionsTotal = secondaryTransmissionCount,
                 NewExposures = newExposures,
+                DetectedNewCases = (surveillance?.DetectedCasesTotal ?? lastDetectedCasesTotal) - lastDetectedCasesTotal,
+                DetectedActiveCases = surveillance?.DetectedActiveCases ?? 0,
+                UndetectedActiveInfections = surveillance?.UndetectedActiveInfections ?? counts.Exposed + counts.Infectious + counts.PostInfectiousIll,
+                CaseDetectionRatio = surveillance?.CaseDetectionRatio,
                 HospitalizationsTotal = hospitalizationsTotal,
                 IsolatedCitizens = isolatedCitizens,
                 QuarantinedCitizens = quarantinedCitizens,
+                IsolationFollowingCitizens = isolationFollowingCitizens,
+                QuarantineFollowingCitizens = quarantineFollowingCitizens,
             });
             lastSecondaryTransmissionCount = secondaryTransmissionCount;
+            lastDetectedCasesTotal = surveillance?.DetectedCasesTotal ?? lastDetectedCasesTotal;
         }
 
         public void RecordTransmission(PandemicTransmissionEvent transmission)
@@ -337,6 +392,7 @@ namespace RealTime.Pandemic
 
             transmission.EventId = nextTransmissionEventId++;
             transmissionEvents.Add(transmission);
+            districtTransmissions[transmission.DistrictId] = GetDistrictTransmissions(transmission.DistrictId) + 1;
             if (transmissionWriter != null)
             {
                 WriteCsvRow(
@@ -359,12 +415,18 @@ namespace RealTime.Pandemic
                     Number(transmission.TransmissionProbability),
                     Number(transmission.SourceProbability),
                     Number(transmission.InfectiousnessMultiplier),
-                    transmission.IsInitialSeed ? 1 : 0);
+                    transmission.IsInitialSeed ? 1 : 0,
+                    Number(transmission.PositionX), Number(transmission.PositionY), Number(transmission.PositionZ), transmission.HasPosition ? 1 : 0);
                 FlushStreamsPeriodically();
             }
         }
 
-        public void RecordPhysicalContact(PhysicalContactEvent contact, byte districtId)
+        public void RecordPhysicalContact(PhysicalContactEvent contact, byte districtId, int ageA = -1, int ageB = -1)
+        {
+            using (PandemicProfiler.Measure("RecorderPhysicalContact")) RecordPhysicalContactCore(contact, districtId, ageA, ageB);
+        }
+
+        private void RecordPhysicalContactCore(PhysicalContactEvent contact, byte districtId, int ageA, int ageB)
         {
             EnsureMutable();
             if (contact == null)
@@ -379,6 +441,7 @@ namespace RealTime.Pandemic
             }
 
             physicalContactsTotal++;
+            network.Record(contact, ageA, ageB);
             if (contact.TraceableByApp || contact.TraceableByManual)
             {
                 traceableContactsTotal++;
@@ -406,41 +469,20 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            WriteCsvRow(
-                physicalContactWriter,
-                contact.ContactId,
-                Iso(contact.StartTime),
-                Iso(contact.EndTime),
-                Number(contact.DurationMinutes),
-                contact.CitizenA,
-                contact.CitizenB,
-                contact.Context,
-                contact.BuildingId,
-                contact.VehicleId,
-                districtId,
-                Number(contact.PositionX),
-                Number(contact.PositionY),
-                Number(contact.PositionZ),
-                contact.Distance.HasValue ? Number(contact.Distance.Value) : string.Empty,
-                contact.TraceableByApp ? 1 : 0,
-                contact.TraceableByManual ? 1 : 0);
-            if (contact.TraceableByApp || contact.TraceableByManual)
+            // All contacts in a step share these timestamps. Keep only the last pair;
+            // changing intervals still produces the original round-trip CSV text.
+            if (cachedContactStartIso == null || contact.StartTime.ToBinary() != cachedContactStart.ToBinary())
             {
-                WriteCsvRow(
-                    traceableContactWriter,
-                    contact.ContactId,
-                    Iso(contact.StartTime),
-                    Iso(contact.EndTime),
-                    Number(contact.DurationMinutes),
-                    contact.CitizenA,
-                    contact.CitizenB,
-                    contact.Context,
-                    contact.BuildingId,
-                    contact.VehicleId,
-                    districtId,
-                    contact.TraceableByApp ? 1 : 0,
-                    contact.TraceableByManual ? 1 : 0);
+                cachedContactStart = contact.StartTime;
+                cachedContactStartIso = Iso(contact.StartTime);
             }
+            if (cachedContactEndIso == null || contact.EndTime.ToBinary() != cachedContactEnd.ToBinary())
+            {
+                cachedContactEnd = contact.EndTime;
+                cachedContactEndIso = Iso(contact.EndTime);
+            }
+            contactCsvWriter.Write(physicalContactWriter, traceableContactWriter, contact,
+                districtId, cachedContactStartIso, cachedContactEndIso);
 
             FlushStreamsPeriodically();
         }
@@ -480,6 +522,7 @@ namespace RealTime.Pandemic
             }
 
             populationEvent.EventId = nextPopulationEventId++;
+            network.Population(populationEvent);
             populationEvents.Add(populationEvent);
         }
 
@@ -490,6 +533,12 @@ namespace RealTime.Pandemic
 
         public ExperimentRecorderSnapshot Freeze(DateTime endTime, bool validateTransmissionCount)
         {
+            // An invalid run may have failed because its clock moved backwards. Preserve
+            // its recorded prefix for diagnostics; successful exports remain strict.
+            if (!validateTransmissionCount && endTime < network.LatestTime)
+            {
+                endTime = network.LatestTime;
+            }
             EnsureRunTime(endTime);
             if (validateTransmissionCount && stateTimeSeries.Count > 0)
             {
@@ -504,6 +553,7 @@ namespace RealTime.Pandemic
 
             if (!frozen)
             {
+                network.Complete(endTime);
                 CloseAndPublishStreamingFiles();
                 frozen = true;
             }
@@ -519,6 +569,11 @@ namespace RealTime.Pandemic
                 SchoolContactsTotal = schoolContactsTotal,
                 TransitContactsTotal = transitContactsTotal,
                 ContactsPreventedByIntervention = contactsPreventedByIntervention,
+                ContactNetworkSummaryCsv = network.SummaryCsv,
+                AgeMixingCsv = network.AgeMixingCsv(),
+                DegreeDistributionCsv = network.DegreeCsv,
+                ContactDurationCsv = network.DurationCsv(),
+                ContactTimeOfDayCsv = network.HourCsv(),
             };
             result.StateTimeSeries.AddRange(stateTimeSeries);
             result.TransmissionEvents.AddRange(transmissionEvents);
@@ -534,12 +589,14 @@ namespace RealTime.Pandemic
             RunStartTime = default(DateTime);
             stateTimeSeries.Clear();
             transmissionEvents.Clear();
+            districtTransmissions.Clear();
             interventionEvents.Clear();
             populationEvents.Clear();
             nextTransmissionEventId = 1L;
             nextInterventionEventId = 1L;
             nextPopulationEventId = 1L;
             lastSecondaryTransmissionCount = 0;
+            lastDetectedCasesTotal = 0;
             pendingStreamRows = 0;
             physicalContactsTotal = 0L;
             traceableContactsTotal = 0L;
@@ -686,6 +743,11 @@ namespace RealTime.Pandemic
 
         private static void WriteCsvRow(StreamWriter writer, params object[] values)
         {
+            using (PandemicProfiler.Measure("ScientificCsvRow")) WriteCsvRowCore(writer, values);
+        }
+
+        private static void WriteCsvRowCore(StreamWriter writer, object[] values)
+        {
             for (int i = 0; i < values.Length; ++i)
             {
                 if (i > 0)
@@ -694,7 +756,7 @@ namespace RealTime.Pandemic
                 }
 
                 string value = Convert.ToString(values[i], CultureInfo.InvariantCulture) ?? string.Empty;
-                if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0)
+                if (value.IndexOfAny(CsvEscapeCharacters) >= 0)
                 {
                     writer.Write('"');
                     writer.Write(value.Replace("\"", "\"\""));

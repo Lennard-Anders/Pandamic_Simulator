@@ -29,6 +29,8 @@ namespace RealTime.Pandemic
 
     internal sealed class ScientificRunSummary
     {
+        public PandemicStateTimePoint FinalState { get; set; }
+
         public int InitialSeedCount { get; set; }
 
         public int SecondaryTransmissionsTotal { get; set; }
@@ -132,6 +134,11 @@ namespace RealTime.Pandemic
 
         private void ExportCore(PandemicRunExportRequest request, ExperimentRunIntegrityFailure forcedFailure)
         {
+            using (PandemicProfiler.Measure("ScientificExport")) ExportMeasured(request, forcedFailure);
+        }
+
+        private void ExportMeasured(PandemicRunExportRequest request, ExperimentRunIntegrityFailure forcedFailure)
+        {
             if (request == null || request.ScientificSnapshot == null)
             {
                 throw new ArgumentException("A frozen scientific snapshot is required.", nameof(request));
@@ -161,6 +168,13 @@ namespace RealTime.Pandemic
             WriteAtomic(Path.Combine(directory, InterventionEventsFileName), BuildInterventionEventsCsv(request.ScientificSnapshot));
             WriteAtomic(Path.Combine(directory, HealthcareTimeSeriesFileName), BuildHealthcareTimeSeriesCsv(healthcare, request.ScientificSnapshot.RunStartTime));
             WriteAtomic(Path.Combine(directory, PopulationEventsFileName), BuildPopulationEventsCsv(request.ScientificSnapshot));
+            WriteAtomic(Path.Combine(directory, "contact_network_summary.csv"), request.ScientificSnapshot.ContactNetworkSummaryCsv);
+            WriteAtomic(Path.Combine(directory, "age_mixing_matrix.csv"), request.ScientificSnapshot.AgeMixingCsv);
+            WriteAtomic(Path.Combine(directory, "contact_degree_distribution.csv"), request.ScientificSnapshot.DegreeDistributionCsv);
+            WriteAtomic(Path.Combine(directory, "contact_duration_distribution.csv"), request.ScientificSnapshot.ContactDurationCsv);
+            WriteAtomic(Path.Combine(directory, "contacts_by_time_of_day.csv"), request.ScientificSnapshot.ContactTimeOfDayCsv);
+            WriteAtomic(Path.Combine(directory, "calibration_results.csv"), BuildCalibrationResultsCsv(request.ScientificSnapshot, summary, request.Manager.CurrentRunContext?.CalibrationTargets));
+            if (PandemicProfiler.Enabled) WriteAtomic(Path.Combine(directory, "performance_diagnostics.csv"), PandemicProfiler.SnapshotCsv());
 
             var errors = new ScientificRunErrorReport { Status = forcedFailure == null ? "Valid" : "Invalid" };
             ExperimentRunIntegrityFailure failure = forcedFailure;
@@ -201,6 +215,7 @@ namespace RealTime.Pandemic
 
             return new ScientificRunSummary
             {
+                FinalState = final,
                 InitialSeedCount = final.InitialSeedCount,
                 SecondaryTransmissionsTotal = final.SecondaryTransmissionsTotal,
                 CumulativeInfections = cumulativeInfections,
@@ -252,10 +267,52 @@ namespace RealTime.Pandemic
             };
         }
 
+        internal static string BuildCalibrationResultsCsv(ExperimentRecorderSnapshot snapshot, ScientificRunSummary summary, CalibrationTargetSet targets)
+        {
+            var csv = new StringBuilder("target_set,source,metric,target_value,tolerance,weight,observed_value,absolute_error,is_available,within_tolerance,status,rt_definition,generation_interval_assumptions\n");
+            if (targets == null)
+            {
+                AppendCsvRow(csv, "", "", "", "", "", "", "", "", 0, 0, "NotConfigured", "", "");
+                return csv.ToString();
+            }
+            double? peak = null;
+            double? timeToPeak = null;
+            foreach (var point in snapshot.StateTimeSeries)
+            {
+                if (point.TrackedPopulation <= 0) continue;
+                double prevalence = (point.Exposed + point.Infectious + point.PostInfectiousIll) / (double)point.TrackedPopulation;
+                if (!peak.HasValue || prevalence > peak.Value)
+                {
+                    peak = prevalence;
+                    timeToPeak = (point.SimulationTime - snapshot.RunStartTime).TotalDays;
+                }
+            }
+            var observations = new Dictionary<CalibrationMetric, double?>
+            {
+                { CalibrationMetric.AttackRate, summary.TrackedPopulation > 0 ? (double?)(summary.AttackRatePercent / 100d) : null },
+                { CalibrationMetric.PeakPrevalence, peak },
+                { CalibrationMetric.TimeToPeakDays, timeToPeak },
+                { CalibrationMetric.HospitalizationRate, summary.CumulativeInfections > 0 ? (double?)summary.HospitalizationsTotal / summary.CumulativeInfections : null },
+                { CalibrationMetric.MortalityRate, summary.CumulativeInfections > 0 ? (double?)summary.DeathsTotal / summary.CumulativeInfections : null },
+                { CalibrationMetric.Rt, null },
+                { CalibrationMetric.HouseholdSecondaryAttackRate, null },
+            };
+            var evaluation = new CalibrationEngine().Evaluate(targets, observations);
+            for (int i = 0; i < evaluation.Results.Count; i++)
+            {
+                var result = evaluation.Results[i];
+                var target = targets.Targets[i];
+                AppendCsvRow(csv, targets.Name, targets.Source, result.Metric, Number(target.TargetValue), Number(target.AbsoluteTolerance), Number(target.Weight),
+                    NullableNumber(result.ObservedValue), NullableNumber(result.AbsoluteError), result.IsAvailable ? 1 : 0, result.IsWithinTolerance ? 1 : 0,
+                    result.IsAvailable ? "Evaluated" : "Unavailable", targets.RtDefinition, targets.GenerationIntervalAssumptions);
+            }
+            return csv.ToString();
+        }
+
         internal static string BuildRunSummaryCsv(ScientificRunSummary summary)
         {
             var csv = new StringBuilder();
-            csv.AppendLine("initial_seed_count,secondary_transmissions_total,cumulative_infections,active_exposed,active_infectious,active_post_infectious_ill,active_symptomatic,recovered_total,deaths_total,hospitalizations_total,tracked_population,final_incidence_per_100000_per_interval,final_prevalence_pct,attack_rate_pct,resolved_case_fatality_ratio_pct,rt,rt_method,empirical_secondary_infections_per_infector,actual_mask_usage_pct,total_isolation_person_days,total_quarantine_person_days,tests_requested,tests_performed,tests_positive,tests_negative,mean_test_wait_days,median_test_wait_days,contacts_prevented_by_intervention,physical_contacts_total,traceable_contacts_total,household_contacts_total,work_contacts_total,school_contacts_total,transit_contacts_total,added_population,removed_population");
+            csv.AppendLine("initial_seed_count,secondary_transmissions_total,cumulative_infections,active_exposed,active_infectious,active_post_infectious_ill,active_symptomatic,recovered_total,deaths_total,hospitalizations_total,tracked_population,final_incidence_per_100000_per_interval,final_prevalence_pct,attack_rate_pct,resolved_case_fatality_ratio_pct,rt,rt_method,empirical_secondary_infections_per_infector,actual_mask_usage_pct,total_isolation_person_days,total_quarantine_person_days,tests_requested,tests_performed,tests_positive,tests_negative,mean_test_wait_days,median_test_wait_days,contacts_prevented_by_intervention,physical_contacts_total,traceable_contacts_total,household_contacts_total,work_contacts_total,school_contacts_total,transit_contacts_total,added_population,removed_population,true_new_infections,true_prevalence,true_active_infectious,detected_new_cases,detected_active_cases,observed_incidence,undetected_active_infections,case_detection_ratio,isolation_following_citizens,quarantine_following_citizens");
             AppendCsvRow(csv,
                 summary.InitialSeedCount,
                 summary.SecondaryTransmissionsTotal,
@@ -292,14 +349,22 @@ namespace RealTime.Pandemic
                 summary.SchoolContactsTotal,
                 summary.TransitContactsTotal,
                 summary.AddedPopulation,
-                summary.RemovedPopulation);
+                summary.RemovedPopulation,
+                summary.FinalState?.NewExposures ?? 0,
+                Number(summary.FinalPrevalencePercent / 100d),
+                summary.ActiveInfectious,
+                summary.FinalState?.DetectedNewCases ?? 0,
+                summary.FinalState?.DetectedActiveCases ?? 0,
+                Number(summary.TrackedPopulation > 0 ? (summary.FinalState?.DetectedNewCases ?? 0) * 100000d / summary.TrackedPopulation : 0d),
+                summary.FinalState?.UndetectedActiveInfections ?? 0,
+                NullableNumber(summary.FinalState?.CaseDetectionRatio), summary.FinalState?.IsolationFollowingCitizens, summary.FinalState?.QuarantineFollowingCitizens);
             return csv.ToString();
         }
 
         internal static string BuildStateTimeSeriesCsv(ExperimentRecorderSnapshot snapshot)
         {
             var csv = new StringBuilder();
-            csv.AppendLine("simulation_time,pandemic_day,susceptible,exposed,infectious,post_infectious_ill,symptomatic,recovered,dead,removed,tracked_population,initial_seed_count,secondary_transmissions_total,new_exposures_per_interval,hospitalizations_total,isolated_citizens,quarantined_citizens,incidence_per_100000_per_interval,prevalence_pct,attack_rate_pct");
+            csv.AppendLine("simulation_time,pandemic_day,susceptible,exposed,infectious,post_infectious_ill,symptomatic,recovered,dead,removed,tracked_population,initial_seed_count,secondary_transmissions_total,new_exposures_per_interval,hospitalizations_total,isolated_citizens,quarantined_citizens,incidence_per_100000_per_interval,prevalence_pct,attack_rate_pct,true_new_infections,true_prevalence,true_active_infectious,detected_new_cases,detected_active_cases,observed_incidence,undetected_active_infections,case_detection_ratio,isolation_following_citizens,quarantine_following_citizens");
             foreach (PandemicStateTimePoint point in snapshot.StateTimeSeries.OrderBy(item => item.SimulationTime))
             {
                 int active = point.Exposed + point.Infectious + point.PostInfectiousIll;
@@ -324,7 +389,12 @@ namespace RealTime.Pandemic
                     point.QuarantinedCitizens,
                     Number(point.TrackedPopulation > 0 ? point.NewExposures * 100000d / point.TrackedPopulation : 0d),
                     Number(point.TrackedPopulation > 0 ? active * 100d / point.TrackedPopulation : 0d),
-                    Number(point.TrackedPopulation > 0 ? cumulative * 100d / point.TrackedPopulation : 0d));
+                    Number(point.TrackedPopulation > 0 ? cumulative * 100d / point.TrackedPopulation : 0d),
+                    point.NewExposures,
+                    Number(point.TrackedPopulation > 0 ? active / (double)point.TrackedPopulation : 0d),
+                    point.Infectious, point.DetectedNewCases, point.DetectedActiveCases,
+                    Number(point.TrackedPopulation > 0 ? point.DetectedNewCases * 100000d / point.TrackedPopulation : 0d),
+                    point.UndetectedActiveInfections, NullableNumber(point.CaseDetectionRatio), point.IsolationFollowingCitizens, point.QuarantineFollowingCitizens);
             }
 
             return csv.ToString();
@@ -365,7 +435,7 @@ namespace RealTime.Pandemic
         internal static string BuildInterventionEventsCsv(ExperimentRecorderSnapshot snapshot)
         {
             var csv = new StringBuilder();
-            csv.AppendLine("event_id,simulation_time,pandemic_day,citizen_id,intervention_type,action,reason,context");
+            csv.AppendLine("event_id,simulation_time,pandemic_day,citizen_id,intervention_type,action,reason,context,trigger_metric,trigger_value,trigger_threshold,actually_followed");
             foreach (PandemicInterventionEvent item in snapshot.InterventionEvents.OrderBy(value => value.EventId))
             {
                 AppendCsvRow(csv,
@@ -376,7 +446,7 @@ namespace RealTime.Pandemic
                     item.InterventionType,
                     item.Action,
                     item.Reason,
-                    item.Context);
+                    item.Context, item.TriggerMetric, NullableNumber(item.TriggerValue), NullableNumber(item.TriggerThreshold), item.ActuallyFollowed.HasValue ? (item.ActuallyFollowed.Value ? "1" : "0") : "");
             }
 
             return csv.ToString();

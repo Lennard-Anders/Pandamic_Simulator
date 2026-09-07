@@ -26,6 +26,7 @@ namespace RealTime.Pandemic
 
     internal sealed class MaskPolicy
     {
+        public double CompliancePercent { get; set; } = 100d;
         public MaskBehavior Behavior { get; set; }
         public double TransmissionReductionFactor { get; set; }
         public double IgnorePercent { get; set; }
@@ -43,6 +44,7 @@ namespace RealTime.Pandemic
                 || !Percentage(IgnorePercent)
                 || !Percentage(SourceControlPercent)
                 || !Percentage(PersonalProtectionPercent)
+                || !Percentage(CompliancePercent)
                 || Math.Abs(sum - 100d) > 0.0001d
                 || !Probability(IndoorProbabilityPerHour)
                 || !Probability(OutdoorProbabilityPerHour)
@@ -62,6 +64,7 @@ namespace RealTime.Pandemic
     internal sealed class MaskEngine
     {
         private readonly Dictionary<uint, MaskProtectionType> overrides = new Dictionary<uint, MaskProtectionType>();
+        private readonly Dictionary<uint, MaskProtectionType> assignments = new Dictionary<uint, MaskProtectionType>();
         private MaskPolicy policy;
         private int masterSeed;
         private double stepLengthHours;
@@ -83,6 +86,7 @@ namespace RealTime.Pandemic
             masterSeed = newMasterSeed;
             stepLengthHours = 0d;
             overrides.Clear();
+            assignments.Clear();
         }
 
         public void ResetStableTraits(int newMasterSeed)
@@ -94,6 +98,7 @@ namespace RealTime.Pandemic
 
             masterSeed = newMasterSeed;
             overrides.Clear();
+            assignments.Clear();
         }
 
         public void SetStepLengthHours(double value)
@@ -106,6 +111,13 @@ namespace RealTime.Pandemic
             stepLengthHours = value;
         }
 
+        internal void SetBehavior(MaskBehavior behavior)
+        {
+            EnsureReady();
+            if (!Enum.IsDefined(typeof(MaskBehavior), behavior)) throw new ArgumentOutOfRangeException(nameof(behavior));
+            policy.Behavior = behavior;
+        }
+
         public MaskProtectionType GetAssignment(uint citizenId)
         {
             EnsureReady();
@@ -113,18 +125,28 @@ namespace RealTime.Pandemic
             {
                 return value;
             }
+            if (assignments.TryGetValue(citizenId, out value)) return value;
+
+            if (policy.CompliancePercent < 100d && !DeterministicCitizenTraitAssigner.IsAssigned(masterSeed, citizenId, "mask-compliance", policy.CompliancePercent))
+            {
+                assignments[citizenId] = MaskProtectionType.None;
+                return MaskProtectionType.None;
+            }
 
             double assignment = DeterministicCitizenTraitAssigner.GetUnitInterval(masterSeed, citizenId, "mask-assignment");
             double ignoreBoundary = policy.IgnorePercent / 100d;
             double sourceBoundary = ignoreBoundary + (policy.SourceControlPercent / 100d);
             if (assignment < ignoreBoundary)
             {
+                assignments[citizenId] = MaskProtectionType.None;
                 return MaskProtectionType.None;
             }
 
-            return assignment < sourceBoundary
+            value = assignment < sourceBoundary
                 ? MaskProtectionType.SourceControl
                 : MaskProtectionType.PersonalProtection;
+            assignments[citizenId] = value;
+            return value;
         }
 
         public void SetOverride(uint citizenId, bool masked)

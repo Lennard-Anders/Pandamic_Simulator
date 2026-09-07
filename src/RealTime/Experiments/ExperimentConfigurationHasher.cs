@@ -45,6 +45,7 @@ namespace RealTime.Experiments
                 Append(canonical, "Settings." + property.Name, property.GetValue(scenario.Settings, null));
             }
 
+            AppendSchedule(canonical, scenario);
             byte[] bytes = new UTF8Encoding(false).GetBytes(canonical.ToString());
             using (SHA256 algorithm = SHA256.Create())
             {
@@ -74,7 +75,22 @@ namespace RealTime.Experiments
                 }
             }
 
+            AppendSchedule(canonical, scenario);
             return canonical.ToString();
+        }
+
+        private static void AppendSchedule(StringBuilder canonical, ExperimentScenario scenario)
+        {
+            if (scenario.InterventionSchedule == null) return;
+            var schedule = scenario.InterventionSchedule;
+            Append(canonical, "Schedule.ActivationDay", schedule.ActivationDay);
+            Append(canonical, "Schedule.Before", Compute(new ExperimentScenario { Settings = schedule.Before, DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }));
+            Append(canonical, "Schedule.After", Compute(new ExperimentScenario { Settings = schedule.After, DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }));
+            for (int i = 1; i < schedule.PhaseCount; i++)
+            {
+                Append(canonical, "Schedule.Phase." + i + ".Day", schedule.DayAt(i));
+                Append(canonical, "Schedule.Phase." + i + ".Settings", Compute(new ExperimentScenario { Settings = schedule.SettingsAfter(i + 1), DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }));
+            }
         }
 
         private static void Append(StringBuilder canonical, string name, object value)

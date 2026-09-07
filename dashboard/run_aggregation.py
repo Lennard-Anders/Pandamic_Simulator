@@ -8,12 +8,19 @@ The module uses only the standard library so it can be tested without Dash.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
+from functools import lru_cache
+
+try:
+    from .run_discovery import is_transient_run_path
+except ImportError:
+    from run_discovery import is_transient_run_path
 
 
 SUMMARY_FILE_NAME = "run_summary.csv"
@@ -74,15 +81,67 @@ class RunMetricRecord:
     pair_id: int
     master_seed: int
     metrics: Mapping[str, float]
+    preset_id: str = ""
+    sensitivity_parameter: str = ""
+
+
+@lru_cache(maxsize=2048)
+def _file_digest(path: str, size: int, modified_ns: int) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _manifest_files_valid(directory: Path, manifest: Mapping[str, Any]) -> bool:
+    entries = _value(manifest, "output_files")
+    extension_version = _integer(_value(manifest, "scientific_extensions_version"))
+    if extension_version not in (0, 1):
+        return False
+    if entries is None:
+        return extension_version == 0 and _integer(_value(manifest, "schema_version")) < 4
+    if not isinstance(entries, list) or not entries:
+        return False
+    try:
+        root = directory.resolve()
+        names = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                return False
+            relative = str(_value(entry, "relative_path") or "")
+            file = (root / relative).resolve()
+            if not file.is_relative_to(root) or file == root or relative in names:
+                return False
+            names.add(relative)
+            stat = file.stat()
+            length = _value(entry, "length_bytes")
+            if length is None or stat.st_size != int(length):
+                return False
+            if _file_digest(str(file), stat.st_size, stat.st_mtime_ns).casefold() != str(_value(entry, "sha256") or "").casefold():
+                return False
+        required = {"run_summary.csv", "state_timeseries.csv", "transmission_events.csv", "physical_contacts.csv", "traceable_contacts.csv", "test_events.csv", "intervention_events.csv", "healthcare_timeseries.csv", "population_events.csv", "errors.json"}
+        if extension_version == 1:
+            required |= {"contact_network_summary.csv", "age_mixing_matrix.csv", "contact_degree_distribution.csv", "contact_duration_distribution.csv", "contacts_by_time_of_day.csv", "calibration_results.csv"}
+        return (extension_version == 0 and _integer(_value(manifest, "schema_version")) < 4) or required <= names
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def load_completed_run(path: Path) -> Optional[RunMetricRecord]:
     """Load one completed batch run addressed by its rich CSV or run directory."""
     candidate = Path(path)
     directory = candidate if candidate.is_dir() else candidate.parent
+    # An OS Temp ancestor is a legitimate analysis root; inspect run markers rather than
+    # rejecting all files underneath the user's temporary directory.
+    marked_parts = [part for part in directory.parts if part.casefold() not in {"temp", "tmp"}]
+    if is_transient_run_path(Path(*marked_parts)) or is_transient_run_path(Path(directory.name)) or any("__invalid" in part.casefold() for part in directory.parts):
+        return None
     manifest = _read_json(directory / MANIFEST_FILE_NAME)
     status = str(_value(manifest, "status") or "").strip().casefold()
     if status != "completed":
+        return None
+    if not _manifest_files_valid(directory, manifest):
         return None
 
     summary = _read_summary(directory / SUMMARY_FILE_NAME)
@@ -95,11 +154,27 @@ def load_completed_run(path: Path) -> Optional[RunMetricRecord]:
         if number is not None:
             metrics[str(key)] = number
 
+    network_path = directory / "contact_network_summary.csv"
+    if network_path.exists():
+        try:
+            days = {}
+            with network_path.open(encoding="utf-8-sig", newline="") as stream:
+                for row in csv.DictReader(stream):
+                    days.setdefault(row["day"], row)  # global daily totals repeat on context rows
+            person_days = sum(float(row["tracked_person_days"]) for row in days.values())
+            events = sum(float(row["contact_events"]) for row in days.values())
+            if person_days > 0:
+                metrics["mean_contacts_per_person_day"] = 2 * events / person_days
+        except (OSError, ValueError, KeyError, TypeError, csv.Error):
+            return None
+
     scenario_id = str(_value(manifest, "scenario_id") or "").strip()
     scenario_name = str(_value(manifest, "scenario_name") or scenario_id).strip()
     if not scenario_id or not scenario_name or not metrics:
         return None
 
+    scenario = _value(manifest, "scenario") or {}
+    sensitivity = (_value(scenario, "sensitivity") or {}) if isinstance(scenario, dict) else {}
     return RunMetricRecord(
         path=candidate,
         batch_id=str(_value(manifest, "batch_id") or "").strip(),
@@ -109,11 +184,18 @@ def load_completed_run(path: Path) -> Optional[RunMetricRecord]:
         pair_id=_integer(_value(manifest, "pair_id")),
         master_seed=_integer(_value(manifest, "master_seed")),
         metrics=metrics,
+        preset_id=str(_value(scenario, "preset_id") or "") if isinstance(scenario, dict) else "",
+        sensitivity_parameter=str(_value(sensitivity, "parameter") or "") if isinstance(sensitivity, dict) else "",
     )
 
 
 def load_completed_runs(paths: Iterable[Path]) -> list[RunMetricRecord]:
-    records = [load_completed_run(path) for path in paths]
+    unique = {}
+    for path in paths:
+        candidate = Path(path)
+        directory = candidate if candidate.is_dir() else candidate.parent
+        unique.setdefault(directory.resolve(), candidate)
+    records = [load_completed_run(path) for path in unique.values()]
     return [record for record in records if record is not None]
 
 
@@ -173,6 +255,8 @@ def aggregate_scenarios(records: Iterable[RunMetricRecord]) -> Mapping[str, Mapp
         result[scenario_id] = {
             "scenario_name": runs[0].scenario_name,
             "run_count": len(runs),
+            "preset_id": runs[0].preset_id,
+            "sensitivity_parameter": runs[0].sensitivity_parameter,
             "metrics": metric_stats,
         }
     return result
@@ -195,10 +279,14 @@ def aggregate_paired_differences(
     if reference not in scenario_ids:
         raise ValueError("The paired reference scenario is not present.")
 
-    by_scenario: dict[str, dict[int, RunMetricRecord]] = {}
+    by_scenario: dict[str, dict[tuple[str, int, int], RunMetricRecord]] = {}
     for run in runs:
         if run.pair_id > 0:
-            by_scenario.setdefault(run.scenario_id, {})[run.pair_id] = run
+            key = (run.batch_id, run.pair_id, run.master_seed)
+            target = by_scenario.setdefault(run.scenario_id, {})
+            if key in target:
+                raise ValueError("Duplicate paired run; refusing to silently overwrite a repetition.")
+            target[key] = run
     reference_pairs = by_scenario.get(reference, {})
     result: dict[str, Mapping[str, Any]] = {}
     for scenario_id in scenario_ids:
@@ -210,7 +298,7 @@ def aggregate_paired_differences(
         for metric in sorted({name for pair in pair_ids for name in reference_pairs[pair].metrics}):
             differences = [
                 {
-                    "pair_id": pair,
+                    "pair_id": pair[1],
                     "difference": comparison_pairs[pair].metrics[metric] - reference_pairs[pair].metrics[metric],
                 }
                 for pair in pair_ids

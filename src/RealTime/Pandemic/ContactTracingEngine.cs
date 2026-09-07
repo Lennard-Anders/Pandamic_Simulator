@@ -72,6 +72,11 @@ namespace RealTime.Pandemic
 
         public ContactTraceability Evaluate(PhysicalContactEvent contact)
         {
+            using (PandemicProfiler.Measure("ContactTracingEngine")) return EvaluateCore(contact);
+        }
+
+        private ContactTraceability EvaluateCore(PhysicalContactEvent contact)
+        {
             if (contact == null)
             {
                 throw new ArgumentNullException(nameof(contact));

@@ -91,6 +91,11 @@ namespace RealTime.Pandemic
 
         public PhysicalContactEvent Record(PhysicalContactRequest request, out bool created)
         {
+            using (PandemicProfiler.Measure("ContactEngine")) return RecordCore(request, out created);
+        }
+
+        private PhysicalContactEvent RecordCore(PhysicalContactRequest request, out bool created)
+        {
             Validate(request);
             uint citizenA = Math.Min(request.CitizenA, request.CitizenB);
             uint citizenB = Math.Max(request.CitizenA, request.CitizenB);

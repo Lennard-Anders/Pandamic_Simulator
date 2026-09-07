@@ -32,6 +32,14 @@ namespace RealTime.Experiments
                 throw new ArgumentException("A stable feature namespace is required.", nameof(featureNamespace));
             }
 
+            return GetUnitInterval(masterSeed, citizenId, Encoding.ASCII.GetBytes(featureNamespace));
+        }
+
+        // Reuse the exact v1 namespace bytes in repeated sampling; no hash or RNG change.
+        internal static double GetUnitInterval(int masterSeed, uint citizenId, byte[] feature)
+        {
+            if (masterSeed < 0) throw new ArgumentOutOfRangeException(nameof(masterSeed));
+            if (feature == null || feature.Length == 0) throw new ArgumentException("A stable feature namespace is required.", nameof(feature));
             uint hash = FnvOffsetBasis;
             unchecked
             {
@@ -42,7 +50,6 @@ namespace RealTime.Experiments
 
                 hash = AddInt32(hash, masterSeed);
                 hash = AddUInt32(hash, citizenId);
-                byte[] feature = Encoding.ASCII.GetBytes(featureNamespace);
                 for (int i = 0; i < feature.Length; ++i)
                 {
                     hash = Add(hash, feature[i]);

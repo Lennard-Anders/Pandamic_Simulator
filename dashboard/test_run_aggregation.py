@@ -1,6 +1,7 @@
 """Tests for scientific multi-run and paired-scenario aggregation."""
 
 import csv
+import hashlib
 import json
 import tempfile
 import unittest
@@ -23,6 +24,36 @@ except ImportError:
 
 
 class RunAggregationTests(unittest.TestCase):
+    def test_pair_ids_cannot_match_different_seeds_or_batches(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = self._run(root, "baseline", "Baseline", 1, 1, 10, "Completed")
+            second = self._run(root, "other", "Other", 1, 1, 5, "Completed")
+            manifest_path = second.parent / "run_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["MasterSeed"] = 99
+            manifest_path.write_text(json.dumps(manifest))
+            self.assertEqual({}, aggregate_paired_differences(load_completed_runs([first, second]), "baseline"))
+            manifest["MasterSeed"] = 1
+            manifest["BatchId"] = "another-batch"
+            manifest_path.write_text(json.dumps(manifest))
+            self.assertEqual({}, aggregate_paired_differences(load_completed_runs([first, second]), "baseline"))
+
+    def test_unpublished_path_and_corrupted_manifest_file_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            transient = self._run(root / "__inprogress", "a", "A", 1, 1, 10, "Completed")
+            self.assertEqual([], load_completed_runs([transient]))
+            rich = self._run(root, "b", "B", 1, 1, 10, "Completed")
+            summary = rich.parent / "run_summary.csv"
+            manifest_path = rich.parent / "run_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["OutputFiles"] = [{"RelativePath": summary.name, "LengthBytes": summary.stat().st_size, "Sha256": hashlib.sha256(summary.read_bytes()).hexdigest()}]
+            manifest_path.write_text(json.dumps(manifest))
+            self.assertEqual(1, len(load_completed_runs([rich, rich])))
+            summary.write_text("corrupted")
+            self.assertEqual([], load_completed_runs([rich]))
+
     def test_describe_contains_required_statistics(self):
         result = describe([1.0, 2.0, 3.0, 4.0])
         self.assertEqual(4.0, result["n"])
@@ -75,6 +106,26 @@ class RunAggregationTests(unittest.TestCase):
             )
             self.assertEqual(-5.5, metric["statistics"]["mean"])
             self.assertEqual(-5.5, metric["statistics"]["median"])
+
+    def test_extended_manifest_requires_and_hashes_every_extension(self):
+        import hashlib
+        from run_aggregation import _manifest_files_valid
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            base = {"run_summary.csv", "state_timeseries.csv", "transmission_events.csv", "physical_contacts.csv", "traceable_contacts.csv", "test_events.csv", "intervention_events.csv", "healthcare_timeseries.csv", "population_events.csv", "errors.json"}
+            extensions = {"contact_network_summary.csv", "age_mixing_matrix.csv", "contact_degree_distribution.csv", "contact_duration_distribution.csv", "contacts_by_time_of_day.csv", "calibration_results.csv"}
+            entries = []
+            for name in sorted(base | extensions):
+                content = b"header\nvalue\n"
+                (directory / name).write_bytes(content)
+                entries.append({"RelativePath": name, "LengthBytes": len(content), "Sha256": hashlib.sha256(content).hexdigest()})
+            manifest = {"SchemaVersion": 4, "ScientificExtensionsVersion": 1, "OutputFiles": entries}
+            self.assertTrue(_manifest_files_valid(directory, manifest))
+            manifest["OutputFiles"] = [e for e in entries if e["RelativePath"] != "calibration_results.csv"]
+            self.assertFalse(_manifest_files_valid(directory, manifest))
+            manifest["OutputFiles"] = entries
+            (directory / "age_mixing_matrix.csv").write_bytes(b"corrupted")
+            self.assertFalse(_manifest_files_valid(directory, manifest))
 
     @staticmethod
     def _run(root, scenario_id, scenario_name, run_number, pair_id, attack_rate, status):

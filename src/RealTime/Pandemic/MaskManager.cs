@@ -9,6 +9,8 @@ namespace RealTime.Pandemic
         private readonly MaskEngine engine = new MaskEngine();
         private int masterSeed = 1337;
 
+        internal void SetBehavior(MaskBehavior behavior) => engine.SetBehavior(behavior);
+
         public double GetOutdoorInfectionProbability(uint infectingCitizen, uint infectionCandidate)
         {
             return engine.GetTransmissionProbability(infectingCitizen, infectionCandidate, MaskTransmissionEnvironment.Outdoor);
@@ -64,6 +66,7 @@ namespace RealTime.Pandemic
             engine.Reset(new MaskPolicy
             {
                 Behavior = config.MaskBehavior,
+                CompliancePercent = config.MaskCompliancePercent,
                 TransmissionReductionFactor = config.TransmissionProbabilityReduction,
                 IgnorePercent = config.RatioIgnoreMasks,
                 SourceControlPercent = config.RatioOtherProtectionMask,

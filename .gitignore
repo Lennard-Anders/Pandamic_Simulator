@@ -1,0 +1,25 @@
+# Generated .NET and Python output
+**/[Bb]in/
+**/[Oo]bj/
+**/TestResults/
+**/__pycache__/
+*.py[cod]
+*.log
+.vs/
+.venv/
+venv/
+
+# Local tooling, copied game assemblies and read-only game inspection extracts
+.codex-tmp/
+
+# Raw simulator exports belong outside source control
+Pandemic Data/
+**/Pandemic Data/
+
+# Local completed-experiment audits and session reports
+/completed-batch-*.json
+/full-audit-data.json
+/TENUS_*_20*.md
+/TENUS_IMPLEMENTATION_STATUS.md
+/RealTime/*.csv
+**/Experiment Batc*/

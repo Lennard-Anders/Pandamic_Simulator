@@ -143,6 +143,26 @@ namespace RealTime.Pandemic
     internal sealed class TestingEngine
     {
         private readonly List<PandemicTestRecord> records = new List<PandemicTestRecord>();
+        private readonly List<PandemicTestRecord> unfinished = new List<PandemicTestRecord>();
+        private readonly List<PandemicTestRecord> queue = new List<PandemicTestRecord>();
+        private int queueCursor;
+        private readonly HashSet<uint> detectedCitizens = new HashSet<uint>();
+
+        public int DetectedCasesTotal => detectedCitizens.Count;
+
+        public int PositiveTestsTotal { get; private set; }
+
+        public int AvailableTestsTotal { get; private set; }
+
+        internal void UpdatePolicy(PandemicTestingPolicy newPolicy, DateTime activationTime)
+        {
+            if (newPolicy == null) throw new ArgumentNullException(nameof(newPolicy));
+            newPolicy.Validate();
+            policy = newPolicy;
+            // Newly enabled capacity cannot supply slots retroactively during the control phase.
+            if (nextSymptomaticSlot < activationTime) nextSymptomaticSlot = activationTime;
+            if (nextRoutineSlot < activationTime) nextRoutineSlot = activationTime;
+        }
         private readonly Dictionary<uint, PandemicTestRecord> activeByCitizen = new Dictionary<uint, PandemicTestRecord>();
         private readonly Dictionary<uint, PandemicTestRecord> latestCompletedByCitizen = new Dictionary<uint, PandemicTestRecord>();
         private readonly Dictionary<uint, PandemicTestRecord> latestAvailableResultByCitizen = new Dictionary<uint, PandemicTestRecord>();
@@ -173,6 +193,11 @@ namespace RealTime.Pandemic
             policy = newPolicy;
             random = newRandom ?? throw new ArgumentNullException(nameof(newRandom));
             records.Clear();
+            unfinished.Clear();
+            queue.Clear();
+            detectedCitizens.Clear();
+            PositiveTestsTotal = 0;
+            AvailableTestsTotal = 0;
             activeByCitizen.Clear();
             latestCompletedByCitizen.Clear();
             latestAvailableResultByCitizen.Clear();
@@ -227,11 +252,17 @@ namespace RealTime.Pandemic
                 State = PandemicTestState.Requested,
             };
             records.Add(record);
+            unfinished.Add(record);
             activeByCitizen.Add(citizenId, record);
             return true;
         }
 
         public void Advance(DateTime simulationTime, Func<uint, PandemicTestSampleContext> sampleContextProvider)
+        {
+            using (PandemicProfiler.Measure("TestingEngine")) AdvanceCore(simulationTime, sampleContextProvider);
+        }
+
+        private void AdvanceCore(DateTime simulationTime, Func<uint, PandemicTestSampleContext> sampleContextProvider)
         {
             if (sampleContextProvider == null)
             {
@@ -239,9 +270,10 @@ namespace RealTime.Pandemic
             }
 
             ScheduleQueuedTests(simulationTime, sampleContextProvider);
-            for (int i = 0; i < records.Count; i++)
+            int retained = 0;
+            for (int i = 0; i < unfinished.Count; i++)
             {
-                PandemicTestRecord record = records[i];
+                PandemicTestRecord record = unfinished[i];
                 if (record.State == PandemicTestState.Scheduled
                     && record.ScheduledAt.HasValue
                     && simulationTime >= record.ScheduledAt.Value)
@@ -262,7 +294,16 @@ namespace RealTime.Pandemic
                 {
                     PublishResult(record);
                 }
+
+                if (record.State != PandemicTestState.ResultAvailable
+                    && record.State != PandemicTestState.Cancelled
+                    && record.State != PandemicTestState.Expired)
+                {
+                    unfinished[retained++] = record;
+                }
             }
+
+            if (retained < unfinished.Count) unfinished.RemoveRange(retained, unfinished.Count - retained);
         }
 
         public bool IsPositiveResultAvailable(uint citizenId, DateTime simulationTime)
@@ -319,6 +360,8 @@ namespace RealTime.Pandemic
 
         public void CancelCitizen(uint citizenId)
         {
+            // A known departure ends local active surveillance status, but retains historical results.
+            latestAvailableResultByCitizen.Remove(citizenId);
             if (!activeByCitizen.TryGetValue(citizenId, out PandemicTestRecord record))
             {
                 return;
@@ -331,7 +374,12 @@ namespace RealTime.Pandemic
             DateTime simulationTime,
             Func<uint, PandemicTestSampleContext> sampleContextProvider)
         {
-            List<PandemicTestRecord> queue = records.FindAll(r => r.State == PandemicTestState.Requested || r.State == PandemicTestState.Queued);
+            queue.Clear();
+            for (int i = 0; i < unfinished.Count; i++)
+            {
+                PandemicTestRecord record = unfinished[i];
+                if (record.State == PandemicTestState.Requested || record.State == PandemicTestState.Queued) queue.Add(record);
+            }
             for (int i = 0; i < queue.Count; i++)
             {
                 PandemicTestRecord record = queue[i];
@@ -342,6 +390,7 @@ namespace RealTime.Pandemic
                 }
             }
 
+            queue.Sort(CompareQueueRecords);
             SchedulePriority(PandemicTestPriority.Symptomatic, simulationTime, sampleContextProvider);
             SchedulePriority(PandemicTestPriority.Routine, simulationTime, sampleContextProvider);
         }
@@ -352,6 +401,7 @@ namespace RealTime.Pandemic
             Func<uint, PandemicTestSampleContext> sampleContextProvider)
         {
             double slotsPerSevenDays = GetSlotsPerSevenDays(priority);
+            queueCursor = 0;
             if (slotsPerSevenDays <= 0d)
             {
                 return;
@@ -398,22 +448,18 @@ namespace RealTime.Pandemic
 
         private PandemicTestRecord GetNextQueued(PandemicTestPriority priority)
         {
-            PandemicTestRecord selected = null;
-            for (int i = 0; i < records.Count; ++i)
+            while (queueCursor < queue.Count)
             {
-                PandemicTestRecord candidate = records[i];
+                PandemicTestRecord candidate = queue[queueCursor++];
                 if (candidate.State != PandemicTestState.Queued || candidate.Priority != priority)
                 {
                     continue;
                 }
 
-                if (selected == null || CompareQueueRecords(candidate, selected) < 0)
-                {
-                    selected = candidate;
-                }
+                return candidate;
             }
 
-            return selected;
+            return null;
         }
 
         private void TakeSample(
@@ -450,6 +496,12 @@ namespace RealTime.Pandemic
         private void PublishResult(PandemicTestRecord record)
         {
             record.Result = record.PendingResult;
+            AvailableTestsTotal++;
+            if (record.Result == PandemicTestResult.Positive)
+            {
+                PositiveTestsTotal++;
+                detectedCitizens.Add(record.CitizenId);
+            }
             record.PendingResult = PandemicTestResult.Unknown;
             record.State = PandemicTestState.ResultAvailable;
             activeByCitizen.Remove(record.CitizenId);

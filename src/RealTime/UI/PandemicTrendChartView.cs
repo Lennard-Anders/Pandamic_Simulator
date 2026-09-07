@@ -47,6 +47,14 @@ namespace RealTime.UI
         private readonly List<RenderedPolicyMarker> renderedMarkers = new List<RenderedPolicyMarker>();
 
         private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
+        private int selectedSeries;
+        private static readonly string[] SeriesNames = { "Infectious", "Exposed", "Detected cases", "Recovered", "Deaths", "New infections" };
+
+        internal void SetObservedMode(bool observed)
+        {
+            selectedSeries = observed ? 2 : 0;
+            if (titleLabel != null) Render(currentSnapshot);
+        }
         private PandemicChartTimeRange selectedRange = PandemicChartTimeRange.All;
         private PandemicLiveSnapshot currentSnapshot;
         private int lastRenderedChartVersion = -1;
@@ -106,12 +114,15 @@ namespace RealTime.UI
             titleLabel.height = TopBarHeight;
             titleLabel.relativePosition = new Vector3(0f, 2f);
             titleLabel.text = "Infected Trend";
+            titleLabel.isInteractive = true;
+            titleLabel.tooltip = "Click to select: Infectious, Exposed, Detected cases, Recovered, Deaths, New infections. Detected cases use published positive results.";
+            titleLabel.eventClicked += (c, e) => { selectedSeries = (selectedSeries + 1) % SeriesNames.Length; Render(currentSnapshot); };
             titleLabel.textScale = 0.82f;
             titleLabel.textColor = new Color32(245, 245, 245, 255);
 
             growthLabel = root.AddUIComponent<UILabel>();
             growthLabel.autoSize = false;
-            growthLabel.width = 220f;
+            growthLabel.width = 148f;
             growthLabel.height = TopBarHeight;
             growthLabel.relativePosition = new Vector3(168f, 2f);
             growthLabel.textScale = 0.74f;
@@ -269,6 +280,8 @@ namespace RealTime.UI
 
         private void Render(PandemicLiveSnapshot snapshot)
         {
+            titleLabel.text = SeriesNames[selectedSeries] + " ▾";
+            yAxisTitleLabel.text = selectedSeries == 5 ? "New infections / interval" : SeriesNames[selectedSeries] + " (citizens)";
             HideHover();
             renderedPoints.Clear();
             renderedMarkers.Clear();
@@ -285,9 +298,9 @@ namespace RealTime.UI
                 return;
             }
 
-            List<PandemicChartPointSnapshot> orderedPoints = snapshot.ChartPoints
-                .OrderBy(point => point.SimulationTime)
-                .ToList();
+            var orderedPoints = new List<PandemicChartPointSnapshot>(snapshot.ChartPoints.Count);
+            foreach (var point in snapshot.ChartPoints)
+                orderedPoints.Add(new PandemicChartPointSnapshot { SimulationTime = point.SimulationTime, InfectedCount = SelectValue(point) });
             if (orderedPoints.Count == 0)
             {
                 currentVisiblePoints = new List<PandemicChartPointSnapshot>();
@@ -340,6 +353,19 @@ namespace RealTime.UI
             lastRenderedChartVersion = currentSnapshot?.ChartVersion ?? -1;
             lastLifecycleState = currentSnapshot?.LifecycleState ?? PandemicLifecycleState.Dormant;
             lastRenderedCultureName = cultureInfo.Name;
+        }
+
+        private int SelectValue(PandemicChartPointSnapshot point)
+        {
+            switch (selectedSeries)
+            {
+                case 1: return point.Exposed;
+                case 2: return point.DetectedCases;
+                case 3: return point.Recovered;
+                case 4: return point.Deaths;
+                case 5: return point.NewInfections;
+                default: return point.InfectedCount;
+            }
         }
 
         private void BuildRenderedPoints(
@@ -1262,7 +1288,7 @@ namespace RealTime.UI
         private string BuildPointTooltip(RenderedChartPoint point, string markerText)
         {
             string tooltip = point.Point.SimulationTime.ToString("g", cultureInfo)
-                + "\nInfected: " + point.Point.InfectedCount.ToString("N0", cultureInfo)
+                + "\n" + SeriesNames[selectedSeries] + ": " + point.Point.InfectedCount.ToString("N0", cultureInfo)
                 + " | Delta: " + FormatSigned(point.Delta);
 
             if (!string.IsNullOrEmpty(markerText))
@@ -1298,7 +1324,7 @@ namespace RealTime.UI
             }
 
             string action = nearest.Marker.Enabled ? "enabled" : "disabled";
-            string policy = nearest.Marker.Type == PandemicPolicyMarkerType.Masks ? "Masks" : "Lockdown";
+            string policy = nearest.Marker.Type == PandemicPolicyMarkerType.PublicTransport ? "Public transport closure" : nearest.Marker.Type.ToString();
             return policy + " " + action + " (" + nearest.Marker.SimulationTime.ToString("g", cultureInfo) + ")";
         }
 

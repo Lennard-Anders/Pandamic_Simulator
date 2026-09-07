@@ -12,6 +12,13 @@ namespace RealTime.Experiments
     /// <summary>Performs side-effect-free validation of batch plans and durable state.</summary>
     public sealed class ExperimentPlanValidator
     {
+        public static ExperimentValidationResult ValidateSettings(ExperimentScenarioSnapshot settings)
+        {
+            var result = new ExperimentValidationResult();
+            if (settings == null) result.Errors.Add("Settings are required.");
+            else ValidateEpidemiology(settings, "Scenario", result);
+            return result;
+        }
         public ExperimentValidationResult Validate(ExperimentBatchPlan plan)
         {
             ExperimentValidationResult result = new ExperimentValidationResult();
@@ -205,6 +212,17 @@ namespace RealTime.Experiments
             {
                 ValidateSchema(scenario.Settings.SchemaVersion, prefix + " settings", result);
                 ValidateEpidemiology(scenario.Settings, prefix, result);
+                var schedule = scenario.InterventionSchedule;
+                if (schedule != null)
+                {
+                    try { schedule.Validate(scenario.Settings); }
+                    catch (Exception ex) { result.Errors.Add(prefix + " schedule: " + ex.Message); }
+                }
+            }
+            if (scenario.CalibrationTargets != null)
+            {
+                try { scenario.CalibrationTargets.Validate(); }
+                catch (Exception ex) { result.Errors.Add(prefix + " calibration targets: " + ex.Message); }
             }
         }
 
@@ -240,6 +258,9 @@ namespace RealTime.Experiments
 
             ValidatePercent(settings.DiseaseStartInfectionRatio, prefix + " DiseaseStartInfectionRatio", result);
             ValidatePercent(settings.SymptomProbability, prefix + " SymptomProbability", result);
+            ValidatePercent(settings.MaskCompliancePercent, prefix + " MaskCompliancePercent", result);
+            ValidatePercent(settings.IsolationCompliancePercent, prefix + " IsolationCompliancePercent", result);
+            ValidatePercent(settings.QuarantineCompliancePercent, prefix + " QuarantineCompliancePercent", result);
             ValidatePercent(settings.DeathChild, prefix + " DeathChild", result);
             ValidatePercent(settings.DeathTeen, prefix + " DeathTeen", result);
             ValidatePercent(settings.DeathYoung, prefix + " DeathYoung", result);
@@ -319,6 +340,11 @@ namespace RealTime.Experiments
                 settings.InitialInfectionAgeFixedDays,
                 prefix + " InitialInfectionAge",
                 result);
+            if (!Enum.IsDefined(typeof(RealTime.Pandemic.PolicyTriggerMetric), settings.AutomaticPolicyTriggerMetric))
+            {
+                result.Errors.Add(prefix + " AutomaticPolicyTriggerMetric is unsupported.");
+            }
+
             if (!Enum.IsDefined(typeof(PandemicInfectiousnessProfileType), settings.InfectiousnessProfileType))
             {
                 result.Errors.Add(prefix + " InfectiousnessProfileType is unsupported.");

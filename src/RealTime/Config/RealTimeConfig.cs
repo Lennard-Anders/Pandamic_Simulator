@@ -17,6 +17,9 @@ namespace RealTime.Config
         /// <summary>The storage ID for the configuration objects.</summary>
         public const string StorageId = "PandemicConfiguration";
 
+        /// <summary>Illustrative hourly probability divisor per effective mask component; not a clinically calibrated efficacy.</summary>
+        public const int DefaultMaskReductionFactor = 2;
+
         private const int LatestVersion = 13;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeConfig"/> class.</summary>
@@ -222,7 +225,7 @@ namespace RealTime.Config
         [ConfigItemComboBox]
         public LockdownBehavior LockdownBehavior { get; set; }
 
-        /// <summary>Gets or sets the lockdown behavior.</summary>
+        /// <summary>Gets or sets the hourly transmission probability divisor per effective mask component. One means no reduction.</summary>
         [ConfigItem("Pandemic", "Masks", 0)]
         [ConfigItemSlider(1, 20, 1, ValueType = SliderValueType.Default)]
         public int TransmissionProbabilityReduction { get; set; }
@@ -316,6 +319,11 @@ namespace RealTime.Config
         [ConfigItem("ScientificModel", "PopulationLifecycle", 0)]
         [ConfigItemCheckBox]
         public bool StrictPopulationIntegrity { get; set; }
+
+        public RealTime.Pandemic.PolicyTriggerMetric AutomaticPolicyTriggerMetric { get; set; }
+        public float MaskCompliancePercent { get; set; } = 100f;
+        public float IsolationCompliancePercent { get; set; } = 100f;
+        public float QuarantineCompliancePercent { get; set; } = 100f;
 
         /// <summary>Gets or sets the per-step school contact cap used for deterministic sampling.</summary>
         [ConfigItem("Pandemic", "ContactModel", 0)]
@@ -1442,7 +1450,7 @@ namespace RealTime.Config
             OnlyTestedCitizensToQuarantine = false;
             LockdownBehavior = LockdownBehavior.None;
 
-            TransmissionProbabilityReduction = 2;
+            TransmissionProbabilityReduction = DefaultMaskReductionFactor;
             // Integer percentages nearest to the legacy 30:50:50 weighted assignment
             // (23.08%, 38.46%, 38.46%), using a stable largest-remainder tie break.
             RatioIgnoreMasks = 23;

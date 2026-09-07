@@ -20,6 +20,7 @@ namespace RealTimeTests.Experiments
             Assert.That(new ExperimentPlanValidator().Validate(negative).IsValid, Is.False);
 
             ExperimentBatchPlan overflow = CreateValidPlan();
+            overflow.Scenarios[0].SeedStrategy = ExperimentSeedStrategy.Sequential;
             overflow.Scenarios[0].FirstSeed = int.MaxValue;
             overflow.Scenarios[0].RunCount = 2;
             Assert.That(new ExperimentPlanValidator().Validate(overflow).IsValid, Is.False);

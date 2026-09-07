@@ -228,6 +228,11 @@ namespace RealTime.Pandemic
     /// <summary>Metadata emitted in a separate rich CSV section for controller-owned runs.</summary>
     internal sealed class PandemicBatchExportMetadata
     {
+        public string PresetId { get; set; }
+        public int PresetVersion { get; set; }
+        public bool CustomizedAfterPreset { get; set; }
+        public RealTime.Experiments.ExperimentSensitivityMetadata Sensitivity { get; set; }
+
         public string BatchId { get; set; }
 
         public string BatchName { get; set; }
@@ -254,6 +259,9 @@ namespace RealTime.Pandemic
     /// <summary>Immutable ownership, policy, output, and seed context for one pandemic run.</summary>
     internal sealed class PandemicRunContext
     {
+        internal RealTime.Experiments.ExperimentInterventionSchedule InterventionSchedule { get; set; }
+        internal CalibrationTargetSet CalibrationTargets { get; set; }
+
         public PandemicRunContext(
             PandemicRunMode mode,
             PandemicRunPolicy policy,

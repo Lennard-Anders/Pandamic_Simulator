@@ -166,6 +166,7 @@ namespace RealTime.Experiments
         {
             SchemaVersion = ExperimentSchema.CurrentVersion;
             Scenarios = new List<ExperimentScenario>();
+            SpeedMode = ExperimentSpeedMode.Speed3;
             ReturnToBaseline = true;
             StopBatchOnRunFailure = true;
             OutputLocation = new ExperimentOutputRootSelection();
@@ -278,13 +279,20 @@ namespace RealTime.Experiments
     /// <summary>A scenario and its repetition policy.</summary>
     public sealed class ExperimentScenario
     {
+        public string PresetId { get; set; }
+        public int PresetVersion { get; set; }
+        public bool CustomizedAfterPreset { get; set; }
+        public ExperimentInterventionSchedule InterventionSchedule { get; set; }
+        public ExperimentSensitivityMetadata Sensitivity { get; set; }
+        public RealTime.Pandemic.CalibrationTargetSet CalibrationTargets { get; set; }
+
         public ExperimentScenario()
         {
             SchemaVersion = ExperimentSchema.CurrentVersion;
-            RunCount = 1;
+            RunCount = 2;
             DurationDays = 30d;
             EndMode = ExperimentEndMode.FixedDuration;
-            SeedStrategy = ExperimentSeedStrategy.Sequential;
+            SeedStrategy = ExperimentSeedStrategy.Fixed;
             FirstSeed = 1;
             Settings = new ExperimentScenarioSnapshot();
         }
@@ -317,6 +325,7 @@ namespace RealTime.Experiments
             State = ExperimentBatchExecutionState.Idle;
             CompletedRuns = new List<ExperimentCompletedRun>();
             InvalidRuns = new List<ExperimentInvalidRun>();
+            FailedAttemptIds = new List<string>();
         }
 
         public int SchemaVersion { get; set; }
@@ -369,6 +378,9 @@ namespace RealTime.Experiments
         public List<ExperimentCompletedRun> CompletedRuns { get; set; }
 
         public List<ExperimentInvalidRun> InvalidRuns { get; set; }
+
+        /// <summary>Distinct execution attempts that encountered a failure, including recoverable export failures.</summary>
+        public List<string> FailedAttemptIds { get; set; }
     }
 
     /// <summary>Structured, durable error information suitable for recovery UI.</summary>

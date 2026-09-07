@@ -53,7 +53,10 @@ namespace RealTime.Simulation
             float currentHour = now.TimeOfDay.Hours;
             isNightTime = currentHour < config.WakeUpHour || currentHour >= config.GoToSleepHour;
 
-            return UpdateTimeSimulationValues(CalculateFramesPerDay(), useCustomTimePerFrame: true);
+            // The wrapper computes time from the actual simulation frame and offset.
+            // m_currentGameTime is interpolated for rendering and may retain a prior
+            // level's display time until its next Unity update.
+            return UpdateTimeSimulationValues(CalculateFramesPerDay(), useCustomTimePerFrame: true, loadedTime: now);
         }
 
         /// <summary>Updates the time adjustment to be synchronized with the configuration and the daytime.</summary>
@@ -74,7 +77,7 @@ namespace RealTime.Simulation
                 return false;
             }
 
-            float currentHour = SimulationManager.instance.m_currentGameTime.TimeOfDay.Hours;
+            float currentHour = SimulationManager.instance.m_ThreadingWrapper.simulationTime.TimeOfDay.Hours;
             isNightTime = currentHour < config.WakeUpHour || currentHour >= config.GoToSleepHour;
             dayTimeSpeed = GetEffectiveDayTimeSpeed();
             nightTimeSpeed = GetEffectiveNightTimeSpeed();
@@ -139,7 +142,9 @@ namespace RealTime.Simulation
             sm.m_dayTimeOffsetFrames = sm.m_dayTimeFrame - sm.m_currentFrameIndex & SimulationManager.DAYTIME_FRAMES - 1;
         }
 
-        private DateTime UpdateTimeSimulationValues(uint framesPerDay, bool useCustomTimePerFrame)
+        internal static DateTime RebaseTime(DateTime liveTime, DateTime? loadedTime) => loadedTime ?? liveTime;
+
+        private DateTime UpdateTimeSimulationValues(uint framesPerDay, bool useCustomTimePerFrame, DateTime? loadedTime = null)
         {
             SimulationManager.DAYTIME_FRAMES = framesPerDay;
             SimulationManager.DAYTIME_FRAME_TO_HOUR = 24f / SimulationManager.DAYTIME_FRAMES;
@@ -150,7 +155,8 @@ namespace RealTime.Simulation
             originalTimePerFrame = sm.m_timePerFrame;
             originalTimeOffsetTicks = sm.m_timeOffsetTicks;
 
-            var originalDate = sm.m_ThreadingWrapper.simulationTime;
+            // Preserve the frame clock, not the interpolated rendering clock.
+            var originalDate = RebaseTime(sm.m_ThreadingWrapper.simulationTime, loadedTime);
             sm.m_timePerFrame = useCustomTimePerFrame
                 ? new TimeSpan(24L * 3600L * 400_000_000L / framesPerDay)
                 : vanillaTimePerFrame;

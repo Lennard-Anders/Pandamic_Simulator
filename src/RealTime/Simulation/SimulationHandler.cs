@@ -41,6 +41,8 @@ namespace RealTime.Simulation
         /// <summary>Gets or sets the time adjustment simulation class instance.</summary>
         internal static TimeAdjustment TimeAdjustment { get; set; }
 
+        internal static Action PandemicSimulationTick { get; set; }
+
         /// <summary>Gets or sets the weather information class instance.</summary>
         internal static WeatherInfo WeatherInfo { get; set; }
 
@@ -117,6 +119,8 @@ namespace RealTime.Simulation
             Buildings?.ProcessFrame(currentFrame);
             CitizenProcessor?.ProcessFrame(currentFrame);
         }
+
+        public override void OnAfterSimulationTick() => PandemicSimulationTick?.Invoke();
 
         /// <summary>Called by the simulation manager when an update is required.</summary>
         /// <param name="realTimeDelta">The real time delta time.</param>

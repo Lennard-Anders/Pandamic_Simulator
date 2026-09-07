@@ -11,6 +11,39 @@ namespace RealTimeTests.Experiments
 
     public sealed class ExperimentBatchSequencerTests
     {
+        [TestCase(ExperimentBatchExecutionState.Running, false, true)]
+        [TestCase(ExperimentBatchExecutionState.Running, true, true)]
+        [TestCase(ExperimentBatchExecutionState.Paused, false, true)]
+        [TestCase(ExperimentBatchExecutionState.Paused, true, false)]
+        [TestCase(ExperimentBatchExecutionState.Completed, false, false)]
+        public void RunPollingObservesGameResumeWithoutIgnoringIntentionalPause(ExperimentBatchExecutionState state, bool gamePaused, bool expected)
+        {
+            Assert.That(ExperimentBatchStateMachine.ShouldPollRun(state, gamePaused), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void GameResumeAfterThreeDayEndpointReachesFinalizationAndNextRun()
+        {
+            var plan = CreatePlan();
+            plan.Scenarios[0].DurationDays = 3;
+            var sequencer = new ExperimentBatchSequencer(new FnvExperimentSeedProvider());
+            var state = sequencer.CreateInitialState(plan, "session", "now");
+            state.State = ExperimentBatchExecutionState.Running;
+            var run = sequencer.SelectCurrentRun(plan, state);
+            Assert.That(ExperimentBatchStateMachine.TryTransition(state, ExperimentBatchExecutionState.Paused, "paused", out string error), Is.True);
+            Assert.That(ExperimentBatchStateMachine.ShouldPollRun(state.State, false), Is.True);
+            Assert.That(ExperimentBatchStateMachine.TryTransition(state, ExperimentBatchExecutionState.Running, "unpaused", out error), Is.True);
+            var start = new DateTime(2030, 1, 1);
+            var reason = RealTime.Pandemic.PandemicRunPolicy.CreateBatch(3, false).Evaluate(start, start.AddDays(3), 100, 20, true);
+            Assert.That(reason, Is.EqualTo(RealTime.Pandemic.PandemicCompletionReason.DurationReached));
+            foreach (var target in new[] { ExperimentBatchExecutionState.FinalizingRun, ExperimentBatchExecutionState.ExportingRun,
+                ExperimentBatchExecutionState.CommittingRun, ExperimentBatchExecutionState.CompletingRun })
+                Assert.That(ExperimentBatchStateMachine.TryTransition(state, target, "later", out error), Is.True, error);
+            Assert.That(sequencer.RecordCompletion(plan, state, run, "done", "export-directory"), Is.True);
+            Assert.That(state.RunIndex, Is.EqualTo(1));
+            Assert.That(state.CompletedRuns.Count, Is.EqualTo(1));
+        }
+
         [Test]
         public void SequencerAdvancesAcrossRunsAndScenarios()
         {
@@ -170,6 +203,7 @@ namespace RealTimeTests.Experiments
                         ScenarioId = "a",
                         Name = "A",
                         FirstSeed = 11,
+                        SeedStrategy = ExperimentSeedStrategy.Sequential,
                         RunCount = 2,
                     },
                     new ExperimentScenario
@@ -177,6 +211,7 @@ namespace RealTimeTests.Experiments
                         ScenarioId = "b",
                         Name = "B",
                         FirstSeed = 20,
+                        SeedStrategy = ExperimentSeedStrategy.Sequential,
                         RunCount = 1,
                     },
                 },

@@ -35,7 +35,7 @@ The **Pandemic Simulator** is a mod for the city-building game **Cities: Skyline
 
 ### What happens when you activate it?
 
-A disease appears in your city. It silently infects a small number of citizens at first. From that moment on, every time an infected person stands near a healthy person — on the pavement, in a shop, on a bus, at school — there is a real mathematical chance that the disease spreads. The mod checks this thousands of times each in-game minute, for every pair of citizens who are close to each other.
+A disease appears in your city. It silently infects a small number of citizens at first. From that moment on, every time an infected person stands near a healthy person — on the pavement, in a shop, on a bus, at school — there is a real mathematical chance that the disease spreads. The mod processes contacts at the configured epidemiological timestep, using spatial proximity outdoors and explicit context-specific mixing indoors and in transit. Only citizens in their infectious interval can transmit.
 
 As mayor, you have a set of **real-world policy tools** at your fingertips:
 
@@ -811,6 +811,31 @@ The map-theme metadata and published-package achievement flag are resolved in th
 
 ### Create a batch
 
+**Scenario presets** opens a description and parameter-change preview before applying anything. Select an existing scenario to use its captured configuration as the transformation baseline; without a selection, the current manual configuration is captured. **Apply preset: add scenario** creates a separate scenario. The quick comparison button adds Control, Masks, Testing and Strong from the same baseline. Browsing never edits global settings.
+
+**Edit parameters** edits captured scenario values directly, including enumerations. Use **MaskPopulationSplit** to change all three mask percentages atomically. For a scheduled scenario, the phase selector exposes the before/after configurations. Preset identity/version and customization remain provenance; the complete configuration and schedule hash identify scientific inputs.
+
+New batches default to paired seeds. The checkbox remains editable. Within the parameter editor, **Add paired sensitivity scenarios** creates lower, baseline and upper variants for one explicit numeric property with configurable relative perturbations. The displayed −20%/+20% values are generic experimental defaults. Invalid perturbations are rejected; integer parameters are rounded and the applied relative change is recorded. OAT currently requires an unscheduled baseline and enabled paired seeds.
+
+**External calibration targets** accepts a JSON target set with `Name`, `Source` and `Targets`. Each target supplies `Metric`, `TargetValue`, `AbsoluteTolerance` and positive `Weight`. No empirical target values are provided by TENUS. Rate targets use fractions, time-to-peak uses simulated days, hospitalization and mortality rates use cumulative infections as denominator. Results are written to `calibration_results.csv`; absent targets are `NotConfigured`. Missing observations cannot pass. Rt and household secondary attack rate remain unavailable because their required measurement definitions/denominators are not yet supplied.
+
+| Preset | Controlled changes from baseline |
+|---|---|
+| Control — No Interventions | Masks, testing intervention, isolation/contact quarantine, tracing and lockdown off; biology preserved |
+| Low Transmission — Control | Control with indoor/outdoor transmission ×0.75 |
+| High Transmission — Control | Control with indoor/outdoor transmission ×1.25, clamped to 100% |
+| Masks Only — Broad Adoption | Control plus masks with Ignore/Other/Own = 20/40/40%; effectiveness preserved |
+| Testing & Isolation — Fast Detection | Capacity ×2, result delay ×0.5, positive-case isolation and pending quarantine; sensitivity/specificity preserved |
+| Tracing & Quarantine — Contact Containment | Baseline testing; 70% app/manual tracing; isolation and contact quarantine |
+| Lockdown Only — Reactive Closures | Baseline surveillance testing, detected-prevalence close/reopen = 5%/2%, minimum closure 3 days, cooldown 2 days |
+| Layered Response — Moderate | Masks 20/40/40%, capacity ×1.5, delay ×0.75, tracing 60%, isolation and quarantine; lockdown off |
+| Layered Response — Strong | Masks 10/45/45%, capacity ×2, delay ×0.5, tracing 80%, detected-prevalence closures at 3%/1%, minimum 3 days, cooldown 2 days |
+| Delayed Response — Day 7 Intervention | Control initially; exact moderate configuration beginning at simulation day 7 |
+
+All values are editable experimental settings, not calibrated estimates or policy recommendations. Percentage transformations are clamped to 0–100%; result delays use the existing whole-day configuration and round to the nearest day. Multiplying zero baseline testing capacity still gives zero: choose an explicit nonzero capacity when surveillance is intended. Essential services/healthcare are preserved by closure presets.
+
+The delayed schedule stores full before/after snapshots. Its activation must align exactly with the configured epidemiological timestep; preflight rejects an incompatible grid instead of silently adjusting timing. Newly activated testing capacity cannot accumulate retrospective slots from the control period. Scheduled activation is exported as an intervention event.
+
 1. Configure TENUS and the pandemic policies for the first scenario in the normal UI.
 2. Click **Experiments** and enter a batch name.
 3. Select a baseline save and use **Refresh** if the save list changed. There is deliberately no “currently loaded city” shortcut because the game does not expose a reliable originating asset or unsaved-change check.
@@ -999,7 +1024,7 @@ Because saved-game loading, Unity lifecycle callbacks and other mods exist only 
 
 ### Legacy/manual regression
 
-- Load a normal city and verify the Experiment button is the only intended live-panel layout addition.
+- Load a normal city and verify the live KPI toggle, selectable chart, district rows, spreader drill-down and Experiment panel remain readable at the selected resolution.
 - Start, restart and stop a manual pandemic; toggle masks, quarantine and lockdown.
 - Exercise overlays, X-Ray, chart ranges, citizen/location focus and the in-panel settings editor.
 - Confirm the existing manual 30-day endpoint and natural-burnout behavior.
@@ -1138,17 +1163,23 @@ All probability percentages accept a genuine zero. Batch preflight rejects non-f
 
 ### Scientific run files and columns
 
+State and summary exports additionally distinguish ground truth from surveillance: `true_new_infections` (interval secondary exposures; seeds remain separate), `true_prevalence` (fraction in E/I/post-infectious illness), `true_active_infectious`, `detected_new_cases`, `detected_active_cases`, `observed_incidence`, `undetected_active_infections`, and `case_detection_ratio`.
+
+Detected new cases are the first published positive result per logical citizen; repeat positive tests do not create additional detected cases. Active observed cases follow the configured positive-result window and may include false positives. Observed incidence means detected new cases per 100,000 per recorder interval. The case-detection ratio is the fraction of true active infections with a currently available positive result; it is unavailable when there are no true active infections. These diagnostics never inspect pending future results.
+
+Automatic lockdown signals are explicitly selected by `AutomaticPolicyTriggerMetric`: `IdealizedTruePrevalence` preserves the legacy experiment, `DetectedPrevalence` uses active observed cases, `TestPositivityRate` uses cumulative published results, and `HospitalOccupancy` uses sampled occupancy. All four signals and thresholds use percent units. No available tests means positivity is unavailable, not zero. Automatic event rows append `trigger_metric`, `trigger_value`, and `trigger_threshold`; the event timestamp is the action time.
+
 Every successful batch run contains one rich `pandemic_run_*.csv`, legacy `data.csv`/`contacts.csv`, `run_manifest.json`, and these mandatory scientific files:
 
 ```text
 run_summary.csv
-initial_seed_count,secondary_transmissions_total,cumulative_infections,active_exposed,active_infectious,active_post_infectious_ill,active_symptomatic,recovered_total,deaths_total,hospitalizations_total,tracked_population,final_incidence_per_100000_per_interval,final_prevalence_pct,attack_rate_pct,resolved_case_fatality_ratio_pct,rt,rt_method,empirical_secondary_infections_per_infector,actual_mask_usage_pct,total_isolation_person_days,total_quarantine_person_days,tests_requested,tests_performed,tests_positive,tests_negative,mean_test_wait_days,median_test_wait_days,contacts_prevented_by_intervention,physical_contacts_total,traceable_contacts_total,household_contacts_total,work_contacts_total,school_contacts_total,transit_contacts_total,added_population,removed_population
+initial_seed_count,secondary_transmissions_total,cumulative_infections,active_exposed,active_infectious,active_post_infectious_ill,active_symptomatic,recovered_total,deaths_total,hospitalizations_total,tracked_population,final_incidence_per_100000_per_interval,final_prevalence_pct,attack_rate_pct,resolved_case_fatality_ratio_pct,rt,rt_method,empirical_secondary_infections_per_infector,actual_mask_usage_pct,total_isolation_person_days,total_quarantine_person_days,tests_requested,tests_performed,tests_positive,tests_negative,mean_test_wait_days,median_test_wait_days,contacts_prevented_by_intervention,physical_contacts_total,traceable_contacts_total,household_contacts_total,work_contacts_total,school_contacts_total,transit_contacts_total,added_population,removed_population,true_new_infections,true_prevalence,true_active_infectious,detected_new_cases,detected_active_cases,observed_incidence,undetected_active_infections,case_detection_ratio,isolation_following_citizens,quarantine_following_citizens
 
 state_timeseries.csv
-simulation_time,pandemic_day,susceptible,exposed,infectious,post_infectious_ill,symptomatic,recovered,dead,removed,tracked_population,initial_seed_count,secondary_transmissions_total,new_exposures_per_interval,hospitalizations_total,isolated_citizens,quarantined_citizens,incidence_per_100000_per_interval,prevalence_pct,attack_rate_pct
+simulation_time,pandemic_day,susceptible,exposed,infectious,post_infectious_ill,symptomatic,recovered,dead,removed,tracked_population,initial_seed_count,secondary_transmissions_total,new_exposures_per_interval,hospitalizations_total,isolated_citizens,quarantined_citizens,incidence_per_100000_per_interval,prevalence_pct,attack_rate_pct,true_new_infections,true_prevalence,true_active_infectious,detected_new_cases,detected_active_cases,observed_incidence,undetected_active_infections,case_detection_ratio,isolation_following_citizens,quarantine_following_citizens
 
 transmission_events.csv
-event_id,simulation_time,pandemic_day,source_citizen_id,target_citizen_id,source_infection_age_days,target_previous_state,target_new_state,context,origin_category,building_id,vehicle_id,district_id,source_mask_type,target_mask_type,transmission_probability,source_probability,infectiousness_multiplier,is_initial_seed
+event_id,simulation_time,pandemic_day,citizen_id,action,population_category,count,reason
 
 physical_contacts.csv
 contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,position_x,position_y,position_z,distance,traceable_by_app,traceable_by_manual
@@ -1160,7 +1191,7 @@ test_events.csv
 test_id,citizen_id,request_time,scheduled_time,sample_time,result_available_time,state,result,reason,priority,wait_duration_days,result_duration_days,citizen_disease_state_at_sample,infection_age_at_sample_days
 
 intervention_events.csv
-event_id,simulation_time,pandemic_day,citizen_id,intervention_type,action,reason,context
+event_id,simulation_time,pandemic_day,citizen_id,action,population_category,count,reason
 
 healthcare_timeseries.csv
 simulation_time,pandemic_day,hospital_usage_pct,ambulance_usage_pct
@@ -1186,3 +1217,105 @@ The tracked epidemiological population includes every living, non-empty citizen 
 ---
 
 *Documentation updated for the TENUS scientific kernel and Experiment Batch Runner — Cities: Skylines — August 2026*
+
+
+## 19. Scientific extensions, visual analytics and performance
+
+### Compliance and observed measures
+
+`MaskCompliancePercent`, `IsolationCompliancePercent` and `QuarantineCompliancePercent` default to 100 for legacy compatibility. They are experimental parameters, not estimates of population behavior. Stable traits use the master seed, logical citizen ID and separate feature namespaces. Assigned isolation and quarantine persist even when a citizen does not follow them; only followed restrictions block modeled external contacts. Household contacts remain possible. Explicit per-citizen mask overrides take precedence over the population trait.
+
+`intervention_events.csv` records `actually_followed` for citizen restriction events. State and summary files append `isolation_following_citizens` and `quarantine_following_citizens`; these count distinct active followers and remain separate from assigned counts. Overlapping pending-test/contact quarantine counts once per citizen. Legacy `total_isolation_person_days` and `total_quarantine_person_days` measure **assigned** restriction duration, not followed duration. `actual_mask_usage_pct` reflects the realized mask assignment under the final policy, using the tracked population denominator, and is zero when masks are off; it is not a time-weighted or context-weighted wearing survey.
+
+`undetected_active_infections` and `case_detection_ratio` compare surveillance with ground truth. They are diagnostics for the analyst and are not themselves observable policy inputs. Detected cases can include false positives. Published test positivity is cumulative over the run rather than a rolling seven-day window. Dead citizens remain in the tracked epidemiological denominator until a recorded detach/release; district prevalence instead uses living residents with a residential home in a defined district.
+
+### Temporal network exports
+
+New completed runs set `ScientificExtensionsVersion = 1` in their manifest. In addition to the core package, six files are required, length-checked and SHA-256 checked before commit and during aggregation:
+
+- `contact_network_summary.csv`: one row per relative simulation day and context, including physical events, integrated tracked person-days, mean/unique/repeated contact participations per person-day, repeated-event ratio and context durations.
+- `age_mixing_matrix.csv`: symmetric contact participations between Child, Teen, Young, Adult, Senior and Unknown; each physical event contributes two participations, including two on a same-age diagonal.
+- `contact_degree_distribution.csv`: daily distinct-neighbor degree, including citizens with zero contacts.
+- `contact_duration_distribution.csv`: exact event duration and event count.
+- `contacts_by_time_of_day.csv`: event counts by contact end hour in simulation time.
+- `calibration_results.csv`: explicit targets, observations, errors, availability and tolerance status; `NotConfigured` when no external target set is attached.
+
+Network days begin at the run start time. An encounter ending exactly at a day boundary belongs to the preceding interval; daily unique pairs reset afterward. Rates use integrated tracked population, including ordinary turnover. Median contact events per citizen includes zero-contact citizens present during that day; the explicitly named median column is a count for the observed interval, not a rate extrapolated from a partial day. Overall daily figures repeat across context rows: do not sum them ten times. Use one row per day for overall rates. Only the current day's pair set is retained for these aggregates; raw physical contacts continue to stream.
+
+Contact episodes were intentionally not substituted for raw steps. A continuous-looking pair can change position, tracing eligibility and exposure context between steps. Merging those rows without exact subinterval records would lose scientific information. Regression tests retain separate consecutive encounters. Batch traceable adjacency expires only outside its fixed biological lookback; manual history remains because its lookback can be changed interactively. Expiry never removes raw scientific rows. Trace notification IDs are traversed in ascending order, so notification event ordering may differ from the old dictionary traversal while the eligible set, times and restriction effects are preserved.
+
+Older packages without the extension marker retain their original required-file contract. New extension files and optional `performance_diagnostics.csv` are fingerprinted. Dashboard paired differences require matching batch ID, pair ID and master seed; ambiguous duplicates are excluded instead of silently overwritten.
+
+### Calibration and scope limits
+
+Attach a JSON target set through **Edit parameters ? External calibration targets**. Each target identifies a metric, target value, nonnegative absolute tolerance and positive weight. Name the external source. Peak prevalence uses the maximum recorded E/I/post-infectious fraction; time to peak uses its first recorded maximum. Attack rate uses cumulative infections divided by final tracked population, so substantial turnover can make it unsuitable for comparison with a closed-cohort target. Hospitalization and mortality rates use cumulative infections as their denominator. Rt and household secondary attack rate remain unavailable because the required estimator/denominators are not implemented; even a permissive tolerance cannot make missing observations pass.
+
+No external importation mechanism was added: all infections retain the existing initial-seed/local-secondary distinction. Importation was optional in this release scope and would need an explicit third origin plus consistent population, summary and integrity accounting. No claim of calibration or predictive validation follows from passing software tests.
+
+### Live controls and map definitions
+
+- Click **Ground Truth / Observed** in the KPI header to switch the main case display. The chart title cycles Exposed, Infectious, Detected Cases, Recovered, Deaths and New Infections. Data/version caches avoid rebuilding unchanged chart data; existing bounded geometry affects display only.
+- Policy markers cover masks, lockdown, testing, isolation, quarantine, tracing and public transport. Scheduled activation records its exact before/after configurations and a scientific event. Markers show policy enablement, not individual adherence; the scientific event file carries detailed transitions.
+- Click the district summary to cycle true prevalence, detected prevalence, interval incidence and transmission-location counts. New infections are secondary exposures in the last recorded interval, assigned to the citizen's current residential district at the snapshot. This is not an infection-location rate.
+- X-Ray cycles current infectious citizens, recovered, deaths, actual transmission-event hotspots, residential unresolved-infection clusters, and district active counts/prevalence/detected prevalence/incidence/transmissions. District boundaries are cached for up to 30 real seconds while selected. District areas are not density-smoothed, though the terrain mesh interpolates borders. All map colors scale from zero to the current maximum; use numeric district values for comparisons between runs.
+- Selecting a top spreader opens ID, exposure/infectious interval, secondary count, contexts and the newest 12 source?target links, filtered to 24 hours, seven days or the full run. This rendering limit never removes recorded events.
+- Batch progress shows scenario/run position, seed, pair ID, simulation horizon, preset, committed runs, invalid runs and failed attempts. A failed attempt may later succeed after recovery; these are not mutually exclusive outcome totals. The tooltip identifies the scenario and last committed run.
+
+### Performance and refresh policy
+
+The optional **Experiment ? Performance diagnostics** popup enables bounded timing windows (256 calls), mean/max/p50/p95, population, performance tier and physical contact events in the last recorded step. It refreshes at most once per real second while visible and defaults off. Nested timings overlap and must not be summed. Instrumentation covers population reconciliation, progression/recovery/mortality, healthcare, sampling, tracing, contact contexts, hazard preparation/resolution, CSV recording/export, analytics and UI/X-Ray.
+
+The sampler reuses buffers and value types while preserving its score/ID ordering. Testing processes unfinished records and sorts the waiting queue once. Transmission groups use explicit ascending target order; source attribution is compared against the original implementation. Physical-contact request storage is reused only on the simulation thread and all fields are copied into each retained event. No Unity APIs run on background workers.
+
+A single spatial citizen snapshot is built for the epidemic step. Post-transmission disease/restriction updates remain in the simulation path; building-overlay preparation reads that snapshot and is skipped while those overlays are off. X-Ray data is prepared only when selected and enabled. Empty analytics lists no longer defeat refresh timers. Actual in-game performance and Unity integration still require the acceptance checks below; synthetic timings are not FPS claims.
+
+### Additional manual acceptance checks
+
+These have **not been executed in Cities: Skylines** during this implementation session.
+
+1. Use a saved, named baseline; run a manual smoke test and a zero-transmission batch. Confirm seeds do not count as local transmissions and manual mask toggles affect the next step.
+2. Preview all ten presets, confirm browsing changes nothing globally, then edit an applied value. Compare Control/Masks and a four-preset batch with matching seeds.
+3. Run Delayed Response beyond day seven. Inspect exactly one scheduled activation, before/after hashes and unchanged pending test history.
+4. Exercise pause/resume, both abort choices, baseline reload, restart recovery and an invalid run. Confirm invalid/temporary output is excluded from normal aggregation.
+5. Observe tourist/commuter departure, resident emigration and dead detach, with strict population checking both off and on.
+6. Check all KPI/chart series and marker tooltips, district modes, hotspots and top-spreader filters at the user's resolution. Inspect layout, contrast and focus actions.
+7. Repeat identical paired inputs with visualizations on/off; compare scientific CSV content, excluding elapsed wall-clock diagnostics. Measure diagnostics in a representative large city before making an in-game speed claim.
+8. Open completed runs in the optional dashboard, inspect true/observed and network statistics, then test a corrupted file and an incomplete run. Confirm both are excluded from aggregate comparisons.
+
+## 20. Experiment library, comparisons and multi-phase interventions
+
+Open **Experiments → Experiment results** for a separate draggable analysis window. It is independent of the live epidemic controls and never reloads the city or applies historical settings. **Scan / refresh** scans the known output roots plus the editable additional root. Completed runs are checked against their manifest hashes and their recorded compartment sums; invalid, temporary, duplicate or unreadable runs are excluded from statistics and listed in **Quality report**. File processing runs in a background worker without Unity calls. A refresh explicitly rescans files; results do not continuously poll large contact exports during simulation.
+
+Select scenario **A** as reference and **B** as comparison. Each selection includes the verified repetitions of that batch/scenario/configuration hash. The comparison shows sample count, mean, median, sample standard deviation, minimum/maximum and a 95% Student-t interval for the mean. Degrees of freedom above 30 use the conservative df=30 critical value. Intervals require at least two observations with distinct seeds; their interpretation assumes independent repetitions and an appropriate distribution of the sample mean. They are not prediction intervals, proof of causality or external validation. With few repetitions or strongly skewed outcomes, inspect individual runs rather than relying on the interval alone.
+
+Paired differences are **B minus A**. Matching requires paired mode, batch ID, pair ID, master seed, baseline identity/checksums, Git/mod/game identity, seed algorithm, configured duration and end mode. Ambiguous pair duplicates are excluded. Different-city/build/horizon selections can still be viewed descriptively, with a warning, but do not produce paired inference. Missing metrics remain unavailable, not zero. **All scenarios** provides an overview of mean outcomes; **Individual runs** exposes outliers and seeds. **Save report** writes the displayed report to a new file in `Analysis Reports`, outside completed run directories.
+
+The outcome/burden comparison includes cumulative infections, deaths, hospital admissions, peak recorded prevalence, attack rate, final observed active cases, physical contacts, assigned isolation/quarantine person-days, and closed sector-days. The latter sums the recorded effective closure duration separately across lockdown families: two sectors closed for one day equal two sector-days. It is neither population-weighted nor an economic-cost estimate. New runs record `EffectiveFamilyState` intervention events, including their initial open/closed states. Older files without these records have unavailable closure burden. Lower infections with more restriction remains a trade-off, not an automatically recommended policy.
+
+Each batch summary rebuild also writes `batch_quality_report.txt`. This inexpensive automatic report checks manifest-level repetition counts, missing/unstarted scenarios where the plan is available, configuration consistency and duplicate pairing identities. It deliberately distinguishes those checks from full file/hash/state verification in the results window. Detailed failed/invalid attempt information remains in the batch state and the results-window quality report.
+
+### Recorded replay
+
+Choose an individual run at the bottom of the results window and move the timeline slider. The view shows recorded compartments and restriction counts, recent recorded policy transitions, a small map of transmission-event locations and sampled source-to-target links in the preceding 24 simulated hours. The map uses fixed city bounds and north-up coordinates; it is an analytical map, not a reconstruction of historical buildings or citizen movement.
+
+Display memory is bounded to at most 10,001 sampled state frames (including the final frame), 256 deterministic sampled transmission locations and the first 10,000 global policy records. Sampling/capping is labelled in the view. These limits affect rendering only; full exports are never rewritten or truncated. Sparse transmission samples can omit individual chains or events, so use the raw event CSV for exact reconstruction. Old files without recorded positions cannot supply a historical location map. The replay does not run the disease engine or change the active simulation.
+
+### Multi-phase schedules
+
+Open **Edit parameters → Multi-phase intervention plan**. Each phase has an activation day and a complete editable configuration. **Add next phase** copies the final phase at the following day; choose a phase and parameter, edit its value/day, then use **Apply phase value / day**. Mask percentages can be changed together with `MaskPopulationSplit`. **Save schedule to scenario** commits the draft; **Clear scenario schedule** removes it.
+
+Activation days must be positive, strictly increasing and fall exactly on configured epidemic steps. Only intervention parameters may differ from the initial biological model. Each phase and activation day contributes to the configuration hash. The runtime applies each phase once, preserves pending testing history, records its activation and checks subsequent configuration drift against the currently applied phase. Existing single-phase/day-seven scenarios remain compatible; a phase after the run horizon will never activate.
+
+### Defaults and verification
+
+New batches use game **Speed 3**. New scenarios use **two 30-day repetitions**, fixed duration and **Fixed seed 1**. Paired seed mode defaults off; enable it explicitly to use paired sequential seeds. Existing saved plans retain their settings.
+
+New mask presets explicitly use factor 2: the hourly probability is divided by 2 per effective source-control or wearer-protection component. This is an editable model assumption, not clinically calibrated efficacy. Measurements of exhaled viral RNA cannot directly establish the same reduction in infection risk ([Adenaiye et al.](https://pubmed.ncbi.nlm.nih.gov/34519774/)). Existing scenarios keep their recorded values until explicitly edited or replaced.
+
+Reactive Closures v2 and Layered Strong v3 restore Essential Services to a 100% close/reopen threshold, preventing unintended closure at zero cases. This is a threshold, not an unconditional exemption at 100%. Reapply the corrected preset for new comparisons.
+
+The simulation uses completed native tick time for epidemiological steps and holds ticks without toggling the public pause flags. Normal game resume is detected by the batch controller. Quarantine collection readers and writers share a lock; returned enumerations are detached snapshots and union counts avoid temporary sets.
+
+Latest automated verification: **223 C# tests and 12 dashboard tests passed**. Coverage includes preset policies, concurrent quarantine access, exact-step pacing, batch sequencing, export integrity, pairing exclusions, statistics, schedules and replay. A new in-game acceptance run for the latest fixes remains pending. Frame-time spikes and separate game compatibility messages remain; neither a guaranteed FPS improvement nor clinical validation is claimed.
+
+Experiment output files, local audit datasets and session-specific reports are excluded from Git. Keep these locally; this documentation describes the software without publishing individual experiment results.

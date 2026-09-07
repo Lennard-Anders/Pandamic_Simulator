@@ -40,6 +40,13 @@ namespace RealTime.UI
 
         ExperimentBatchPanelActionResult AddCurrentSettingsAsScenario();
 
+        ExperimentPreset PreviewPreset(int presetIndex, int baselineIndex);
+        ExperimentBatchPanelActionResult AddPresetScenario(int presetIndex, int baselineIndex);
+        ExperimentBatchPanelActionResult EditScenarioParameter(int scenarioIndex, string propertyName, string value);
+        ExperimentBatchPanelActionResult AddSensitivityScenarios(int scenarioIndex, string propertyName, double lower, double upper);
+        ExperimentBatchPanelActionResult SetCalibrationTargets(int scenarioIndex, string json);
+        ExperimentBatchPanelActionResult SetInterventionSchedule(int scenarioIndex, string json);
+
         ExperimentBatchPanelActionResult DuplicateScenario(int scenarioIndex);
 
         ExperimentBatchPanelActionResult RemoveScenario(int scenarioIndex);
@@ -135,6 +142,12 @@ namespace RealTime.UI
 
         public int CompletedRuns { get; set; }
 
+        public int InvalidRuns { get; set; }
+        public int FailedAttempts { get; set; }
+        public int CurrentPairId { get; set; }
+        public string CurrentScenarioName { get; set; }
+        public string CurrentPresetId { get; set; }
+
         public int TotalRuns { get; set; }
 
         public int CurrentSeed { get; set; }
@@ -171,7 +184,7 @@ namespace RealTime.UI
     }
 
     /// <summary>A separate, hideable editor and monitor for automated experiment batches.</summary>
-    internal sealed class ExperimentBatchPanel
+    internal sealed partial class ExperimentBatchPanel
     {
         private const string PanelName = "RealTimeExperimentBatchPanel";
         private const float PanelWidth = 910f;
@@ -342,6 +355,11 @@ namespace RealTime.UI
         /// <summary>Destroys only the UI. Batch execution remains owned by the controller.</summary>
         public void Disable()
         {
+            if (resultsWindow != null) UnityEngine.Object.Destroy(resultsWindow.gameObject);
+            resultsWindow = null;
+            replayDots.Clear(); replayFrames = null; replayData = null;
+            lock (resultsGate) { replayGeneration++; resultScanGeneration++; resultsLoading = false; pendingReplay = null; pendingCatalog = null; }
+
             if (panel != null)
             {
                 UnityEngine.Object.Destroy(panel.gameObject);
@@ -362,6 +380,7 @@ namespace RealTime.UI
         /// <summary>Refreshes the panel from the controller's immutable view snapshot.</summary>
         public void Refresh()
         {
+            RefreshDiagnostics();
             if (panel == null)
             {
                 return;
@@ -474,6 +493,8 @@ namespace RealTime.UI
         private void CreateScenarioControls()
         {
             CreateSectionLabel("Scenarios", 12f, 202f, PanelWidth - 24f);
+            CreateButton(panel, 135f, 196f, 165f, "Scenario presets", ShowPresetEditor);
+            CreateButton(panel, 308f, 196f, 190f, "Edit parameters", ShowParameterEditor);
 
             planSummaryLabel = panel.AddUIComponent<UILabel>();
             planSummaryLabel.autoSize = false;
@@ -548,6 +569,8 @@ namespace RealTime.UI
         private void CreateProgressControls()
         {
             CreateSectionLabel("Execution", 12f, 604f, PanelWidth - 24f);
+            CreateButton(panel, 450f, 598f, 215f, "Experiment results", ShowResultsWindow);
+            CreateButton(panel, 680f, 598f, 210f, "Performance diagnostics", ShowDiagnostics);
 
             stateLabel = panel.AddUIComponent<UILabel>();
             stateLabel.autoSize = false;
@@ -587,7 +610,7 @@ namespace RealTime.UI
             detailLabel = panel.AddUIComponent<UILabel>();
             detailLabel.autoSize = false;
             detailLabel.width = PanelWidth - 24f;
-            detailLabel.height = 42f;
+            detailLabel.height = 58f;
             detailLabel.relativePosition = new Vector3(12f, 698f);
             detailLabel.textScale = 0.72f;
             detailLabel.textColor = new Color32(195, 210, 225, 255);
@@ -596,8 +619,8 @@ namespace RealTime.UI
             errorLabel = panel.AddUIComponent<UILabel>();
             errorLabel.autoSize = false;
             errorLabel.width = PanelWidth - 24f;
-            errorLabel.height = 46f;
-            errorLabel.relativePosition = new Vector3(12f, 744f);
+            errorLabel.height = 40f;
+            errorLabel.relativePosition = new Vector3(12f, 762f);
             errorLabel.textScale = 0.72f;
             errorLabel.textColor = new Color32(255, 145, 135, 255);
             errorLabel.wordWrap = true;
@@ -870,6 +893,7 @@ namespace RealTime.UI
             }
 
             stateLabel.text = stateText.ToString();
+            stateLabel.tooltip = "Output status: " + viewState.ExecutionState + ". A run is complete only after its scientific files and manifest commit successfully.";
 
             var details = new StringBuilder();
             if (viewState.CurrentScenarioNumber > 0)
@@ -882,6 +906,9 @@ namespace RealTime.UI
                     viewState.CurrentRunNumber,
                     Math.Max(viewState.CurrentScenarioRunCount, viewState.CurrentRunNumber),
                     viewState.CurrentSeed);
+                details.Append("; pair ").Append(viewState.CurrentPairId);
+                detailLabel.tooltip = (viewState.CurrentScenarioName ?? "") + "\nPreset: " + (viewState.CurrentPresetId ?? "Custom scenario")
+                    + "\nFailed attempts include recoverable failures; a retried attempt may later commit successfully.";
             }
 
             if (viewState.TargetSimulationDays > 0d)
@@ -905,8 +932,11 @@ namespace RealTime.UI
                     details.Append("; ");
                 }
 
-                details.Append("last committed: ").Append(viewState.LastCompletedRun);
+                detailLabel.tooltip += "\nLast committed: " + viewState.LastCompletedRun;
             }
+
+            details.Append("\nPreset: ").Append(string.IsNullOrEmpty(viewState.CurrentPresetId) ? "Custom" : viewState.CurrentPresetId)
+                .Append(" · Invalid: ").Append(viewState.InvalidRuns).Append(" · Failed attempts: ").Append(viewState.FailedAttempts);
 
             detailLabel.text = details.ToString();
 

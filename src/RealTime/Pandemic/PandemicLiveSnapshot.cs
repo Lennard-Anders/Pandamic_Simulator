@@ -70,6 +70,13 @@ namespace RealTime.Pandemic
         public int QuarantineCitizens { get; set; }
 
         public int PositiveTests { get; set; }
+        public int ActiveInfectious { get; set; }
+        public int PostInfectiousIll { get; set; }
+        public int NewInfections { get; set; }
+        public int DetectedNewCases { get; set; }
+        public double ObservedIncidence { get; set; }
+
+        public string PolicyTriggerLabel { get; set; }
 
         public int TestedCitizens { get; set; }
 
@@ -142,6 +149,11 @@ namespace RealTime.Pandemic
 
     internal sealed class PandemicDistrictSnapshot
     {
+        public int DetectedResidents { get; set; }
+        public float DetectedPrevalencePercent { get; set; }
+        public int NewInfections { get; set; }
+        public float IncidencePer100000 { get; set; }
+        public int SecondaryTransmissions { get; set; }
         public int DistrictId { get; set; }
 
         public string DistrictName { get; set; }
@@ -219,6 +231,11 @@ namespace RealTime.Pandemic
 
     internal sealed class PandemicChartPointSnapshot
     {
+        public int Exposed { get; set; }
+        public int DetectedCases { get; set; }
+        public int Recovered { get; set; }
+        public int Deaths { get; set; }
+        public int NewInfections { get; set; }
         public System.DateTime SimulationTime { get; set; }
 
         public int InfectedCount { get; set; }

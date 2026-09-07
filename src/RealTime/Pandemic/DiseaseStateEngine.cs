@@ -188,6 +188,8 @@ namespace RealTime.Pandemic
 
         public int TrackedPopulationCount => trackedCitizens.Count - removedCitizens.Count;
 
+        internal IEnumerable<DiseaseCourse> Courses => courses.Values;
+
         public int InitialSeedCount { get; private set; }
 
         public int SecondaryTransmissionCount { get; private set; }

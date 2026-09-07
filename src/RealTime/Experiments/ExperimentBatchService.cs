@@ -213,7 +213,14 @@ namespace RealTime.Experiments
                         TickLevelReadiness();
                         break;
                     case ExperimentBatchExecutionState.Running:
-                        TickRunning();
+                    case ExperimentBatchExecutionState.Paused:
+                        if (Singleton<SimulationManager>.exists
+                            && ExperimentBatchStateMachine.ShouldPollRun(state.State, SimulationManager.instance.SimulationPaused))
+                        {
+                            if (state.State == ExperimentBatchExecutionState.Paused)
+                                Transition(ExperimentBatchExecutionState.Running);
+                            TickRunning();
+                        }
                         break;
                     case ExperimentBatchExecutionState.FinalizingRun:
                         ExportFrozenRun();
@@ -479,6 +486,116 @@ namespace RealTime.Experiments
             return Success("Scenario added from the normalized current settings.");
         }
 
+        private ExperimentScenarioSnapshot GetPresetBaseline(int baselineIndex)
+        {
+            if (baselineIndex >= 0 && baselineIndex < draftPlan.Scenarios.Count) return draftPlan.Scenarios[baselineIndex].Settings.Clone();
+            if (!TryCaptureCurrentScenario(out ExperimentScenarioSnapshot settings, out string error)) throw new InvalidOperationException(error);
+            return settings;
+        }
+
+        public ExperimentPreset PreviewPreset(int presetIndex, int baselineIndex) => ExperimentPresetCatalog.Describe(presetIndex, GetPresetBaseline(baselineIndex));
+
+        public ExperimentBatchPanelActionResult SetInterventionSchedule(int scenarioIndex, string json)
+        {
+            var failure = RequireScenarioForEdit(scenarioIndex, out ExperimentScenario scenario);
+            if (failure != null) return failure;
+            try
+            {
+                var schedule = string.IsNullOrEmpty(json) ? null : new ExperimentJsonSerializer().Deserialize<ExperimentInterventionSchedule>(json);
+                schedule?.Validate(scenario.Settings);
+                scenario.InterventionSchedule = schedule;
+                scenario.CustomizedAfterPreset = !string.IsNullOrEmpty(scenario.PresetId);
+                return Success("Intervention schedule saved.");
+            }
+            catch (Exception ex) { return Failure(ex.Message); }
+        }
+
+        public ExperimentBatchPanelActionResult SetCalibrationTargets(int scenarioIndex, string json)
+        {
+            var result = RequireScenarioForEdit(scenarioIndex, out ExperimentScenario scenario);
+            if (result != null) return result;
+            try
+            {
+                if (string.IsNullOrEmpty(json)) { scenario.CalibrationTargets = null; return Success("Calibration targets cleared."); }
+                var targets = new ExperimentJsonSerializer().Deserialize<CalibrationTargetSet>(json);
+                targets.Validate();
+                if (string.IsNullOrEmpty(targets.Source) || string.IsNullOrEmpty(targets.Name)) return Failure("Identify the external target set and its source.");
+                scenario.CalibrationTargets = targets;
+                return Success("External calibration targets attached; this is not external model validation.");
+            }
+            catch (Exception ex) { return Failure("Invalid target set: " + ex.Message); }
+        }
+
+        public ExperimentBatchPanelActionResult AddSensitivityScenarios(int scenarioIndex, string propertyName, double lower, double upper)
+        {
+            var result = RequireScenarioForEdit(scenarioIndex, out ExperimentScenario scenario);
+            if (result != null) return result;
+            if (!draftPlan.PairedSeedMode) return Failure("Enable paired seeds before adding an OAT design; existing seed choices were preserved.");
+            try
+            {
+                var variations = ExperimentSensitivity.Create(scenario, propertyName, lower, upper);
+                draftPlan.Scenarios.AddRange(variations);
+                return Success("Lower, baseline and upper sensitivity scenarios added with paired repetitions.");
+            }
+            catch (Exception ex) { return Failure(ex.Message); }
+        }
+
+        public ExperimentBatchPanelActionResult AddPresetScenario(int presetIndex, int baselineIndex)
+        {
+            var editable = RequireEditable();
+            if (editable != null) return editable;
+            var scenario = ExperimentPresetCatalog.Create(presetIndex, GetPresetBaseline(baselineIndex));
+            draftPlan.Scenarios.Add(scenario);
+            return Success("Editable preset scenario added. Paired seeds match random experiment conditions across scenarios.");
+        }
+
+        public ExperimentBatchPanelActionResult EditScenarioParameter(int scenarioIndex, string propertyName, string value)
+        {
+            var result = RequireScenarioForEdit(scenarioIndex, out ExperimentScenario scenario);
+            if (result != null) return result;
+            bool scheduledPhase = propertyName.StartsWith("Scheduled.", StringComparison.Ordinal);
+            if (scheduledPhase) propertyName = propertyName.Substring("Scheduled.".Length);
+            if (scheduledPhase && (scenario.InterventionSchedule == null || (!ExperimentPresetCatalog.IsInterventionProperty(propertyName) && propertyName != "MaskPopulationSplit")))
+                return Failure("The scheduled phase only supports intervention parameters.");
+            var property = typeof(ExperimentScenarioSnapshot).GetProperty(propertyName);
+            bool maskSplit = propertyName == "MaskPopulationSplit";
+            if (!maskSplit && (property == null || !property.CanWrite || propertyName == "SchemaVersion")) return Failure("Unknown editable scenario parameter.");
+            try
+            {
+                object converted = maskSplit ? null : property.PropertyType.IsEnum ? Enum.Parse(property.PropertyType, value, true)
+                    : Convert.ChangeType(value, property.PropertyType, CultureInfo.InvariantCulture);
+                var edited = (scheduledPhase ? scenario.InterventionSchedule.After : scenario.Settings).Clone();
+                if (maskSplit)
+                {
+                    string[] split = value.Split(',');
+                    if (split.Length != 3) return Failure("Supply Ignore,Other,Own percentages.");
+                    edited.RatioIgnoreMasks = int.Parse(split[0], CultureInfo.InvariantCulture);
+                    edited.RatioOtherProtectionMask = int.Parse(split[1], CultureInfo.InvariantCulture);
+                    edited.RatioOwnProtectionMask = int.Parse(split[2], CultureInfo.InvariantCulture);
+                }
+                else property.SetValue(edited, converted, null);
+                var validation = ExperimentPlanValidator.ValidateSettings(edited);
+                if (!validation.IsValid) return Failure(string.Join("; ", validation.Errors.ToArray()));
+                if (scheduledPhase)
+                {
+                    scenario.InterventionSchedule.After = edited;
+                    scenario.CustomizedAfterPreset = !string.IsNullOrEmpty(scenario.PresetId);
+                    return Success("Scheduled intervention parameter updated.");
+                }
+                scenario.Settings = edited;
+                if (scenario.InterventionSchedule != null)
+                {
+                    scenario.InterventionSchedule.Before = edited.Clone();
+                    // Biological/input edits apply to both phases; intervention edits apply to the selected initial phase.
+                    if (!maskSplit && !ExperimentPresetCatalog.IsInterventionProperty(propertyName))
+                        for (int phase = 1; phase <= scenario.InterventionSchedule.PhaseCount; phase++) property.SetValue(scenario.InterventionSchedule.SettingsAfter(phase), converted, null);
+                }
+                scenario.CustomizedAfterPreset = !string.IsNullOrEmpty(scenario.PresetId);
+                return Success("Scenario parameter updated. Global settings are unchanged.");
+            }
+            catch (Exception ex) { return Failure("Invalid parameter value: " + ex.Message); }
+        }
+
         public ExperimentBatchPanelActionResult DuplicateScenario(int scenarioIndex)
         {
             ExperimentScenario scenario;
@@ -544,6 +661,8 @@ namespace RealTime.Experiments
             }
 
             scenario.Settings = settings;
+            scenario.CustomizedAfterPreset = !string.IsNullOrEmpty(scenario.PresetId);
+            if (scenario.InterventionSchedule != null) scenario.InterventionSchedule.Before = settings.Clone();
             return Success("Scenario settings replaced with the normalized current values.");
         }
 
@@ -945,7 +1064,9 @@ namespace RealTime.Experiments
                 || simulationTime - lastConfigurationCheckSimulationTime >= TimeSpan.FromMinutes(5d))
             {
                 lastConfigurationCheckSimulationTime = simulationTime;
-                List<ExperimentSettingDifference> differences = currentRun.Scenario.Settings.Diff(
+                ExperimentScenarioSnapshot expected = manager.ScheduledInterventionApplied
+                    ? currentRun.Scenario.InterventionSchedule.SettingsAfter(manager.AppliedInterventionCount) : currentRun.Scenario.Settings;
+                List<ExperimentSettingDifference> differences = expected.Diff(
                     ExperimentScenarioSnapshot.Capture(levelCore.Configuration, QuarantineManager.Instance.InLockDown));
                 if (differences.Count > 0)
                 {
@@ -964,6 +1085,19 @@ namespace RealTime.Experiments
         private void HandleInvalidRun(PandemicManager manager, ExperimentRunIntegrityFailure failure)
         {
             SetSimulationPaused(true);
+            // Persist the original cause before freezing: a secondary archive failure
+            // must never replace the only evidence of why the simulation stopped.
+            Log.Error("[TENUS Batch] Invalid run: " + failure.Code + " at "
+                + failure.SimulationTime.ToString("o") + ": " + failure.Message + " " + failure.Detail);
+            try
+            {
+                jsonStore.Save(Path.Combine(currentAttemptDirectory, "integrity_failure.json"),
+                    failure);
+            }
+            catch (Exception diagnosticException)
+            {
+                Log.Warning("[TENUS Batch] Could not persist the original integrity failure: " + diagnosticException);
+            }
             try
             {
                 if (!manager.FreezeInvalidBatchRun())
@@ -972,9 +1106,7 @@ namespace RealTime.Experiments
                 }
 
                 DateTime endUtc = DateTime.UtcNow;
-                state.RunSimulationEndedUtc = Singleton<SimulationManager>.exists
-                    ? SimulationIso(SimulationManager.instance.m_currentGameTime)
-                    : SimulationIso(failure.SimulationTime);
+                state.RunSimulationEndedUtc = SimulationIso(manager.GetScientificRunSnapshot().RunEndTime);
                 frozenExportRequest = new PandemicRunExportRequest(
                     manager,
                     manager.GetLiveSnapshot(),
@@ -1244,6 +1376,10 @@ namespace RealTime.Experiments
                 };
                 var metadata = new PandemicBatchExportMetadata
                 {
+                    PresetId = currentRun.Scenario.PresetId,
+                    PresetVersion = currentRun.Scenario.PresetVersion,
+                    CustomizedAfterPreset = currentRun.Scenario.CustomizedAfterPreset,
+                    Sensitivity = currentRun.Scenario.Sensitivity,
                     BatchId = activePlan.BatchId,
                     BatchName = activePlan.BatchName,
                     ScenarioId = currentRun.Scenario.ScenarioId,
@@ -1265,6 +1401,8 @@ namespace RealTime.Experiments
                     PandemicComponentSeeds.FromExperimentSeedSet(currentRun.Seeds),
                     DateTime.UtcNow,
                     metadata);
+                currentRunContext.InterventionSchedule = currentRun.Scenario.InterventionSchedule;
+                currentRunContext.CalibrationTargets = currentRun.Scenario.CalibrationTargets;
 
                 SetState(ExperimentBatchExecutionState.StartingRun);
                 runWallClockStartUtc = DateTime.UtcNow;
@@ -1308,9 +1446,9 @@ namespace RealTime.Experiments
             SetSimulationPaused(true);
             SetState(ExperimentBatchExecutionState.FinalizingRun);
             DateTime endUtc = DateTime.UtcNow;
-            state.RunSimulationEndedUtc = Singleton<SimulationManager>.exists
-                ? SimulationIso(SimulationManager.instance.m_currentGameTime)
-                : null;
+            // The UI may finalize on a later game frame. Export the frozen scientific
+            // endpoint, not that later wall/game frame, to keep durations consistent.
+            state.RunSimulationEndedUtc = SimulationIso(manager.GetScientificRunSnapshot().RunEndTime);
             frozenExportRequest = new PandemicRunExportRequest(
                 manager,
                 manager.GetLiveSnapshot(),
@@ -1354,6 +1492,7 @@ namespace RealTime.Experiments
                 levelCore.PandemicManager.CompletionReason.ToString(),
                 finalDirectory);
             state.CommitId = Guid.NewGuid().ToString("N");
+            manifest.ScientificExtensionsVersion = 1;
             manifest.OverallRunNumber = CalculateOverallRunNumber(currentRun.ScenarioIndex, currentRun.RunIndex);
             manifest.AttemptId = state.CurrentAttemptId;
             manifest.CommitId = state.CommitId;
@@ -1637,6 +1776,11 @@ namespace RealTime.Experiments
             Exception exception,
             bool retryable)
         {
+            if (state != null && !string.IsNullOrEmpty(state.CurrentAttemptId))
+            {
+                if (state.FailedAttemptIds == null) state.FailedAttemptIds = new List<string>();
+                if (!state.FailedAttemptIds.Contains(state.CurrentAttemptId)) state.FailedAttemptIds.Add(state.CurrentAttemptId);
+            }
             SetSimulationPaused(true);
             SetError(code, message, exception, retryable);
             SetState(failureState);
@@ -1749,7 +1893,10 @@ namespace RealTime.Experiments
             int speed = activePlan.SpeedMode == ExperimentSpeedMode.PreserveStartingSpeed
                 ? activePlan.OriginalSimulationSpeed
                 : (int)activePlan.SpeedMode;
-            SimulationManager.instance.SelectedSimulationSpeed = Math.Max(1, Math.Min(3, speed));
+            SimulationManager manager = SimulationManager.instance;
+            int selectedSpeed = Math.Max(1, Math.Min(3, speed));
+            // The setter may dispatch guide UI work and must run on the simulation thread.
+            manager.AddAction(() => manager.SelectedSimulationSpeed = selectedSpeed);
         }
 
         private static void SetSimulationPaused(bool paused)
@@ -1767,8 +1914,14 @@ namespace RealTime.Experiments
                 return;
             }
 
-            SimulationManager.instance.SelectedSimulationSpeed = activePlan.OriginalSimulationSpeed;
-            SimulationManager.instance.SimulationPaused = activePlan.OriginalSimulationPaused;
+            SimulationManager manager = SimulationManager.instance;
+            int originalSpeed = activePlan.OriginalSimulationSpeed;
+            bool originalPaused = activePlan.OriginalSimulationPaused;
+            manager.AddAction(() =>
+            {
+                manager.SelectedSimulationSpeed = originalSpeed;
+                manager.SimulationPaused = originalPaused;
+            });
         }
 
         private void RestoreOriginalConfiguration(RealTimeCore core)
@@ -1869,9 +2022,10 @@ namespace RealTime.Experiments
                 GameVersion = BuildConfig.applicationVersionFull,
                 GitCommitSha = buildIdentity.CommitSha,
                 GitBranchOrTag = buildIdentity.BranchOrTag,
-                SpeedMode = ExperimentSpeedMode.Unspecified,
+                SpeedMode = ExperimentSpeedMode.Speed3,
                 ReturnToBaseline = true,
                 StopBatchOnRunFailure = true,
+                PairedSeedMode = false,
             };
 
             ExperimentOutputRootSelection selection = ChooseDefaultOutputRoot();
@@ -2031,12 +2185,20 @@ namespace RealTime.Experiments
             view.ScenarioCount = plan?.Scenarios?.Count ?? 0;
             view.TotalRuns = plan == null ? 0 : sequencer.CountTotalRuns(plan);
             view.CompletedRuns = state?.CompletedRuns?.Count ?? 0;
+            view.InvalidRuns = state?.InvalidRuns?.Count ?? 0;
+            if (state?.State == ExperimentBatchExecutionState.Completed && view.InvalidRuns > 0)
+                view.StatusText = "Batch finished with invalid runs: " + view.CompletedRuns + "/" + view.TotalRuns
+                    + " completed, " + view.InvalidRuns + " invalid. Results are incomplete.";
+            view.FailedAttempts = state?.FailedAttemptIds?.Count ?? 0;
+            view.CurrentPairId = state?.CurrentPairId ?? 0;
             if (state != null && plan?.Scenarios != null && state.ScenarioIndex >= 0 && state.ScenarioIndex < plan.Scenarios.Count)
             {
                 view.CurrentScenarioNumber = state.ScenarioIndex + 1;
                 view.CurrentRunNumber = state.RunIndex + 1;
                 view.CurrentScenarioRunCount = plan.Scenarios[state.ScenarioIndex].RunCount;
                 view.CurrentSeed = state.CurrentMasterSeed;
+                view.CurrentScenarioName = plan.Scenarios[state.ScenarioIndex].Name;
+                view.CurrentPresetId = plan.Scenarios[state.ScenarioIndex].PresetId;
                 view.TargetSimulationDays = plan.Scenarios[state.ScenarioIndex].DurationDays;
             }
 

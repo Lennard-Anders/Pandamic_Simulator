@@ -38,7 +38,9 @@ namespace RealTime.Pandemic
             BuildOverlayMesh();
         }
 
-        private void LateUpdate()
+        private void LateUpdate() { using (RealTime.Pandemic.PandemicProfiler.Measure("PandemicXRayOverlayBehavior")) LateUpdateProfiled(); }
+
+        private void LateUpdateProfiled()
         {
             PandemicManager manager = PandemicManager.Instance;
             if (manager == null)
@@ -202,7 +204,18 @@ namespace RealTime.Pandemic
 
         private bool UpdateVertexColors(PandemicXRayMetric metric)
         {
-            float maxValue = SmoothSourceGrid();
+            float maxValue;
+            if (metric >= PandemicXRayMetric.DistrictActiveInfections)
+            {
+                // District values are rates/counts, not point densities. Do not blur their areas.
+                maxValue = 0f;
+                for (int i = 0; i < sourceGrid.Length; i++)
+                {
+                    smoothedGrid[i] = sourceGrid[i];
+                    maxValue = Mathf.Max(maxValue, sourceGrid[i]);
+                }
+            }
+            else maxValue = SmoothSourceGrid();
             if (maxValue <= 0f)
             {
                 return false;

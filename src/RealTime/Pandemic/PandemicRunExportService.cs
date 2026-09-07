@@ -177,7 +177,7 @@ namespace RealTime.Pandemic
             PandemicBatchExportMetadata metadata = context.BatchMetadata;
             PandemicComponentSeeds seeds = context.ComponentSeeds;
             csv.AppendLine("[BATCH METADATA]");
-            csv.AppendLine("batch_id,batch_name,scenario_id,scenario_name,scenario_index,run_number,overall_run_number,master_seed,duration_days,completion_policy,completion_reason,pandemic_seed,mask_seed,test_seed,contact_seed,pair_id,initial_population_seed,disease_progression_seed,transmission_seed,symptom_seed,mortality_seed,testing_seed,contact_tracing_seed,intervention_seed,configuration_hash_algorithm,configuration_hash,trait_assignment_algorithm,git_commit_sha,git_branch_or_tag");
+            csv.AppendLine("batch_id,batch_name,scenario_id,scenario_name,scenario_index,run_number,overall_run_number,master_seed,duration_days,completion_policy,completion_reason,pandemic_seed,mask_seed,test_seed,contact_seed,pair_id,initial_population_seed,disease_progression_seed,transmission_seed,symptom_seed,mortality_seed,testing_seed,contact_tracing_seed,intervention_seed,configuration_hash_algorithm,configuration_hash,trait_assignment_algorithm,git_commit_sha,git_branch_or_tag,preset_id,preset_version,customized_after_preset,sensitivity_parameter,baseline_value,applied_value,relative_change");
             csv.AppendFormat(
                 CultureInfo.InvariantCulture,
                 "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22},{23},{24},{25},{26},{27},{28}",
@@ -210,6 +210,12 @@ namespace RealTime.Pandemic
                 DeterministicCitizenTraitAssigner.AlgorithmName,
                 CsvEscape(metadata?.GitCommitSha),
                 CsvEscape(metadata?.GitBranchOrTag));
+            csv.AppendFormat(CultureInfo.InvariantCulture, ",{0},{1},{2},{3},{4},{5},{6}",
+                CsvEscape(metadata?.PresetId), metadata?.PresetVersion ?? 0, metadata?.CustomizedAfterPreset == true ? 1 : 0,
+                CsvEscape(metadata?.Sensitivity?.Parameter),
+                metadata?.Sensitivity?.BaselineValue.ToString("R", CultureInfo.InvariantCulture) ?? string.Empty,
+                metadata?.Sensitivity?.AppliedValue.ToString("R", CultureInfo.InvariantCulture) ?? string.Empty,
+                metadata?.Sensitivity?.RelativeChange.ToString("R", CultureInfo.InvariantCulture) ?? string.Empty);
             csv.AppendLine();
             csv.AppendLine();
         }

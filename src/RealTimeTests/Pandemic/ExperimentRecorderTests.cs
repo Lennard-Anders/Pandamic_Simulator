@@ -12,6 +12,69 @@ namespace RealTimeTests.Pandemic
         private static readonly DateTime Start = new DateTime(2042, 4, 3, 12, 0, 0, DateTimeKind.Utc);
 
         [Test]
+        public void ContactCsvRetainsExactTimestampsAcrossRepeatedAndChangedIntervals()
+        {
+            string directory = CreateTemporaryDirectory();
+            var originalCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
+            try
+            {
+                System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+                using (var recorder = new ExperimentRecorder())
+                {
+                    recorder.BeginRun(Start, directory);
+                    var contacts = new ContactEngine();
+                    DateTime[] ends = { Start.AddMinutes(5), Start.AddMinutes(5), Start.AddMinutes(10) };
+                    for (int i = 0; i < ends.Length; i++)
+                    {
+                        var contact = contacts.Record(Contact((uint)i + 1, 9, ends[i]), out bool created);
+                        contact.TraceableByApp = true;
+                        recorder.RecordPhysicalContact(contact, 4);
+                    }
+                    recorder.Freeze(ends[2]);
+                    var physical = File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.PhysicalContactsFileName));
+                    var traceable = File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.TraceableContactsFileName));
+                    Assert.That(physical.Length, Is.EqualTo(4));
+                    Assert.That(traceable.Length, Is.EqualTo(4));
+                    for (int i = 0; i < ends.Length; i++)
+                    {
+                        string prefix = (i + 1) + "," + ends[i].AddMinutes(-5).ToString("o") + "," + ends[i].ToString("o") + ",5," + (i + 1) + ",9,Workplace,7,0,4,";
+                        Assert.That(physical[i + 1], Is.EqualTo(prefix + "0,0,0,,1,0"));
+                        Assert.That(traceable[i + 1], Is.EqualTo(prefix + "1,0"));
+                    }
+                }
+            }
+            finally
+            {
+                System.Threading.Thread.CurrentThread.CurrentCulture = originalCulture;
+                DeleteTemporaryDirectory(directory);
+            }
+        }
+
+        [Test]
+        public void BackwardsClockStillRejectsSuccessButCanPublishInvalidRunDiagnostics()
+        {
+            string directory = CreateTemporaryDirectory();
+            try
+            {
+                using (var recorder = new ExperimentRecorder())
+                {
+                    recorder.BeginRun(Start, directory);
+                    recorder.RecordPopulation(new PandemicPopulationEvent
+                    { SimulationTime = Start, Action = "InitialPopulation", Count = 2 });
+                    var contacts = new ContactEngine();
+                    recorder.RecordPhysicalContact(contacts.Record(Contact(1, 2, Start.AddMinutes(10)), out bool created), 0);
+                    Assert.That(() => recorder.Freeze(Start.AddMinutes(5)), Throws.InvalidOperationException);
+                    var snapshot = recorder.Freeze(Start.AddMinutes(5), false);
+                    Assert.That(snapshot.RunEndTime, Is.EqualTo(Start.AddMinutes(10)));
+                    Assert.That(snapshot.PhysicalContactsTotal, Is.EqualTo(1));
+                    AssertTemporaryStreams(directory, false);
+                    Assert.That(File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.PhysicalContactsFileName)), Has.Length.EqualTo(2));
+                }
+            }
+            finally { DeleteTemporaryDirectory(directory); }
+        }
+
+        [Test]
         public void FreezePublishesCompleteStreamingPackageAndPreservesContactHistory()
         {
             string directory = CreateTemporaryDirectory();

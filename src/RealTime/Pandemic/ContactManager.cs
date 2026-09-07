@@ -26,6 +26,28 @@ namespace RealTime.Pandemic
         private long totalTraceableContacts;
         private long totalRecordedBuildingContacts;
         private long totalRecordedNonBuildingContacts;
+        private DateTime nextPruneTime;
+        private readonly List<KeyValuePair<uint, uint>> expiredDirections = new List<KeyValuePair<uint, uint>>();
+        private readonly List<uint> emptyCitizens = new List<uint>();
+
+        internal void PruneExpired(DateTime simulationTime, TimeSpan lookback)
+        {
+            if (lookback < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(lookback));
+            if (simulationTime < nextPruneTime) return;
+            nextPruneTime = simulationTime.AddDays(1);
+            DateTime cutoff = simulationTime - lookback;
+            expiredDirections.Clear(); emptyCitizens.Clear();
+            foreach (var citizen in contacts)
+                foreach (var contact in citizen.Value)
+                    if (contact.Value <= cutoff) expiredDirections.Add(new KeyValuePair<uint, uint>(citizen.Key, contact.Key));
+            foreach (var expired in expiredDirections)
+            {
+                contacts[expired.Key].Remove(expired.Value);
+                traceablePairs.Remove(CreatePairKey(expired.Key, expired.Value));
+            }
+            foreach (var citizen in contacts) if (citizen.Value.Count == 0) emptyCitizens.Add(citizen.Key);
+            foreach (uint citizen in emptyCitizens) contacts.Remove(citizen);
+        }
 
         public void Init(Config.RealTimeConfig newConfig)
         {
@@ -183,6 +205,8 @@ namespace RealTime.Pandemic
 
         private void ResetRuntimeState()
         {
+            nextPruneTime = default(DateTime);
+            expiredDirections.Clear(); emptyCitizens.Clear();
             contacts.Clear();
             traceablePairs.Clear();
             contactEngine.Reset();

@@ -1,4 +1,4 @@
-// <copyright file="RealTimeCore.cs" company="dymanoid">
+﻿// <copyright file="RealTimeCore.cs" company="dymanoid">
 // Copyright (c) dymanoid. All rights reserved.
 // </copyright>
 
@@ -324,6 +324,9 @@ namespace RealTime.Core
             Log.Info("The 'Real Time' mod reverts method patches.");
             patcher.Revert();
 
+            SimulationPacingPatch.StepMinutes = 0;
+            SimulationPacingPatch.StepPending = false;
+
             ResidentAIPatch.RealTimeAI = null;
             TouristAIPatch.RealTimeAI = null;
             BuildingAIPatch.RealTimeAI = null;
@@ -332,6 +335,8 @@ namespace RealTime.Core
             SimulationHandler.EventManager = null;
             SimulationHandler.DayTimeSimulation = null;
             SimulationHandler.TimeAdjustment = null;
+            SimulationHandler.PandemicSimulationTick = null;
+            PandemicManager?.StopStepSynchronization();
             SimulationHandler.WeatherInfo = null;
             SimulationHandler.Buildings = null;
             SimulationHandler.CitizenProcessor = null;
@@ -418,6 +423,7 @@ namespace RealTime.Core
             AddPatchIfAvailable(patches, BuildingAIPatch.CalculateUnspawnPosition, nameof(BuildingAIPatch.CalculateUnspawnPosition));
             AddPatchIfAvailable(patches, BuildingAIPatch.ProduceGoods, nameof(BuildingAIPatch.ProduceGoods));
             AddPatchIfAvailable(patches, BuildingAIPatch.TrySpawnBoot, nameof(BuildingAIPatch.TrySpawnBoot));
+            AddPatchIfAvailable(patches, SimulationPacingPatch.FinalSpeed, nameof(SimulationPacingPatch.FinalSpeed));
             AddPatchIfAvailable(patches, ResidentAIPatch.Location, nameof(ResidentAIPatch.Location));
             AddPatchIfAvailable(patches, ResidentAIPatch.ArriveAtTarget, nameof(ResidentAIPatch.ArriveAtTarget));
             AddPatchIfAvailable(patches, ResidentAIPatch.StartMoving, nameof(ResidentAIPatch.StartMoving));
@@ -587,6 +593,7 @@ namespace RealTime.Core
             pandemicManagerObject = new GameObject("PandemicManager");
             var pandemicManager = pandemicManagerObject.AddComponent<PandemicManager>();
             pandemicManager.Init(config, gameConnections);
+            SimulationHandler.PandemicSimulationTick = pandemicManager.OnSimulationTickCompleted;
             pandemicManagerObject.AddComponent<InfectedCitizenTrailBehavior>();
             pandemicManagerObject.AddComponent<InfectedCitizenIconBehavior>();
             pandemicManagerObject.AddComponent<QuarantineBuildingIconBehavior>();

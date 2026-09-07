@@ -14,6 +14,8 @@ namespace RealTime.Experiments
     /// <summary>Durable manifest for one completed experiment run.</summary>
     public sealed class ExperimentRunManifest
     {
+        /// <summary>Zero identifies legacy packages; version one requires network and calibration outputs.</summary>
+        public int ScientificExtensionsVersion { get; set; }
         public const string CompletedStatus = "Completed";
 
         public ExperimentRunManifest()
@@ -430,6 +432,12 @@ namespace RealTime.Experiments
         };
         private readonly IAtomicJsonFileStore jsonStore;
 
+        internal static readonly string[] ScientificExtensionFiles =
+        {
+            "contact_network_summary.csv", "age_mixing_matrix.csv", "contact_degree_distribution.csv",
+            "contact_duration_distribution.csv", "contacts_by_time_of_day.csv", "calibration_results.csv",
+        };
+
         public ExperimentRunCommitService(IAtomicJsonFileStore jsonStore)
         {
             if (jsonStore == null)
@@ -532,7 +540,7 @@ namespace RealTime.Experiments
             }
 
             List<ExperimentGeneratedFileEntry> files;
-            if (!TryFingerprintMandatoryFiles(attemptDirectory, out files, out error))
+            if (!TryFingerprintMandatoryFiles(attemptDirectory, request.Manifest.ScientificExtensionsVersion, out files, out error))
             {
                 return Failure(error);
             }
@@ -790,6 +798,7 @@ namespace RealTime.Experiments
             try
             {
                 AtomicWriteText(summaryPath, BuildSummaryCsv(result.Rows));
+                AtomicWriteText(Path.Combine(batch, "batch_quality_report.txt"), ExperimentResultsAnalysis.ManifestQuality(uniqueRuns.Values, jsonStore.TryLoad<ExperimentBatchPlan>(Path.Combine(batch, "batch_manifest.json")).Value));
             }
             catch (Exception exception)
             {
@@ -892,6 +901,7 @@ namespace RealTime.Experiments
 
         private static bool TryFingerprintMandatoryFiles(
             string directory,
+            int extensionsVersion,
             out List<ExperimentGeneratedFileEntry> entries,
             out string error)
         {
@@ -930,6 +940,15 @@ namespace RealTime.Experiments
                     entries.Add(CreateFileEntry(GetFileRole(fileName), directory, path));
                 }
 
+                if (extensionsVersion >= 1)
+                    foreach (string fileName in ScientificExtensionFiles)
+                    {
+                        string path = Path.Combine(directory, fileName);
+                        if (!File.Exists(path)) { error = "A mandatory scientific extension is missing: " + fileName; return false; }
+                        entries.Add(CreateFileEntry("ScientificExtension", directory, path));
+                    }
+                string diagnostics = Path.Combine(directory, "performance_diagnostics.csv");
+                if (File.Exists(diagnostics)) entries.Add(CreateFileEntry("PerformanceDiagnostics", directory, diagnostics));
                 entries.Sort(CompareFileEntries);
             }
             catch (Exception exception)
@@ -990,6 +1009,12 @@ namespace RealTime.Experiments
             if (manifest == null)
             {
                 error = "The run manifest is missing.";
+                return false;
+            }
+
+            if (manifest.ScientificExtensionsVersion < 0 || manifest.ScientificExtensionsVersion > 1)
+            {
+                error = "The scientific extension version is unsupported.";
                 return false;
             }
 
@@ -1200,6 +1225,8 @@ namespace RealTime.Experiments
         {
             int pandemicCount = 0;
             var mandatoryNames = new HashSet<string>(MandatoryNamedFiles, StringComparer.OrdinalIgnoreCase);
+            if (manifest.ScientificExtensionsVersion >= 1)
+                foreach (string name in ScientificExtensionFiles) mandatoryNames.Add(name);
             var foundMandatoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, bool> paths = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             foreach (ExperimentGeneratedFileEntry entry in manifest.OutputFiles)
@@ -1244,7 +1271,7 @@ namespace RealTime.Experiments
                 }
             }
 
-            if (pandemicCount != 1 || foundMandatoryNames.Count != MandatoryNamedFiles.Length)
+            if (pandemicCount != 1 || foundMandatoryNames.Count != mandatoryNames.Count)
             {
                 error = "The run manifest does not identify the complete mandatory scientific output package.";
                 return false;
@@ -1582,6 +1609,7 @@ namespace RealTime.Experiments
             {
                 string normalized = part.ToLowerInvariant();
                 if (normalized.IndexOf("__inprogress") >= 0
+                    || normalized.IndexOf(".__invalid_", StringComparison.Ordinal) >= 0
                     || normalized.EndsWith(".in-progress", StringComparison.Ordinal)
                     || normalized.EndsWith(".inprogress", StringComparison.Ordinal)
                     || normalized.EndsWith(".partial", StringComparison.Ordinal)

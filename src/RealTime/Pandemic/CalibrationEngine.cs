@@ -8,7 +8,7 @@ namespace RealTime.Pandemic
     using System.Collections.Generic;
     using System.Linq;
 
-    internal enum CalibrationMetric
+    public enum CalibrationMetric
     {
         AttackRate,
         PeakPrevalence,
@@ -19,7 +19,7 @@ namespace RealTime.Pandemic
         HouseholdSecondaryAttackRate,
     }
 
-    internal sealed class CalibrationTarget
+    public sealed class CalibrationTarget
     {
         public CalibrationMetric Metric { get; set; }
 
@@ -31,7 +31,7 @@ namespace RealTime.Pandemic
     }
 
     /// <summary>An explicit, serializable set of externally supplied calibration targets.</summary>
-    internal sealed class CalibrationTargetSet
+    public sealed class CalibrationTargetSet
     {
         public CalibrationTargetSet()
         {
@@ -42,16 +42,23 @@ namespace RealTime.Pandemic
 
         public string Source { get; set; }
 
-        public IList<CalibrationTarget> Targets { get; private set; }
+        public string RtDefinition { get; set; }
+
+        public string GenerationIntervalAssumptions { get; set; }
+
+        public List<CalibrationTarget> Targets { get; set; }
 
         public void Validate()
         {
+            if (Targets == null || Targets.Count == 0) throw new InvalidOperationException("Supply at least one explicit calibration target.");
             var metrics = new HashSet<CalibrationMetric>();
             foreach (CalibrationTarget target in Targets)
             {
                 if (target == null
                     || !Enum.IsDefined(typeof(CalibrationMetric), target.Metric)
                     || !Finite(target.TargetValue)
+                    || target.TargetValue < 0d
+                    || (target.Metric != CalibrationMetric.Rt && target.Metric != CalibrationMetric.TimeToPeakDays && target.TargetValue > 1d)
                     || !Finite(target.AbsoluteTolerance)
                     || target.AbsoluteTolerance < 0d
                     || !Finite(target.Weight)
@@ -97,7 +104,7 @@ namespace RealTime.Pandemic
 
         public IList<CalibrationMetricResult> Results { get; private set; }
 
-        public bool AllAvailable => Results.All(result => result.IsAvailable);
+        public bool AllAvailable => Results.Count > 0 && Results.All(result => result.IsAvailable);
 
         public bool AllWithinTolerance => AllAvailable && Results.All(result => result.IsWithinTolerance);
 
@@ -124,6 +131,7 @@ namespace RealTime.Pandemic
             {
                 double? observed = observations.TryGetValue(target.Metric, out double? value) ? value : null;
                 bool available = observed.HasValue && !double.IsNaN(observed.Value) && !double.IsInfinity(observed.Value);
+                if (target.Metric == CalibrationMetric.Rt && (string.IsNullOrEmpty(targetSet.RtDefinition) || string.IsNullOrEmpty(targetSet.GenerationIntervalAssumptions))) available = false;
                 double? error = available ? Math.Abs(observed.Value - target.TargetValue) : (double?)null;
                 evaluation.Results.Add(new CalibrationMetricResult
                 {
