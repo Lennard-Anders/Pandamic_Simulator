@@ -190,84 +190,49 @@ Follow these steps on a machine where you want to **edit the source code** and r
 
 ### 4.1 Prerequisites
 
-Install all of the following before you start:
+The automated build/install entry point supports **Windows** with Cities: Skylines **1** installed through Steam and the **.NET 8 SDK** available on PATH. Git is needed to clone/pull the repository and record build identity. Internet access is required on the first build to restore NuGet packages. The game assemblies are read from your own installed game; they are not distributed with the source or mod package.
 
-| Tool | Purpose | Where to get it |
-|---|---|---|
-| **Git** | Version control, cloning the repo | https://git-scm.com |
-| **.NET SDK 3.5 + .NET 6/7 SDK** | Building a .NET 3.5 project (C# 7.2) | Visual Studio includes this; or install separately from Microsoft |
-| **Visual Studio 2022** (recommended) OR **VS Code** | Code editor | https://visualstudio.microsoft.com |
-| **Cities: Skylines** (Steam) | The game libraries that the mod depends on | Steam |
+The mod targets .NET Framework 3.5; the test project targets .NET Framework 4.7.1 and requires a compatible Windows .NET Framework runtime. The SDK restores reference assemblies through NuGet. A code editor is optional. Other operating systems have not been verified for building or running this mod.
 
-### 4.2 Required Environment Variables
+### 4.2 Build, test and install without editing paths
 
-The build system needs to know where Cities: Skylines is installed. You must set these **before** building:
-
-| Variable | Purpose | Example value |
-|---|---|---|
-| `CITIES_SKYLINES_BINARIES` | Path to the game's managed DLL folder | `C:\Program Files (x86)\Steam\steamapps\common\Cities_Skylines\Cities_Data\Managed` |
-| `CITIES_SKYLINES_MOD_DIR` | Path where the built mod should be automatically deployed | `C:\Users\<YourUsername>\AppData\Local\Colossal Order\Cities_Skylines\Addons\Mods\RealTime` |
-
-#### Setting variables permanently in Windows
-
-1. Press `Win + S`, search for **"Environment Variables"** and open **"Edit the system environment variables"**.
-2. Click **"Environment Variables…"**.
-3. Under **"User variables"**, click **"New"** and add each variable above.
-4. Click OK all the way through and **restart any open terminal windows**.
-
-#### Setting variables temporarily in a PowerShell session
+From the repository root:
 
 ```powershell
-$env:CITIES_SKYLINES_BINARIES = "C:\Program Files (x86)\Steam\steamapps\common\Cities_Skylines\Cities_Data\Managed"
-$env:CITIES_SKYLINES_MOD_DIR  = "C:\Users\<YourUsername>\AppData\Local\Colossal Order\Cities_Skylines\Addons\Mods\RealTime"
+.\build.cmd -Test -Deploy
 ```
 
-> These only last for the current PowerShell window. Set them permanently (see above) if you do not want to type them every time.
+Close Cities before using `-Deploy`. The script checks the Steam registry, additional libraries in `libraryfolders.vdf`, and the Cities app manifest. It supports non-default drives and paths containing spaces. Deployment uses the current user's LocalApplicationData directory. Enable RealTime in the game's Content Manager after installation.
 
-### 4.3 Opening the project in Visual Studio
+`build.cmd` starts PowerShell with a process-only execution-policy option; it does not change the machine's execution policy. In an already permitted PowerShell session, `./build.ps1 -Test -Deploy` is equivalent.
 
-1. Open **Visual Studio 2022**.
-2. Click **"Open a project or solution"**.
-3. Navigate to `Pandamic_Simulator\src\` and open `RealTime.sln`.
-4. Visual Studio will restore NuGet packages automatically. Wait for this to finish (the progress bar at the bottom).
-5. Confirm that the **Solution Configuration** dropdown at the top is set to **Release** (not Debug).
-
-### 4.4 Building the mod
-
-#### Option A — Inside Visual Studio
-
-- Press `Ctrl + Shift + B` or go to **Build → Build Solution**.
-- The compiled `RealTime.dll` will appear in `src\bin\Release\`.
-- If `CITIES_SKYLINES_MOD_DIR` is set, the project will **automatically copy** the DLL to your mods folder after a successful build.
-
-#### Option B — PowerShell command line
-
-Open a PowerShell window in the `Pandamic_Simulator` folder and run:
+### 4.3 Build only and use an IDE
 
 ```powershell
-cd "C:\Users\<YourUsername>\Pandamic_Simulator\src"
-dotnet build RealTime.sln -c Release
+.\build.cmd
 ```
 
-Or run the provided build script from the repo root:
+The complete mod package is written to `dist/RealTime`, including dependencies, localization and event templates. Omit `-Deploy` to build while the game is open. Omit `-Test` to skip the C# suite and Steam-discovery regression checks.
+
+The detected game directory is cached in ignored `src/obj/Tenus.GamePaths.props`. After the first scripted build, open `src/RealTime.sln` in Visual Studio or run `dotnet build src/RealTime.sln -c Release`. These builds use the discovered game directory. If the game is moved, rerun `build.cmd` to refresh detection. Copied checkouts must run discovery locally; the cache is never committed.
+
+### 4.4 Optional custom locations
+
+Ordinary Steam installations need no environment variables. For an installation that Steam does not register, provide the location explicitly without editing source:
 
 ```powershell
-cd "C:\Users\<YourUsername>\Pandamic_Simulator"
-.\build.ps1
+.\build.cmd -GameManagedPath "X:\Games\Cities_Skylines\Cities_Data\Managed" -Deploy
 ```
 
-The build script sets the environment variables, cleans, builds, and reports which DLL files were produced and deployed.
+`-ModDirectory` overrides the deployment destination. Existing `CITIES_SKYLINES_BINARIES` and `CITIES_SKYLINES_MOD_DIR` environment variables remain supported. An explicit invalid game directory produces an error instead of silently falling back to another installation.
 
-### 4.5 After editing: deploy and test
+Direct MSBuild callers can also supply `CitiesSkylinesBinaries` (with its trailing directory separator). A build without resolved game libraries explains how to run automatic discovery.
 
-1. Build the project (Step 4.4).
-2. Make sure Cities: Skylines is **closed** before deploying (the game locks the DLL while running).
-3. The built DLL is automatically copied to the mods directory if the environment variable is set.
-4. If it is not copied automatically, copy `src\bin\Release\RealTime.dll` manually to:
-   ```
-   C:\Users\<YourUsername>\AppData\Local\Colossal Order\Cities_Skylines\Addons\Mods\RealTime\RealTime.dll
-   ```
-5. Open Cities: Skylines, load a city, and test your changes.
+### 4.5 Verification and portability limits
+
+The scripted build and all 223 C# tests pass on the development Windows machine, including a fresh local clone populated with the staged sources and no prior build outputs. Automatic deployment to the current user profile was also checked. Four additional checks cover modern and legacy Steam library files, additional libraries with spaces/custom game folder names, explicit overrides and rejection of incomplete installations. These checks simulate alternate installations; they do not prove compatibility with every PC or game/mod combination.
+
+Runtime export locations are resolved from the local game/mod directories, not a developer username. Stored historical experiment manifests intentionally retain their original recorded paths; new runs resolve their own output locations.
 
 ### 4.6 Key source file locations
 
@@ -1000,13 +965,15 @@ Important state and metadata files are written through a temporary file and atom
 
 The external Dash application is optional analysis software. It is never required to create, start, pause, resume, recover or complete a batch.
 
-From the repository's `dashboard` directory, install the pinned packages in `requirements.txt` and run:
+The optional dashboard requires Python 3.9-3.12 (3.12 recommended for this pinned dependency set). From the repository's `dashboard` directory run:
 
 ```powershell
-.\run_dashboard.ps1
+.\run_dashboard.cmd
 ```
 
-Then open `http://localhost:8050`. By default the application reads:
+The launcher detects Python using the Windows Python launcher or PATH, creates an isolated `.venv`, and installs the pinned requirements. Installation/import failures stop with an error. `run_dashboard.cmd -CheckOnly` verifies dependencies without starting the server; `-PythonExe` allows an optional interpreter override. Python 3.13+ is not supported by this dependency set. No global Python packages are changed.
+
+Then open `http://localhost:8050`. On Windows the data location uses the actual `LOCALAPPDATA` value (including redirected profiles), with the normal home-directory layout as fallback:
 
 ```text
 %LOCALAPPDATA%\Colossal Order\Cities_Skylines\Addons\Mods\RealTime\Pandemic Data
@@ -1316,6 +1283,6 @@ Reactive Closures v2 and Layered Strong v3 restore Essential Services to a 100% 
 
 The simulation uses completed native tick time for epidemiological steps and holds ticks without toggling the public pause flags. Normal game resume is detected by the batch controller. Quarantine collection readers and writers share a lock; returned enumerations are detached snapshots and union counts avoid temporary sets.
 
-Latest automated verification: **223 C# tests and 12 dashboard tests passed**. Coverage includes preset policies, concurrent quarantine access, exact-step pacing, batch sequencing, export integrity, pairing exclusions, statistics, schedules and replay. A new in-game acceptance run for the latest fixes remains pending. Frame-time spikes and separate game compatibility messages remain; neither a guaranteed FPS improvement nor clinical validation is claimed.
+Latest automated verification: **223 C# tests and 15 dashboard tests passed**, plus four Steam-path checks and three dashboard HTTP smoke checks after installing dependencies in a fresh virtual environment. Coverage includes preset policies, concurrent quarantine access, exact-step pacing, batch sequencing, export integrity, pairing exclusions, statistics, schedules and replay. A new in-game acceptance run for the latest fixes remains pending. Frame-time spikes and separate game compatibility messages remain; neither a guaranteed FPS improvement nor clinical validation is claimed.
 
 Experiment output files, local audit datasets and session-specific reports are excluded from Git. Keep these locally; this documentation describes the software without publishing individual experiment results.

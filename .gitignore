@@ -5,9 +5,11 @@
 **/__pycache__/
 *.py[cod]
 *.log
+output_log.txt
 .vs/
 .venv/
 venv/
+dist/
 
 # Local tooling, copied game assemblies and read-only game inspection extracts
 .codex-tmp/

@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="$(MSBuildThisFileDirectory)obj\Tenus.GamePaths.props" Condition="'$(CitiesSkylinesBinaries)' == '' and '$(CITIES_SKYLINES_BINARIES)' == '' and Exists('$(MSBuildThisFileDirectory)obj\Tenus.GamePaths.props')" />
   <PropertyGroup>
     <CitiesSkylinesBinaries Condition="'$(CitiesSkylinesBinaries)' == ''">$(CITIES_SKYLINES_BINARIES)</CitiesSkylinesBinaries>
     <CitiesSkylinesBinaries Condition="'$(CitiesSkylinesBinaries)' != '' and !HasTrailingSlash('$(CitiesSkylinesBinaries)')">$(CitiesSkylinesBinaries)\</CitiesSkylinesBinaries>

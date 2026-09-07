@@ -1,0 +1,5 @@
+<Project>
+  <Target Name="CheckCitiesGameReferences" BeforeTargets="ResolveAssemblyReferences" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(CitiesSkylinesBinaries)Assembly-CSharp.dll')" Text="Cities: Skylines libraries were not found. Run build.ps1 from the repository root for automatic Steam detection, or set CITIES_SKYLINES_BINARIES to Cities_Data/Managed." />
+  </Target>
+</Project>
