@@ -16,6 +16,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RealTime\RealTime.csproj" />
+    <Reference Include="UnityEngine">
+      <HintPath>$(CitiesSkylinesBinaries)UnityEngine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <TestRuntimeGameAssembly Include="$(CitiesSkylinesBinaries)Assembly-CSharp.dll" />

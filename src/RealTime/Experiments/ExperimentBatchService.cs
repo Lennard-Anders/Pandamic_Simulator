@@ -772,6 +772,28 @@ namespace RealTime.Experiments
                 totalRuns,
                 draftPlan.Baseline.CityName,
                 resolvedBatchDirectory);
+            int estimatedPopulation = levelCore?.PandemicManager?.GetPopulationForStorageEstimate() ?? 0;
+            var storageWarnings = new System.Text.StringBuilder();
+            storageWarnings.Append("\nStorage estimate uses the currently loaded city's ").Append(estimatedPopulation)
+                .Append(" observed citizens as a proxy; the selected baseline may differ. Household/outdoor density and occupancy turnover can exceed the estimate.\n");
+            double estimatedHighGB = 0;
+            bool fullRaw = false;
+            foreach (var scenario in draftPlan.Scenarios)
+            {
+                var estimate = ContactStorageEstimate.Calculate(estimatedPopulation, scenario.DurationDays, scenario.RunCount, scenario.Settings);
+                estimatedHighGB += estimate.HighGB;
+                storageWarnings.Append(scenario.Name).Append(": ").Append(estimate.Describe()).Append('\n');
+                fullRaw |= scenario.Settings.ScientificContactExportMode == Config.ScientificContactExportMode.FullRaw;
+            }
+            if (fullRaw) storageWarnings.AppendLine(ContactStorageEstimate.FullRawWarning);
+            long? availableBytes = ContactStorageEstimate.AvailableBytes(draftPlan.OutputRoot);
+            if (availableBytes.HasValue)
+            {
+                storageWarnings.AppendFormat(CultureInfo.InvariantCulture, "Available disk space: {0:0.##} GB.\n", availableBytes.Value / 1e9);
+                if (estimatedHighGB > availableBytes.Value / 1e9)
+                    storageWarnings.AppendLine("Projected contact output may exceed available space. Choose a smaller export mode, more storage, or an explicit export limit.");
+            }
+            result.Warning += storageWarnings.ToString();
             return result;
         }
 
@@ -1501,6 +1523,7 @@ namespace RealTime.Experiments
             manifest.OutputRootKind = activePlan.OutputLocation.Kind.ToString();
             manifest.OutputRoot = activePlan.OutputRoot;
             ExperimentRecorderSnapshot recorderSnapshot = frozenExportRequest.ScientificSnapshot;
+            ExperimentRunCommitService.PopulateContactMetadata(manifest, recorderSnapshot, currentRun.Scenario.Settings);
             ScientificRunSummary scientific = ScientificRunExportService.CalculateSummary(
                 recorderSnapshot,
                 frozenExportRequest.Manager.GetTestRecords(),

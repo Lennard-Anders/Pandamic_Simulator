@@ -136,7 +136,8 @@ namespace RealTimeTests.Experiments
 
             configuration.MigrateWhenNecessary();
 
-            Assert.That(configuration.Version, Is.EqualTo(13));
+            Assert.That(configuration.Version, Is.EqualTo(14));
+            Assert.That(configuration.ContactPersistenceModel, Is.EqualTo(ContactPersistenceModel.LegacyPerStep));
             Assert.That(configuration.StrictPopulationIntegrity, Is.False);
             Assert.That(configuration.ReopenOfficeThresholdPercent, Is.EqualTo(37f));
             Assert.That(configuration.MinimumOfficeClosureDurationDays, Is.Zero);

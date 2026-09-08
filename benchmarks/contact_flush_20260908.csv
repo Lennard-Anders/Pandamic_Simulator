@@ -1,0 +1,4 @@
+flush_rows,raw_rows,compressed_bytes,write_and_close_ms
+256,100000,735252,142.685
+8192,100000,735252,120.011
+65536,100000,735252,120.077

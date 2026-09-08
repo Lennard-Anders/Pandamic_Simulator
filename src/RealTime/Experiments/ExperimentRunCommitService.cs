@@ -16,6 +16,16 @@ namespace RealTime.Experiments
     {
         /// <summary>Zero identifies legacy packages; version one requires network and calibration outputs.</summary>
         public int ScientificExtensionsVersion { get; set; }
+        public int ScientificExportSchemaVersion { get; set; }
+        public string ContactExportMode { get; set; }
+        public string ContactRepresentation { get; set; }
+        public string Compression { get; set; }
+        public string Partitioning { get; set; }
+        public uint EpidemicStepMinutes { get; set; }
+        public string ContactPersistenceModel { get; set; }
+        public Dictionary<string, uint> ContactPersistenceMinutes { get; set; }
+        public List<ExperimentGeneratedFileEntry> ContactFiles { get; set; }
+        public long ContactEpisodesTotal { get; set; }
         public const string CompletedStatus = "Completed";
 
         public ExperimentRunManifest()
@@ -190,6 +200,9 @@ namespace RealTime.Experiments
     /// <summary>Cryptographic identity of one generated run file.</summary>
     public sealed class ExperimentGeneratedFileEntry
     {
+        public long? RowCount { get; set; }
+        public string SimulationStartTime { get; set; }
+        public string SimulationEndTime { get; set; }
         public string Role { get; set; }
 
         public string RelativePath { get; set; }
@@ -540,7 +553,7 @@ namespace RealTime.Experiments
             }
 
             List<ExperimentGeneratedFileEntry> files;
-            if (!TryFingerprintMandatoryFiles(attemptDirectory, request.Manifest.ScientificExtensionsVersion, out files, out error))
+            if (!TryFingerprintMandatoryFiles(attemptDirectory, request.Manifest, out files, out error))
             {
                 return Failure(error);
             }
@@ -901,13 +914,18 @@ namespace RealTime.Experiments
 
         private static bool TryFingerprintMandatoryFiles(
             string directory,
-            int extensionsVersion,
+            ExperimentRunManifest manifest,
             out List<ExperimentGeneratedFileEntry> entries,
             out string error)
         {
             entries = new List<ExperimentGeneratedFileEntry>();
             try
             {
+                if (!ValidateContactInventory(manifest, out error)) return false;
+                if (!ValidateStoredContactInventory(directory, manifest, out error)) return false;
+                if (Directory.GetFiles(directory, "*.tmp", SearchOption.AllDirectories).Length != 0
+                    || Directory.GetFiles(directory, ".tmp-*", SearchOption.AllDirectories).Length != 0)
+                    throw new IOException("Unpublished temporary output prevents scientific completion.");
                 string[] files = Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly);
                 List<string> pandemicFiles = new List<string>();
                 foreach (string file in files)
@@ -927,9 +945,8 @@ namespace RealTime.Experiments
                 }
 
                 entries.Add(CreateFileEntry("PandemicRun", directory, pandemicFiles[0]));
-                for (int i = 0; i < MandatoryNamedFiles.Length; ++i)
+                foreach (string fileName in RequiredNamedFiles(manifest))
                 {
-                    string fileName = MandatoryNamedFiles[i];
                     string path = Path.Combine(directory, fileName);
                     if (!File.Exists(path))
                     {
@@ -940,12 +957,23 @@ namespace RealTime.Experiments
                     entries.Add(CreateFileEntry(GetFileRole(fileName), directory, path));
                 }
 
-                if (extensionsVersion >= 1)
+                if (manifest.ScientificExtensionsVersion >= 1)
                     foreach (string fileName in ScientificExtensionFiles)
                     {
                         string path = Path.Combine(directory, fileName);
                         if (!File.Exists(path)) { error = "A mandatory scientific extension is missing: " + fileName; return false; }
                         entries.Add(CreateFileEntry("ScientificExtension", directory, path));
+                    }
+                if (manifest.ScientificExportSchemaVersion >= 2)
+                    foreach (var contact in manifest.ContactFiles)
+                    {
+                        var entry = CreateFileEntry("ScientificContacts", directory, Path.Combine(directory, contact.RelativePath));
+                        if (entry.LengthBytes != contact.LengthBytes || !string.Equals(entry.Sha256, contact.Sha256, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("Contact storage identity changed before commit.");
+                        entry.RowCount = contact.RowCount;
+                        entry.SimulationStartTime = contact.SimulationStartTime;
+                        entry.SimulationEndTime = contact.SimulationEndTime;
+                        entries.Add(entry);
                     }
                 string diagnostics = Path.Combine(directory, "performance_diagnostics.csv");
                 if (File.Exists(diagnostics)) entries.Add(CreateFileEntry("PerformanceDiagnostics", directory, diagnostics));
@@ -981,7 +1009,7 @@ namespace RealTime.Experiments
             return new ExperimentGeneratedFileEntry
             {
                 Role = role,
-                RelativePath = Path.GetFileName(fullPath),
+                RelativePath = fullPath.Substring(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Length + 1).Replace(Path.DirectorySeparatorChar, '/'),
                 LengthBytes = info.Length,
                 Sha256 = hash,
             };
@@ -989,6 +1017,7 @@ namespace RealTime.Experiments
 
         private static string GetFileRole(string fileName)
         {
+            if (fileName == "contact_step_summary.csv" || fileName == "contact_episode_summary.csv" || fileName == "contact_episode_duration_distribution.csv") return "ScientificExtension";
             if (string.Equals(fileName, DataFileName, StringComparison.OrdinalIgnoreCase)) return "ObserverData";
             if (string.Equals(fileName, ContactsFileName, StringComparison.OrdinalIgnoreCase)) return "LegacyContacts";
             if (string.Equals(fileName, RunSummaryFileName, StringComparison.OrdinalIgnoreCase)) return "RunSummary";
@@ -1017,6 +1046,8 @@ namespace RealTime.Experiments
                 error = "The scientific extension version is unsupported.";
                 return false;
             }
+
+            if (!ValidateContactInventory(manifest, out error)) return false;
 
             if (manifest.SchemaVersion != ExperimentSchema.CurrentVersion)
             {
@@ -1064,7 +1095,8 @@ namespace RealTime.Experiments
             }
 
             if (!string.Equals(manifest.TraitAssignmentAlgorithm, DeterministicCitizenTraitAssigner.AlgorithmName, StringComparison.Ordinal)
-                || !string.Equals(manifest.ConfigurationHashAlgorithm, ExperimentConfigurationHasher.AlgorithmName, StringComparison.Ordinal))
+                || (!string.Equals(manifest.ConfigurationHashAlgorithm, ExperimentConfigurationHasher.AlgorithmName, StringComparison.Ordinal)
+                    && !(manifest.ScientificExportSchemaVersion < 2 && manifest.ConfigurationHashAlgorithm == ExperimentConfigurationHasher.LegacyAlgorithmName)))
             {
                 error = "The run manifest names an unsupported deterministic trait or configuration-hash algorithm.";
                 return false;
@@ -1196,7 +1228,8 @@ namespace RealTime.Experiments
             if (manifest.Scenario == null
                 || !string.Equals(
                     manifest.ConfigurationHash,
-                    ExperimentConfigurationHasher.Compute(manifest.Scenario),
+                    manifest.ConfigurationHashAlgorithm == ExperimentConfigurationHasher.LegacyAlgorithmName
+                        ? ExperimentConfigurationHasher.ComputeLegacy(manifest.Scenario) : ExperimentConfigurationHasher.Compute(manifest.Scenario),
                     StringComparison.OrdinalIgnoreCase))
             {
                 error = "The configuration hash does not match the embedded scenario snapshot.";
@@ -1223,8 +1256,11 @@ namespace RealTime.Experiments
 
         private static bool ValidateManifestFiles(string directory, ExperimentRunManifest manifest, out string error)
         {
+            if (!ValidateStoredContactInventory(directory, manifest, out error)) return false;
+            if (Directory.GetFiles(directory, "*.tmp", SearchOption.AllDirectories).Length != 0)
+            { error = "Unpublished temporary output prevents scientific completion."; return false; }
             int pandemicCount = 0;
-            var mandatoryNames = new HashSet<string>(MandatoryNamedFiles, StringComparer.OrdinalIgnoreCase);
+            var mandatoryNames = new HashSet<string>(RequiredNamedFiles(manifest), StringComparer.OrdinalIgnoreCase);
             if (manifest.ScientificExtensionsVersion >= 1)
                 foreach (string name in ScientificExtensionFiles) mandatoryNames.Add(name);
             var foundMandatoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1236,7 +1272,7 @@ namespace RealTime.Experiments
                     || string.IsNullOrEmpty(entry.Sha256)
                     || entry.LengthBytes < 0L
                     || Path.IsPathRooted(entry.RelativePath)
-                    || !string.Equals(entry.RelativePath, Path.GetFileName(entry.RelativePath), StringComparison.Ordinal))
+                    || !IsAllowedFilePath(entry.RelativePath, manifest.ScientificExportSchemaVersion))
                 {
                     error = "A generated file identity in the run manifest is invalid.";
                     return false;
@@ -1271,6 +1307,18 @@ namespace RealTime.Experiments
                 }
             }
 
+            if (manifest.ScientificExportSchemaVersion >= 2)
+            {
+                foreach (var contact in manifest.ContactFiles)
+                {
+                    var found = manifest.OutputFiles.Find(entry => entry.RelativePath == contact.RelativePath);
+                    if (found == null || found.LengthBytes != contact.LengthBytes || found.Sha256 != contact.Sha256
+                        || found.RowCount != contact.RowCount || found.SimulationStartTime != contact.SimulationStartTime
+                        || found.SimulationEndTime != contact.SimulationEndTime)
+                    { error = "Contact partition inventory disagrees with generated-file identities."; return false; }
+                }
+            }
+
             if (pandemicCount != 1 || foundMandatoryNames.Count != mandatoryNames.Count)
             {
                 error = "The run manifest does not identify the complete mandatory scientific output package.";
@@ -1290,10 +1338,8 @@ namespace RealTime.Experiments
             }
 
             bool allMandatoryFilesExist = physicalPandemicCount == 1;
-            for (int i = 0; i < MandatoryNamedFiles.Length && allMandatoryFilesExist; ++i)
-            {
-                allMandatoryFilesExist = File.Exists(Path.Combine(directory, MandatoryNamedFiles[i]));
-            }
+            foreach (string name in RequiredNamedFiles(manifest))
+                allMandatoryFilesExist &= File.Exists(Path.Combine(directory, name));
 
             if (!allMandatoryFilesExist)
             {
@@ -1302,6 +1348,131 @@ namespace RealTime.Experiments
             }
 
             error = null;
+            return true;
+        }
+
+        private static IEnumerable<string> RequiredNamedFiles(ExperimentRunManifest manifest)
+        {
+            foreach (string name in MandatoryNamedFiles)
+                if (manifest.ScientificExportSchemaVersion < 2 || (name != PhysicalContactsFileName && name != TraceableContactsFileName))
+                    yield return name;
+            if (manifest.ScientificExportSchemaVersion >= 2)
+            {
+                yield return "contact_episode_summary.csv";
+                yield return "contact_step_summary.csv";
+                yield return "contact_episode_duration_distribution.csv";
+            }
+        }
+
+        internal static void PopulateContactMetadata(ExperimentRunManifest manifest,
+            RealTime.Pandemic.ExperimentRecorderSnapshot snapshot, ExperimentScenarioSnapshot settings)
+        {
+            manifest.ScientificExportSchemaVersion = 2;
+            manifest.ContactExportMode = snapshot.ContactExportMode.ToString();
+            manifest.ContactRepresentation = snapshot.ContactExportMode == Config.ScientificContactExportMode.Standard ? "episodes"
+                : snapshot.ContactExportMode == Config.ScientificContactExportMode.FullRaw ? "epidemiological_steps" : "summaries";
+            manifest.Compression = "gzip";
+            manifest.Partitioning = snapshot.ContactExportMode == Config.ScientificContactExportMode.FullRaw ? "simulation_day" : "none";
+            manifest.EpidemicStepMinutes = settings.EpidemicStepMinutes;
+            manifest.ContactPersistenceModel = settings.ContactPersistenceModel.ToString();
+            manifest.ContactPersistenceMinutes = new Dictionary<string, uint>
+            {
+                { "school", settings.ContactPersistenceMinutesSchool }, { "university", settings.ContactPersistenceMinutesUniversity },
+                { "workplace", settings.ContactPersistenceMinutesWorkplace }, { "healthcare", settings.ContactPersistenceMinutesHealthcare },
+                { "commercial", settings.ContactPersistenceMinutesCommercial }, { "leisure", settings.ContactPersistenceMinutesLeisure },
+                { "public_transport", settings.ContactPersistenceMinutesTransit }, { "residential_shared_area", settings.ContactPersistenceMinutesResidentialSharedArea },
+            };
+            manifest.ContactEpisodesTotal = snapshot.ContactEpisodesTotal;
+            manifest.PhysicalContactsTotal = snapshot.PhysicalContactsTotal;
+            manifest.ContactFiles = new List<ExperimentGeneratedFileEntry>();
+            foreach (var file in snapshot.ContactFiles)
+                manifest.ContactFiles.Add(new ExperimentGeneratedFileEntry { RelativePath = file.RelativePath,
+                    LengthBytes = file.LengthBytes, Sha256 = file.Sha256, RowCount = file.RowCount, Role = "ScientificContacts",
+                    SimulationStartTime = file.StartTime?.ToString("o", CultureInfo.InvariantCulture),
+                    SimulationEndTime = file.EndTime?.ToString("o", CultureInfo.InvariantCulture) });
+        }
+
+        private static bool IsAllowedFilePath(string relative, int version)
+        {
+            if (relative == Path.GetFileName(relative)) return true;
+            return version == 2 && System.Text.RegularExpressions.Regex.IsMatch(relative, @"\Aphysical_contacts/day_[0-9]{3,}\.csv\.gz\z");
+        }
+
+        private static bool ValidateStoredContactInventory(string directory, ExperimentRunManifest manifest, out string error)
+        {
+            error = null;
+            if (manifest.ScientificExportSchemaVersion < 2) return true;
+            var expected = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var file in manifest.ContactFiles) expected.Add(file.RelativePath);
+            var actual = new HashSet<string>(StringComparer.Ordinal);
+            if (File.Exists(Path.Combine(directory, "contact_episodes.csv.gz"))) actual.Add("contact_episodes.csv.gz");
+            string partitions = Path.Combine(directory, "physical_contacts");
+            if (Directory.Exists(partitions))
+                foreach (string file in Directory.GetFiles(partitions, "*", SearchOption.AllDirectories))
+                    actual.Add("physical_contacts/" + file.Substring(partitions.Length + 1).Replace(Path.DirectorySeparatorChar, '/'));
+            if (!actual.SetEquals(expected) || File.Exists(Path.Combine(directory, PhysicalContactsFileName))
+                || File.Exists(Path.Combine(directory, TraceableContactsFileName)))
+            { error = "Stored contact files do not match the authoritative mode inventory."; return false; }
+            return true;
+        }
+
+        private static bool ValidateContactInventory(ExperimentRunManifest manifest, out string error)
+        {
+            error = null;
+            if (manifest.ScientificExportSchemaVersion == 0 || manifest.ScientificExportSchemaVersion == 1) return true;
+            if (manifest.ScientificExportSchemaVersion != 2 || manifest.ContactFiles == null
+                || manifest.Compression != "gzip" || manifest.EpidemicStepMinutes == 0
+                || manifest.ContactPersistenceMinutes == null || string.IsNullOrEmpty(manifest.ContactPersistenceModel))
+            { error = "Scientific contact schema metadata is incomplete or unsupported."; return false; }
+            var settings = manifest.Scenario?.Settings;
+            if (settings == null || manifest.EpidemicStepMinutes != settings.EpidemicStepMinutes
+                || manifest.ContactExportMode != settings.ScientificContactExportMode.ToString()
+                || manifest.ContactPersistenceModel != settings.ContactPersistenceModel.ToString()
+                || manifest.ContactEpisodesTotal < 0)
+            { error = "Contact metadata disagrees with the scientific scenario."; return false; }
+            string[] windowNames = { "school", "university", "workplace", "healthcare", "commercial", "leisure", "public_transport", "residential_shared_area" };
+            uint[] windowValues = { settings.ContactPersistenceMinutesSchool, settings.ContactPersistenceMinutesUniversity,
+                settings.ContactPersistenceMinutesWorkplace, settings.ContactPersistenceMinutesHealthcare,
+                settings.ContactPersistenceMinutesCommercial, settings.ContactPersistenceMinutesLeisure,
+                settings.ContactPersistenceMinutesTransit, settings.ContactPersistenceMinutesResidentialSharedArea };
+            if (manifest.ContactPersistenceMinutes.Count != windowNames.Length)
+            { error = "Contact persistence inventory is incomplete."; return false; }
+            for (int i = 0; i < windowNames.Length; i++)
+                if (!manifest.ContactPersistenceMinutes.TryGetValue(windowNames[i], out uint minutes) || minutes != windowValues[i])
+                { error = "Contact persistence metadata disagrees with the scientific scenario."; return false; }
+            bool standard = manifest.ContactExportMode == "Standard";
+            bool raw = manifest.ContactExportMode == "FullRaw";
+            bool summary = manifest.ContactExportMode == "SummaryOnly";
+            if ((!standard && !raw && !summary)
+                || (standard && (manifest.ContactFiles.Count != 1 || manifest.ContactRepresentation != "episodes" || manifest.Partitioning != "none"))
+                || (raw && (manifest.ContactFiles.Count == 0 || manifest.ContactRepresentation != "epidemiological_steps" || manifest.Partitioning != "simulation_day"))
+                || (summary && (manifest.ContactFiles.Count != 0 || manifest.ContactRepresentation != "summaries" || manifest.Partitioning != "none")))
+            { error = "Contact mode and representation/partition inventory disagree."; return false; }
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            long storedRows = 0;
+            foreach (var file in manifest.ContactFiles)
+            {
+                if (file == null || string.IsNullOrEmpty(file.RelativePath) || !seen.Add(file.RelativePath)
+                    || (standard && file.RelativePath != "contact_episodes.csv.gz")
+                    || (raw && !System.Text.RegularExpressions.Regex.IsMatch(file.RelativePath, @"\Aphysical_contacts/day_[0-9]{3,}\.csv\.gz\z"))
+                    || !file.RowCount.HasValue || file.RowCount.Value < 0 || file.LengthBytes <= 0 || string.IsNullOrEmpty(file.Sha256))
+                { error = "Contact partition metadata is invalid."; return false; }
+                if (file.RowCount.Value > long.MaxValue - storedRows)
+                { error = "Contact partition row counts overflow."; return false; }
+                storedRows += file.RowCount.Value;
+                if (file.RowCount.Value > 0)
+                {
+                    DateTime first, last;
+                    if (!DateTime.TryParse(file.SimulationStartTime, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out first)
+                        || !DateTime.TryParse(file.SimulationEndTime, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out last)
+                        || last <= first)
+                    { error = "Contact partition time range is invalid."; return false; }
+                }
+                else if (file.SimulationStartTime != null || file.SimulationEndTime != null)
+                { error = "Empty contact partitions cannot have observed time ranges."; return false; }
+            }
+            if ((standard && storedRows != manifest.ContactEpisodesTotal) || (raw && storedRows != manifest.PhysicalContactsTotal))
+            { error = "Contact partition row counts disagree with the recorded run totals."; return false; }
             return true;
         }
 

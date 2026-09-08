@@ -14,6 +14,95 @@ namespace RealTimeTests.Experiments
     public sealed class ExperimentRunCommitServiceTests
     {
         [Test]
+        public void LegacyConfigHashRemainsVerifiableForLegacyContactSchema()
+        {
+            string root = CreateTemporaryDirectory();
+            try
+            {
+                var request = CreateRequest(root, 0, 0, "legacy", "Batch", "Scenario");
+                request.Manifest.ConfigurationHashAlgorithm = ExperimentConfigurationHasher.LegacyAlgorithmName;
+                request.Manifest.ConfigurationHash = ExperimentConfigurationHasher.ComputeLegacy(request.Manifest.Scenario);
+                var service = CreateService();
+                var result = service.Commit(request);
+                Assert.That(result.Success, Is.True, result.Error);
+                Assert.That(service.ValidateRunDirectory(request.FinalDirectory).Success, Is.True);
+            }
+            finally { DeleteTemporaryDirectory(root); }
+        }
+        [TestCase(RealTime.Config.ScientificContactExportMode.Standard)]
+        [TestCase(RealTime.Config.ScientificContactExportMode.FullRaw)]
+        [TestCase(RealTime.Config.ScientificContactExportMode.SummaryOnly)]
+        public void ContactModesCommitActualRecorderOutputWithPartitionInventory(RealTime.Config.ScientificContactExportMode mode)
+        {
+            string root = CreateTemporaryDirectory();
+            try
+            {
+                var service = CreateService();
+                var request = CreateRequest(root, 0, 0, "new-contact-run", "Batch", "Scenario");
+                foreach (string legacy in new[] { "physical_contacts.csv", "traceable_contacts.csv", "transmission_events.csv" })
+                    File.Delete(Path.Combine(request.AttemptDirectory, legacy));
+                var config = new RealTime.Config.RealTimeConfig(true) { ScientificContactExportMode = mode };
+                request.Manifest.Scenario.Settings = ExperimentScenarioSnapshot.Capture(config, false);
+                request.Manifest.ConfigurationHash = ExperimentConfigurationHasher.Compute(request.Manifest.Scenario);
+                var start = new DateTime(2030, 1, 1);
+                using (var recorder = new RealTime.Pandemic.ExperimentRecorder())
+                {
+                    recorder.BeginRun(start, request.AttemptDirectory, mode);
+                    var engine = new RealTime.Pandemic.ContactEngine();
+                    foreach (int minute in new[] { 5, 10, 1445 })
+                    {
+                        var contact = engine.Record(new RealTime.Pandemic.PhysicalContactRequest { CitizenA = 1, CitizenB = 2,
+                            EndTime = start.AddMinutes(minute), DurationMinutes = 5, Context = RealTime.Pandemic.PhysicalContactContext.Workplace }, out bool created);
+                        recorder.RecordPhysicalContact(contact, 0);
+                    }
+                    var snapshot = recorder.Freeze(start.AddMinutes(1445));
+                    ExperimentRunCommitService.PopulateContactMetadata(request.Manifest, snapshot, request.Manifest.Scenario.Settings);
+                    File.WriteAllText(Path.Combine(request.AttemptDirectory, "contact_episode_summary.csv"), snapshot.ContactEpisodeSummaryCsv);
+                    File.WriteAllText(Path.Combine(request.AttemptDirectory, "contact_step_summary.csv"), RealTime.Pandemic.ScientificRunExportService.BuildContactStepSummary(snapshot.ContactNetworkSummaryCsv));
+                    File.WriteAllText(Path.Combine(request.AttemptDirectory, "contact_episode_duration_distribution.csv"), snapshot.ContactEpisodeDurationCsv);
+                }
+                request.Manifest.ContactPersistenceMinutes["school"]++;
+                Assert.That(service.Commit(request).Success, Is.False, "Mismatched persistence must not publish");
+                request.Manifest.ContactPersistenceMinutes["school"]--;
+                request.Manifest.EpidemicStepMinutes++;
+                Assert.That(service.Commit(request).Success, Is.False, "Mismatched timestep must not publish");
+                request.Manifest.EpidemicStepMinutes--;
+                if (request.Manifest.ContactFiles.Count > 0)
+                {
+                    request.Manifest.ContactFiles[0].RowCount++;
+                    Assert.That(service.Commit(request).Success, Is.False, "Partition rows must reconcile with run totals");
+                    request.Manifest.ContactFiles[0].RowCount--;
+                }
+                var result = service.Commit(request);
+                Assert.That(result.Success, Is.True, result.Error);
+                var validation = service.ValidateRunDirectory(request.FinalDirectory);
+                Assert.That(validation.Success, Is.True, validation.Error);
+                Assert.That(validation.Manifest.ScientificExportSchemaVersion, Is.EqualTo(2));
+                int expected = mode == RealTime.Config.ScientificContactExportMode.FullRaw ? 2 : mode == RealTime.Config.ScientificContactExportMode.Standard ? 1 : 0;
+                Assert.That(validation.Manifest.ContactFiles.Count, Is.EqualTo(expected));
+                string extraDirectory = Path.Combine(request.FinalDirectory, "physical_contacts");
+                Directory.CreateDirectory(extraDirectory);
+                string extraPartition = Path.Combine(extraDirectory, "day_999.csv.gz");
+                File.WriteAllText(extraPartition, "unlisted partition");
+                Assert.That(service.ValidateRunDirectory(request.FinalDirectory).Success, Is.False);
+                File.Delete(extraPartition);
+                Assert.That(service.ValidateRunDirectory(request.FinalDirectory).Success, Is.True);
+                foreach (var file in validation.Manifest.ContactFiles)
+                {
+                    Assert.That(file.RowCount, Is.GreaterThan(0));
+                    Assert.That(file.SimulationStartTime, Is.Not.Null);
+                    Assert.That(file.Sha256, Has.Length.EqualTo(64));
+                }
+                if (expected > 0)
+                {
+                    File.AppendAllText(Path.Combine(request.FinalDirectory, validation.Manifest.ContactFiles[0].RelativePath), "corrupt");
+                    Assert.That(service.ValidateRunDirectory(request.FinalDirectory).Success, Is.False);
+                }
+            }
+            finally { DeleteTemporaryDirectory(root); }
+        }
+
+        [Test]
         public void InvalidArchiveDoesNotPreventNextScenarioCommitOrSummaryRecovery()
         {
             string root = CreateTemporaryDirectory();

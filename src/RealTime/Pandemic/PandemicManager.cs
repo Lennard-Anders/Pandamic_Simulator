@@ -605,7 +605,7 @@ namespace RealTime.Pandemic
                 string scientificOutputDirectory = runContext?.IsBatch == true && runContext.Output != null
                     ? Path.GetDirectoryName(runContext.Output.RichCsvPath)
                     : null;
-                experimentRecorder.BeginRun(currentDateTime, scientificOutputDirectory);
+                experimentRecorder.BeginRun(currentDateTime, scientificOutputDirectory, Config.ScientificContactExportMode, Config.MaximumRawContactExportGB);
                 QuarantineManager.Instance.SetInterventionSink(experimentRecorder.RecordIntervention);
                 ContactManager.Instance.SetRetainPhysicalHistory(runContext?.IsBatch != true);
                 SeedPolicyTimeline();
@@ -3060,6 +3060,14 @@ namespace RealTime.Pandemic
         }
 
         private long previousRecordedContactTotal;
+        internal int GetPopulationForStorageEstimate()
+        {
+            Citizen[] citizens = CitizenMgr?.GetCitizensArray();
+            if (citizens == null || CitizenProxy == null) return 0;
+            int count = 0;
+            for (int i = 1; i < citizens.Length; i++) if (!CitizenProxy.IsEmpty(ref citizens[i])) count++;
+            return count;
+        }
         private long lastStepContactEvents;
         internal string GetDiagnosticsSummary() => "Tier: " + performanceTier + "; tracked population: " + diseaseStateEngine.TrackedPopulationCount + "; physical contact events/last recorded step: " + lastStepContactEvents;
 
@@ -4634,9 +4642,11 @@ namespace RealTime.Pandemic
 
         public void spread()
         {
+            experimentRecorder.BeginContactStep(currentDateTime);
             Citizen[] citizens = CitizenMgr.GetCitizensArray();
             if (citizens == null)
             {
+                experimentRecorder.EndContactStep();
                 return;
             }
 
@@ -4648,6 +4658,7 @@ namespace RealTime.Pandemic
             SimulateOutdoorTransmissions(rangeSq);
             SimulateVehicleTransmissions();
             SimulateBuildingTransmissions();
+            experimentRecorder.EndContactStep();
             ResolvePendingTransmissions(citizens);
         }
 
@@ -4687,8 +4698,7 @@ namespace RealTime.Pandemic
                                     continue;
                                 }
 
-                                float squaredDistance = (second.Position - first.Position).sqrMagnitude;
-                                if (squaredDistance > rangeSq)
+                                if (!IsWithinOutdoorContactRange(first.Position, second.Position, rangeSq, out float squaredDistance))
                                 {
                                     continue;
                                 }
@@ -4722,7 +4732,7 @@ namespace RealTime.Pandemic
                     occupants.Select(state => state.CitizenId),
                     (int)Config.MaxContactsPerPersonPerStepTransit,
                     contactSamplingSeed,
-                    currentDateTime.Ticks,
+                    ContactPersistencePolicy.SamplingKey(Config, PhysicalContactContext.PublicTransport, currentDateTime),
                     100000 + vehicleId);
                 for (int i = 0; i < pairs.Count; ++i)
                 {
@@ -4769,7 +4779,7 @@ namespace RealTime.Pandemic
                         occupants.Select(state => state.CitizenId),
                         (int)Config.MaxContactsPerPersonPerStepResidentialSharedArea,
                         contactSamplingSeed,
-                        currentDateTime.Ticks,
+                        ContactPersistencePolicy.SamplingKey(Config, PhysicalContactContext.Other, currentDateTime, true),
                         200000 + buildingId);
                     for (int i = 0; i < sharedPairs.Count; ++i)
                     {
@@ -4795,7 +4805,7 @@ namespace RealTime.Pandemic
                     occupants.Select(state => state.CitizenId),
                     maximumContacts,
                     contactSamplingSeed,
-                    currentDateTime.Ticks,
+                    ContactPersistencePolicy.SamplingKey(Config, context, currentDateTime),
                     300000 + ((int)context * 65536) + buildingId);
                 for (int i = 0; i < sampledPairs.Count; ++i)
                 {
@@ -5028,6 +5038,12 @@ namespace RealTime.Pandemic
                 default:
                     return PhysicalContactContext.Other;
             }
+        }
+
+        internal static bool IsWithinOutdoorContactRange(Vector3 first, Vector3 second, float rangeSquared, out float squaredDistance)
+        {
+            squaredDistance = (second - first).sqrMagnitude;
+            return !(squaredDistance > rangeSquared);
         }
 
         private static Vector3 Midpoint(Vector3 first, Vector3 second)
@@ -5653,7 +5669,16 @@ namespace RealTime.Pandemic
                 Log.Warning("The 'Real Time' pandemic manager could not restore public transport while unloading: " + ex);
             }
 
-            experimentRecorder.Dispose();
+            try
+            {
+                experimentRecorder.Dispose();
+            }
+            catch (Exception ex)
+            {
+                // An interrupted writer must not prevent releasing level-owned singleton state.
+                // Its temporary files remain incomplete and are never published as a successful run.
+                Log.Warning("The 'Real Time' pandemic manager could not close scientific contact data while unloading: " + ex);
+            }
             ContactManager.Instance.ResetForLevelUnload();
             TestManager.Instance.ResetForLevelUnload();
             QuarantineManager.Instance.ResetForLevelUnload();

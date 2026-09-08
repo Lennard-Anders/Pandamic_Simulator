@@ -9,6 +9,31 @@ namespace RealTimeTests.Pandemic
 
     public sealed class ExperimentRecorderTests
     {
+        [Test]
+        public void FailedContactWriterCanBeResetWithoutPublishingOldData()
+        {
+            string failedDirectory = CreateTemporaryDirectory();
+            string nextDirectory = CreateTemporaryDirectory();
+            try
+            {
+                using (var recorder = new ExperimentRecorder())
+                {
+                    recorder.BeginRun(Start, failedDirectory, RealTime.Config.ScientificContactExportMode.Standard, 0.000000001);
+                    var engine = new ContactEngine();
+                    recorder.RecordPhysicalContact(engine.Record(Contact(1, 2, Start.AddMinutes(5)), out bool created), 0);
+                    Assert.That(() => recorder.Freeze(Start.AddMinutes(5)), Throws.TypeOf<IOException>());
+                    recorder.BeginRun(Start, nextDirectory);
+                    recorder.RecordPhysicalContact(engine.Record(Contact(1, 2, Start.AddMinutes(10)), out created), 0);
+                    var next = recorder.Freeze(Start.AddMinutes(10));
+                    Assert.That(next.ContactEpisodesTotal, Is.EqualTo(1));
+                    Assert.That(next.PhysicalContactsTotal, Is.EqualTo(1));
+                    Assert.That(File.Exists(Path.Combine(failedDirectory, ScientificContactStorage.EpisodeFileName)), Is.False);
+                    Assert.That(File.Exists(Path.Combine(failedDirectory, ScientificContactStorage.EpisodeFileName + ".tmp")), Is.True);
+                }
+            }
+            finally { DeleteTemporaryDirectory(failedDirectory); DeleteTemporaryDirectory(nextDirectory); }
+        }
+
         private static readonly DateTime Start = new DateTime(2042, 4, 3, 12, 0, 0, DateTimeKind.Utc);
 
         [Test]
@@ -21,7 +46,7 @@ namespace RealTimeTests.Pandemic
                 System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
                 using (var recorder = new ExperimentRecorder())
                 {
-                    recorder.BeginRun(Start, directory);
+                    recorder.BeginRun(Start, directory, RealTime.Config.ScientificContactExportMode.FullRaw);
                     var contacts = new ContactEngine();
                     DateTime[] ends = { Start.AddMinutes(5), Start.AddMinutes(5), Start.AddMinutes(10) };
                     for (int i = 0; i < ends.Length; i++)
@@ -31,15 +56,14 @@ namespace RealTimeTests.Pandemic
                         recorder.RecordPhysicalContact(contact, 4);
                     }
                     recorder.Freeze(ends[2]);
-                    var physical = File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.PhysicalContactsFileName));
-                    var traceable = File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.TraceableContactsFileName));
+                    var physical = ReadGzipLines(Path.Combine(directory, "physical_contacts/day_000.csv.gz"));
                     Assert.That(physical.Length, Is.EqualTo(4));
-                    Assert.That(traceable.Length, Is.EqualTo(4));
+                    Assert.That(File.Exists(Path.Combine(directory, ExperimentRecorder.TraceableContactsFileName)), Is.False);
                     for (int i = 0; i < ends.Length; i++)
                     {
                         string prefix = (i + 1) + "," + ends[i].AddMinutes(-5).ToString("o") + "," + ends[i].ToString("o") + ",5," + (i + 1) + ",9,Workplace,7,0,4,";
                         Assert.That(physical[i + 1], Is.EqualTo(prefix + "0,0,0,,1,0"));
-                        Assert.That(traceable[i + 1], Is.EqualTo(prefix + "1,0"));
+                        Assert.That(physical[i + 1].Split(',')[14], Is.EqualTo("1"));
                     }
                 }
             }
@@ -68,7 +92,7 @@ namespace RealTimeTests.Pandemic
                     Assert.That(snapshot.RunEndTime, Is.EqualTo(Start.AddMinutes(10)));
                     Assert.That(snapshot.PhysicalContactsTotal, Is.EqualTo(1));
                     AssertTemporaryStreams(directory, false);
-                    Assert.That(File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.PhysicalContactsFileName)), Has.Length.EqualTo(2));
+                    Assert.That(ReadGzipLines(Path.Combine(directory, ScientificContactStorage.EpisodeFileName)), Has.Length.EqualTo(2));
                 }
             }
             finally { DeleteTemporaryDirectory(directory); }
@@ -98,8 +122,9 @@ namespace RealTimeTests.Pandemic
                 ExperimentRecorderSnapshot snapshot = recorder.Freeze(Start.AddMinutes(15d));
 
                 AssertTemporaryStreams(directory, false);
-                Assert.That(File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.PhysicalContactsFileName)), Has.Length.EqualTo(3));
-                Assert.That(File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.TraceableContactsFileName)), Has.Length.EqualTo(3));
+                Assert.That(ReadGzipLines(Path.Combine(directory, ScientificContactStorage.EpisodeFileName)), Has.Length.EqualTo(3));
+                Assert.That(File.Exists(Path.Combine(directory, ExperimentRecorder.TraceableContactsFileName)), Is.False);
+                Assert.That(snapshot.ContactEpisodesTotal, Is.EqualTo(2));
                 Assert.That(File.ReadAllLines(Path.Combine(directory, ExperimentRecorder.TransmissionEventsFileName)), Has.Length.EqualTo(2));
                 Assert.That(snapshot.PhysicalContactsTotal, Is.EqualTo(2));
                 Assert.That(snapshot.TraceableContactsTotal, Is.EqualTo(2));
@@ -322,8 +347,16 @@ namespace RealTimeTests.Pandemic
         private static void AssertTemporaryStreams(string directory, bool expected)
         {
             Assert.That(File.Exists(Path.Combine(directory, ExperimentRecorder.TransmissionEventsFileName + ".tmp")), Is.EqualTo(expected));
-            Assert.That(File.Exists(Path.Combine(directory, ExperimentRecorder.PhysicalContactsFileName + ".tmp")), Is.EqualTo(expected));
-            Assert.That(File.Exists(Path.Combine(directory, ExperimentRecorder.TraceableContactsFileName + ".tmp")), Is.EqualTo(expected));
+            Assert.That(File.Exists(Path.Combine(directory, ScientificContactStorage.EpisodeFileName + ".tmp")), Is.EqualTo(expected));
+            Assert.That(File.Exists(Path.Combine(directory, ExperimentRecorder.TraceableContactsFileName + ".tmp")), Is.False);
+        }
+
+        private static string[] ReadGzipLines(string path)
+        {
+            using (var input = File.OpenRead(path))
+            using (var gzip = new System.IO.Compression.GZipStream(input, System.IO.Compression.CompressionMode.Decompress))
+            using (var reader = new StreamReader(gzip))
+                return reader.ReadToEnd().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         }
 
         private static string CreateTemporaryDirectory()

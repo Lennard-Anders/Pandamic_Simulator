@@ -13,9 +13,15 @@ namespace RealTime.Experiments
     /// <summary>Produces an order-independent identity of all scenario simulation inputs.</summary>
     public static class ExperimentConfigurationHasher
     {
-        public const string AlgorithmName = "TENUS-CONFIG-v1/SHA-256";
+        public const string AlgorithmName = "TENUS-CONFIG-v2/SHA-256";
+        internal const string LegacyAlgorithmName = "TENUS-CONFIG-v1/SHA-256";
 
         public static string Compute(ExperimentScenario scenario)
+            => Compute(scenario, false);
+
+        internal static string ComputeLegacy(ExperimentScenario scenario) => Compute(scenario, true);
+
+        private static string Compute(ExperimentScenario scenario, bool legacy)
         {
             if (scenario == null)
             {
@@ -28,7 +34,7 @@ namespace RealTime.Experiments
             }
 
             var canonical = new StringBuilder();
-            canonical.Append("TENUS-CONFIG-v1\n");
+            canonical.Append(legacy ? "TENUS-CONFIG-v1\n" : "TENUS-CONFIG-v2\n");
             Append(canonical, "DurationDays", scenario.DurationDays);
             Append(canonical, "EndMode", scenario.EndMode);
 
@@ -37,6 +43,7 @@ namespace RealTime.Experiments
             for (int i = 0; i < properties.Length; ++i)
             {
                 PropertyInfo property = properties[i];
+                if (legacy && IsNewContactProperty(property.Name)) continue;
                 if (!property.CanRead || property.GetIndexParameters().Length != 0)
                 {
                     continue;
@@ -45,7 +52,7 @@ namespace RealTime.Experiments
                 Append(canonical, "Settings." + property.Name, property.GetValue(scenario.Settings, null));
             }
 
-            AppendSchedule(canonical, scenario);
+            AppendSchedule(canonical, scenario, legacy);
             byte[] bytes = new UTF8Encoding(false).GetBytes(canonical.ToString());
             using (SHA256 algorithm = SHA256.Create())
             {
@@ -61,7 +68,7 @@ namespace RealTime.Experiments
             }
 
             var canonical = new StringBuilder();
-            canonical.Append("TENUS-CONFIG-v1\n");
+            canonical.Append("TENUS-CONFIG-v2\n");
             Append(canonical, "DurationDays", scenario.DurationDays);
             Append(canonical, "EndMode", scenario.EndMode);
             PropertyInfo[] properties = typeof(ExperimentScenarioSnapshot).GetProperties(BindingFlags.Instance | BindingFlags.Public);
@@ -79,17 +86,20 @@ namespace RealTime.Experiments
             return canonical.ToString();
         }
 
-        private static void AppendSchedule(StringBuilder canonical, ExperimentScenario scenario)
+        private static bool IsNewContactProperty(string name) => name.StartsWith("ContactPersistence", StringComparison.Ordinal)
+            || name == "ScientificContactExportMode" || name == "MaximumRawContactExportGB";
+
+        private static void AppendSchedule(StringBuilder canonical, ExperimentScenario scenario, bool legacy = false)
         {
             if (scenario.InterventionSchedule == null) return;
             var schedule = scenario.InterventionSchedule;
             Append(canonical, "Schedule.ActivationDay", schedule.ActivationDay);
-            Append(canonical, "Schedule.Before", Compute(new ExperimentScenario { Settings = schedule.Before, DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }));
-            Append(canonical, "Schedule.After", Compute(new ExperimentScenario { Settings = schedule.After, DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }));
+            Append(canonical, "Schedule.Before", Compute(new ExperimentScenario { Settings = schedule.Before, DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }, legacy));
+            Append(canonical, "Schedule.After", Compute(new ExperimentScenario { Settings = schedule.After, DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }, legacy));
             for (int i = 1; i < schedule.PhaseCount; i++)
             {
                 Append(canonical, "Schedule.Phase." + i + ".Day", schedule.DayAt(i));
-                Append(canonical, "Schedule.Phase." + i + ".Settings", Compute(new ExperimentScenario { Settings = schedule.SettingsAfter(i + 1), DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }));
+                Append(canonical, "Schedule.Phase." + i + ".Settings", Compute(new ExperimentScenario { Settings = schedule.SettingsAfter(i + 1), DurationDays = scenario.DurationDays, EndMode = scenario.EndMode }, legacy));
             }
         }
 

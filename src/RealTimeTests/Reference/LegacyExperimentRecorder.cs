@@ -1,220 +1,21 @@
-// <copyright file="ExperimentRecorder.cs" company="dymanoid">
-// Copyright (c) dymanoid. All rights reserved.
-// </copyright>
-
-namespace RealTime.Pandemic
+// Frozen pre-episode recorder for measured baseline comparisons; production code must not use this.
+namespace RealTimeTests.Reference
 {
     using System;
     using System.Collections.Generic;
     using System.Globalization;
     using System.IO;
     using System.Text;
-    using RealTime.Config;
-
-    internal enum PandemicInterventionType
-    {
-        Mask,
-        Isolation,
-        Quarantine,
-        Lockdown,
-        PublicTransportShutdown,
-        ScheduledPolicy,
-        Testing,
-        Tracing,
-    }
-
-    internal sealed class PandemicStateTimePoint
-    {
-        public DateTime SimulationTime { get; set; }
-
-        public int Susceptible { get; set; }
-
-        public int Exposed { get; set; }
-
-        public int Infectious { get; set; }
-
-        public int PostInfectiousIll { get; set; }
-
-        public int Symptomatic { get; set; }
-
-        public int Recovered { get; set; }
-
-        public int Dead { get; set; }
-
-        public int Removed { get; set; }
-
-        public int TrackedPopulation { get; set; }
-
-        public int InitialSeedCount { get; set; }
-
-        public int SecondaryTransmissionsTotal { get; set; }
-
-        public int NewExposures { get; set; }
-
-        public int DetectedNewCases { get; set; }
-
-        public int DetectedActiveCases { get; set; }
-
-        public int UndetectedActiveInfections { get; set; }
-
-        public double? CaseDetectionRatio { get; set; }
-
-        public int HospitalizationsTotal { get; set; }
-
-        public int IsolatedCitizens { get; set; }
-
-        public int QuarantinedCitizens { get; set; }
-        public int? IsolationFollowingCitizens { get; set; }
-        public int? QuarantineFollowingCitizens { get; set; }
-    }
-
-    internal sealed class PandemicTransmissionEvent
-    {
-        public float PositionX { get; set; }
-        public float PositionY { get; set; }
-        public float PositionZ { get; set; }
-        public bool HasPosition { get; set; }
-        public long EventId { get; set; }
-
-        public DateTime SimulationTime { get; set; }
-
-        public uint SourceCitizenId { get; set; }
-
-        public uint TargetCitizenId { get; set; }
-
-        public double SourceInfectionAgeDays { get; set; }
-
-        public DiseaseState TargetPreviousState { get; set; }
-
-        public DiseaseState TargetNewState { get; set; }
-
-        public PhysicalContactContext Context { get; set; }
-
-        public PandemicInfectionOriginCategory OriginCategory { get; set; }
-
-        public ushort BuildingId { get; set; }
-
-        public ushort VehicleId { get; set; }
-
-        public byte DistrictId { get; set; }
-
-        public string SourceMaskType { get; set; }
-
-        public string TargetMaskType { get; set; }
-
-        public double TransmissionProbability { get; set; }
-
-        public double SourceProbability { get; set; }
-
-        public double InfectiousnessMultiplier { get; set; }
-
-        public bool IsInitialSeed { get; set; }
-    }
-
-    internal sealed class PandemicInterventionEvent
-    {
-        public long EventId { get; set; }
-
-        public DateTime SimulationTime { get; set; }
-
-        public uint? CitizenId { get; set; }
-
-        public PandemicInterventionType InterventionType { get; set; }
-
-        public string Action { get; set; }
-
-        public string Reason { get; set; }
-
-        public string Context { get; set; }
-
-        public string TriggerMetric { get; set; }
-
-        public double? TriggerValue { get; set; }
-
-        public double? TriggerThreshold { get; set; }
-        public bool? ActuallyFollowed { get; set; }
-    }
-
-    internal sealed class PandemicPopulationEvent
-    {
-        public long EventId { get; set; }
-
-        public DateTime SimulationTime { get; set; }
-
-        public uint? CitizenId { get; set; }
-
-        public string Action { get; set; }
-
-        public string PopulationCategory { get; set; }
-
-        public int Count { get; set; }
-
-        public string Reason { get; set; }
-    }
-
-    internal sealed class ExperimentRecorderSnapshot
-    {
-        public ScientificContactExportMode ContactExportMode { get; set; }
-        public long ContactEpisodesTotal { get; set; }
-        public List<ContactStorageFile> ContactFiles { get; set; }
-        public string ContactEpisodeSummaryCsv { get; set; }
-        public string ContactEpisodeDurationCsv { get; set; }
-        public string ContactNetworkSummaryCsv { get; set; }
-        public string AgeMixingCsv { get; set; }
-        public string DegreeDistributionCsv { get; set; }
-        public string ContactDurationCsv { get; set; }
-        public string ContactTimeOfDayCsv { get; set; }
-
-        public ExperimentRecorderSnapshot()
-        {
-            StateTimeSeries = new List<PandemicStateTimePoint>();
-            TransmissionEvents = new List<PandemicTransmissionEvent>();
-            InterventionEvents = new List<PandemicInterventionEvent>();
-            PopulationEvents = new List<PandemicPopulationEvent>();
-        }
-
-        public DateTime RunStartTime { get; set; }
-
-        public DateTime RunEndTime { get; set; }
-
-        public long PhysicalContactsTotal { get; set; }
-
-        public long TraceableContactsTotal { get; set; }
-
-        public long HouseholdContactsTotal { get; set; }
-
-        public long WorkContactsTotal { get; set; }
-
-        public long SchoolContactsTotal { get; set; }
-
-        public long TransitContactsTotal { get; set; }
-
-        public long ContactsPreventedByIntervention { get; set; }
-
-        public List<PandemicStateTimePoint> StateTimeSeries { get; private set; }
-
-        public List<PandemicTransmissionEvent> TransmissionEvents { get; private set; }
-
-        public List<PandemicInterventionEvent> InterventionEvents { get; private set; }
-
-        public List<PandemicPopulationEvent> PopulationEvents { get; private set; }
-    }
-
-    /// <summary>
-    /// Run-scoped scientific recorder. High-volume contact and transmission rows are streamed to
-    /// temporary files; compact state and intervention records remain detached and testable in memory.
-    /// </summary>
-    internal sealed class ExperimentRecorder : IDisposable
+    using RealTime.Pandemic;
+    internal sealed class LegacyExperimentRecorder : IDisposable
     {
         private static readonly char[] CsvEscapeCharacters = { ',', '"', '\r', '\n' };
-        private ScientificContactStorage contactStorage;
-        private ContactEpisodeTracker episodes;
-        private DateTime contactStepEnd;
-        private bool contactStepOpen;
-        private ScientificContactExportMode contactExportMode;
-        private long contactEpisodesTotal;
-        private ContactEpisodeMetrics episodeMetrics;
-        private ContactNetworkMetrics network;
+        private readonly ContactCsvWriter contactCsvWriter = new ContactCsvWriter();
+        private DateTime cachedContactStart;
+        private DateTime cachedContactEnd;
+        private string cachedContactStartIso;
+        private string cachedContactEndIso;
+        private LegacyContactNetworkMetrics network;
         private readonly Dictionary<byte, int> districtTransmissions = new Dictionary<byte, int>();
         internal int GetDistrictTransmissions(byte district) => districtTransmissions.TryGetValue(district, out int count) ? count : 0;
         internal IList<PandemicStateTimePoint> StateTimeSeries => stateTimeSeries;
@@ -229,6 +30,8 @@ namespace RealTime.Pandemic
         private readonly List<PandemicInterventionEvent> interventionEvents = new List<PandemicInterventionEvent>();
         private readonly List<PandemicPopulationEvent> populationEvents = new List<PandemicPopulationEvent>();
         private StreamWriter transmissionWriter;
+        private StreamWriter physicalContactWriter;
+        private StreamWriter traceableContactWriter;
         private string outputDirectory;
         private long nextTransmissionEventId;
         private long nextInterventionEventId;
@@ -247,7 +50,7 @@ namespace RealTime.Pandemic
 
         public DateTime RunStartTime { get; private set; }
 
-        public void BeginRun(DateTime startTime, string batchOutputDirectory, ScientificContactExportMode mode = ScientificContactExportMode.Standard, double maximumContactGB = 0)
+        public void BeginRun(DateTime startTime, string batchOutputDirectory)
         {
             Reset();
             if (startTime == default(DateTime))
@@ -255,11 +58,8 @@ namespace RealTime.Pandemic
                 throw new ArgumentException("A scientific run requires a simulation start time.", nameof(startTime));
             }
 
-            contactExportMode = mode;
-            episodes = new ContactEpisodeTracker(RecordCompletedEpisode);
-            episodeMetrics = new ContactEpisodeMetrics();
             RunStartTime = startTime;
-            network = new ContactNetworkMetrics();
+            network = new LegacyContactNetworkMetrics();
             network.Begin(startTime);
             outputDirectory = string.IsNullOrEmpty(batchOutputDirectory)
                 ? null
@@ -276,7 +76,12 @@ namespace RealTime.Pandemic
             transmissionWriter = CreateStreamingWriter(
                 TransmissionEventsFileName,
                 "event_id,simulation_time,pandemic_day,source_citizen_id,target_citizen_id,source_infection_age_days,target_previous_state,target_new_state,context,origin_category,building_id,vehicle_id,district_id,source_mask_type,target_mask_type,transmission_probability,source_probability,infectiousness_multiplier,is_initial_seed,position_x,position_y,position_z,has_position");
-            contactStorage = new ScientificContactStorage(outputDirectory, startTime, mode, maximumContactGB);
+            physicalContactWriter = CreateStreamingWriter(
+                PhysicalContactsFileName,
+                "contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,position_x,position_y,position_z,distance,traceable_by_app,traceable_by_manual");
+            traceableContactWriter = CreateStreamingWriter(
+                TraceableContactsFileName,
+                "contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,traceable_by_app,traceable_by_manual");
         }
 
         public void RecordState(
@@ -444,8 +249,6 @@ namespace RealTime.Pandemic
                 throw new InvalidOperationException("A physical contact must lie within the run and have a nonnegative interval.");
             }
 
-            if (!contactStepOpen || contactStepEnd != contact.EndTime) BeginContactStep(contact.EndTime);
-            episodes.Observe(contact, districtId);
             physicalContactsTotal++;
             network.Record(contact, ageA, ageB);
             if (contact.TraceableByApp || contact.TraceableByManual)
@@ -470,31 +273,27 @@ namespace RealTime.Pandemic
                     break;
             }
 
-            contactStorage?.Record(contact, districtId);
-        }
+            if (physicalContactWriter == null)
+            {
+                return;
+            }
 
-        public void BeginContactStep(DateTime endTime)
-        {
-            EnsureMutable();
-            EnsureRunTime(endTime);
-            if (contactStepOpen) EndContactStep();
-            episodes.BeginStep(endTime);
-            contactStepEnd = endTime;
-            contactStepOpen = true;
-        }
+            // All contacts in a step share these timestamps. Keep only the last pair;
+            // changing intervals still produces the original round-trip CSV text.
+            if (cachedContactStartIso == null || contact.StartTime.ToBinary() != cachedContactStart.ToBinary())
+            {
+                cachedContactStart = contact.StartTime;
+                cachedContactStartIso = Iso(contact.StartTime);
+            }
+            if (cachedContactEndIso == null || contact.EndTime.ToBinary() != cachedContactEnd.ToBinary())
+            {
+                cachedContactEnd = contact.EndTime;
+                cachedContactEndIso = Iso(contact.EndTime);
+            }
+            contactCsvWriter.Write(physicalContactWriter, traceableContactWriter, contact,
+                districtId, cachedContactStartIso, cachedContactEndIso);
 
-        public void EndContactStep()
-        {
-            if (!contactStepOpen) return;
-            episodes.EndStep();
-            contactStepOpen = false;
-        }
-
-        private void RecordCompletedEpisode(ContactEpisode episode)
-        {
-            contactEpisodesTotal++;
-            episodeMetrics.Record(episode);
-            contactStorage?.Record(episode);
+            FlushStreamsPeriodically();
         }
 
         public void RecordPreventedContact()
@@ -563,8 +362,6 @@ namespace RealTime.Pandemic
 
             if (!frozen)
             {
-                EndContactStep();
-                episodes.Complete();
                 network.Complete(endTime);
                 CloseAndPublishStreamingFiles();
                 frozen = true;
@@ -572,11 +369,6 @@ namespace RealTime.Pandemic
 
             var result = new ExperimentRecorderSnapshot
             {
-                ContactExportMode = contactExportMode,
-                ContactEpisodesTotal = contactEpisodesTotal,
-                ContactEpisodeSummaryCsv = episodeMetrics.SummaryCsv(network.TotalPersonDays),
-                ContactEpisodeDurationCsv = episodeMetrics.DurationCsv(),
-                ContactFiles = contactStorage == null ? new List<ContactStorageFile>() : new List<ContactStorageFile>(contactStorage.Files),
                 RunStartTime = RunStartTime,
                 RunEndTime = endTime,
                 PhysicalContactsTotal = physicalContactsTotal,
@@ -602,11 +394,6 @@ namespace RealTime.Pandemic
         public void Reset()
         {
             DisposeWriters();
-            contactStorage = null;
-            episodes = null;
-            contactStepOpen = false;
-            contactStepEnd = default(DateTime);
-            contactEpisodesTotal = 0;
             outputDirectory = null;
             RunStartTime = default(DateTime);
             stateTimeSeries.Clear();
@@ -655,10 +442,11 @@ namespace RealTime.Pandemic
             }
 
             FlushAndClose(ref transmissionWriter);
-
-
+            FlushAndClose(ref physicalContactWriter);
+            FlushAndClose(ref traceableContactWriter);
             PublishTemporaryFile(TransmissionEventsFileName);
-            contactStorage?.Complete();
+            PublishTemporaryFile(PhysicalContactsFileName);
+            PublishTemporaryFile(TraceableContactsFileName);
         }
 
         private void PublishTemporaryFile(string finalName)
@@ -692,19 +480,16 @@ namespace RealTime.Pandemic
             }
 
             transmissionWriter?.Flush();
-
-
+            physicalContactWriter?.Flush();
+            traceableContactWriter?.Flush();
             pendingStreamRows = 0;
         }
 
         private void DisposeWriters()
         {
-            try { if (contactStorage?.HasFailed != true) episodes?.Complete(); }
-            finally
-            {
-                try { contactStorage?.Dispose(); }
-                finally { FlushAndClose(ref transmissionWriter); }
-            }
+            FlushAndClose(ref transmissionWriter);
+            FlushAndClose(ref physicalContactWriter);
+            FlushAndClose(ref traceableContactWriter);
         }
 
         private static void FlushAndClose(ref StreamWriter writer)
@@ -714,9 +499,9 @@ namespace RealTime.Pandemic
                 return;
             }
 
-            var closing = writer;
+            writer.Flush();
+            writer.Dispose();
             writer = null;
-            closing.Dispose();
         }
 
         private void EnsureMutable()

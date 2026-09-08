@@ -484,6 +484,23 @@ namespace RealTime.Experiments
                 result.Errors.Add(prefix + " EpidemicStepMinutes must be between 1 and 60.");
             }
 
+            if (!Enum.IsDefined(typeof(ScientificContactExportMode), settings.ScientificContactExportMode)
+                || !IsFiniteInRange(settings.MaximumRawContactExportGB, 0, 1000))
+                result.Errors.Add(prefix + " contact export mode must be recognized and maximum output must be 0–1000 GB (0 means unlimited).");
+
+            if (!Enum.IsDefined(typeof(ContactPersistenceModel), settings.ContactPersistenceModel)
+                || settings.ContactPersistenceMinutesSchool > 1440
+                || settings.ContactPersistenceMinutesUniversity > 1440
+                || settings.ContactPersistenceMinutesWorkplace > 1440
+                || settings.ContactPersistenceMinutesHealthcare > 1440
+                || settings.ContactPersistenceMinutesCommercial > 1440
+                || settings.ContactPersistenceMinutesLeisure > 1440
+                || settings.ContactPersistenceMinutesTransit > 1440
+                || settings.ContactPersistenceMinutesResidentialSharedArea > 1440)
+            {
+                result.Errors.Add(prefix + " contact persistence model must be recognized and windows must be 0–1440 minutes (0 retains per-step sampling).");
+            }
+
             if (settings.MaxContactsPerPersonPerStepSchool == 0
                 || settings.MaxContactsPerPersonPerStepWorkplace == 0
                 || settings.MaxContactsPerPersonPerStepCommercial == 0

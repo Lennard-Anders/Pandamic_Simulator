@@ -134,6 +134,10 @@ namespace RealTime.UI
                     hint.text = property.Name + " (" + property.PropertyType.Name + ")\n"
                         + (property.PropertyType.IsEnum ? string.Join(", ", Enum.GetNames(property.PropertyType)) : "Use invariant decimal notation, e.g. 0.75; booleans use True/False.")
                         + "\nValues are validated before applying. Scheduled phases may differ only in intervention parameters.";
+                    if (property.Name == "ScientificContactExportMode")
+                        hint.text = "Standard: recommended episode export. SummaryOnly: aggregate contact statistics. FullRaw: every contact step.\n" + ContactStorageEstimate.FullRawWarning;
+                    if (property.Name == "MaximumRawContactExportGB")
+                        hint.text = "Compressed contact output limit in decimal GB. 0 means unlimited. Reaching the limit fails the run; it never silently truncates or switches modes.";
                 }
             };
             selector.eventSelectedIndexChanged += (c, i) => refresh();

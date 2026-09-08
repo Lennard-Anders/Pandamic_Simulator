@@ -354,4 +354,37 @@
     <translation id="INFO_HEALTH_CHILDCARE_BIRTHRATE" value="Birth rate: {0} / {unit}"/>
   </overrides>
 
+  <translation id="ContactPersistenceModel" value="Contact partner persistence (experimental)" />
+  <translation id="ContactPersistenceModelTooltip" value="Context windows preserve partners while occupancy is unchanged. These are uncalibrated model assumptions. Arrivals and departures can change the graph." />
+  <translation id="ContactPersistenceModel.LegacyPerStep" value="Legacy: resample each epidemiological step" />
+  <translation id="ContactPersistenceModel.ContextWindows" value="Experimental: context-specific clock windows" />
+  <translation id="ContactPersistenceMinutesSchool" value="School partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesSchoolTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="ContactPersistenceMinutesUniversity" value="University partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesUniversityTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="ContactPersistenceMinutesWorkplace" value="Workplace partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesWorkplaceTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="ContactPersistenceMinutesHealthcare" value="Healthcare partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesHealthcareTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="ContactPersistenceMinutesCommercial" value="Commercial partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesCommercialTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="ContactPersistenceMinutesLeisure" value="Leisure partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesLeisureTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="ContactPersistenceMinutesTransit" value="Transit partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesTransitTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="ContactPersistenceMinutesResidentialSharedArea" value="ResidentialSharedArea partner window (simulated minutes)" />
+  <translation id="ContactPersistenceMinutesResidentialSharedAreaTooltip" value="Experimental fixed clock window; 0 uses legacy per-step resampling. Occupancy changes can change partners. This does not change transmission resolution or the operational contact cap." />
+  <translation id="MaxContactsPerPersonPerStepSchool" value="School legacy operational contact cap per step" />
+  <translation id="MaxContactsPerPersonPerStepWorkplace" value="Workplace legacy operational contact cap per step" />
+  <translation id="MaxContactsPerPersonPerStepHealthcare" value="Healthcare legacy operational contact cap per step" />
+  <translation id="MaxContactsPerPersonPerStepCommercial" value="Commercial legacy operational contact cap per step" />
+  <translation id="MaxContactsPerPersonPerStepTransit" value="Transit legacy operational contact cap per step" />
+  <translation id="MaxContactsPerPersonPerStepResidentialSharedArea" value="ResidentialSharedArea legacy operational contact cap per step" />
+  <translation id="ScientificContactExportMode" value="Scientific contact export mode" />
+  <translation id="ScientificContactExportMode.Standard" value="Standard (recommended): contact episodes" />
+  <translation id="ScientificContactExportMode.FullRaw" value="FullRaw: every epidemiological contact step" />
+  <translation id="ScientificContactExportMode.SummaryOnly" value="SummaryOnly: aggregate contact statistics" />
+  <translation id="ScientificContactExportModeTooltip" value="Full raw contact export records every physical contact at every epidemiological timestep and can generate tens or hundreds of gigabytes for large cities or long experiments." />
+  <translation id="MaximumRawContactExportGB" value="Maximum compressed contact output (GB; 0 = unlimited)" />
+  <translation id="MaximumRawContactExportGBTooltip" value="Reaching this limit fails the scientific run. Data is never silently truncated or switched to another export mode." />
 </language>

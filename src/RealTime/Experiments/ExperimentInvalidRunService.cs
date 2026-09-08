@@ -117,7 +117,9 @@ namespace RealTime.Experiments
                 string attempt = Path.GetFullPath(request.AttemptDirectory);
                 string destination = Path.GetFullPath(request.InvalidDirectory);
                 request.Manifest.OutputFiles.Clear();
-                foreach (string path in Directory.GetFiles(attempt, "*", SearchOption.TopDirectoryOnly))
+                string[] archiveFiles = Directory.GetFiles(attempt, "*", SearchOption.AllDirectories);
+                Array.Sort(archiveFiles, StringComparer.Ordinal);
+                foreach (string path in archiveFiles)
                 {
                     string name = Path.GetFileName(path);
                     if (string.Equals(name, ManifestFileName, StringComparison.OrdinalIgnoreCase)
@@ -127,7 +129,10 @@ namespace RealTime.Experiments
                         continue;
                     }
 
-                    request.Manifest.OutputFiles.Add(Fingerprint(path));
+                    var entry = Fingerprint(path);
+                    entry.RelativePath = path.Substring(attempt.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Length + 1)
+                        .Replace(Path.DirectorySeparatorChar, '/');
+                    request.Manifest.OutputFiles.Add(entry);
                 }
 
                 jsonStore.Save(Path.Combine(attempt, ManifestFileName), request.Manifest);
@@ -184,8 +189,8 @@ namespace RealTime.Experiments
                 throw new IOException("Invalid-run diagnostics are never overwritten: " + destination);
             }
 
-            if (Directory.GetFiles(attempt, "*.tmp", SearchOption.TopDirectoryOnly).Length > 0
-                || Directory.GetFiles(attempt, ".tmp-*", SearchOption.TopDirectoryOnly).Length > 0)
+            if (Directory.GetFiles(attempt, "*.tmp", SearchOption.AllDirectories).Length > 0
+                || Directory.GetFiles(attempt, ".tmp-*", SearchOption.AllDirectories).Length > 0)
             {
                 throw new IOException("The failed run still contains unpublished temporary outputs.");
             }

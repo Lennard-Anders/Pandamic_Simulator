@@ -7,6 +7,19 @@ namespace RealTimeTests.Experiments
     public sealed class ExperimentConfigurationHasherTests
     {
         [Test]
+        public void LegacyIdentityOmitsNewContactFieldsButV2IncludesThem()
+        {
+            var scenario = CreateScenario();
+            string legacy = ExperimentConfigurationHasher.ComputeLegacy(scenario);
+            string current = ExperimentConfigurationHasher.Compute(scenario);
+            scenario.Settings.ContactPersistenceMinutesWorkplace += 15;
+            scenario.Settings.ScientificContactExportMode = ScientificContactExportMode.FullRaw;
+            Assert.That(ExperimentConfigurationHasher.ComputeLegacy(scenario), Is.EqualTo(legacy));
+            Assert.That(ExperimentConfigurationHasher.Compute(scenario), Is.Not.EqualTo(current));
+            scenario.Settings.IndoorDiseaseTransmissionProbability += 1;
+            Assert.That(ExperimentConfigurationHasher.ComputeLegacy(scenario), Is.Not.EqualTo(legacy));
+        }
+        [Test]
         public void HashIsStableAcrossDetachedCopiesAndPresentationChanges()
         {
             ExperimentScenario first = CreateScenario();

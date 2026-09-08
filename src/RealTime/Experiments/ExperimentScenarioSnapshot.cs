@@ -121,6 +121,19 @@ namespace RealTime.Experiments
 
         public uint MaxContactsPerPersonPerStepSchool { get; set; }
 
+        public ContactPersistenceModel ContactPersistenceModel { get; set; }
+        public ScientificContactExportMode ScientificContactExportMode { get; set; }
+        public float MaximumRawContactExportGB { get; set; }
+        public uint ContactPersistenceMinutesSchool { get; set; }
+        public uint ContactPersistenceMinutesUniversity { get; set; }
+        public uint ContactPersistenceMinutesWorkplace { get; set; }
+        public uint ContactPersistenceMinutesHealthcare { get; set; }
+        public uint ContactPersistenceMinutesCommercial { get; set; }
+        public uint ContactPersistenceMinutesLeisure { get; set; }
+        public uint ContactPersistenceMinutesTransit { get; set; }
+        public uint ContactPersistenceMinutesResidentialSharedArea { get; set; }
+
+
         public uint MaxContactsPerPersonPerStepWorkplace { get; set; }
 
         public uint MaxContactsPerPersonPerStepCommercial { get; set; }

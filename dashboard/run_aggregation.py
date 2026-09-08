@@ -94,9 +94,12 @@ def _file_digest(path: str, size: int, modified_ns: int) -> str:
     return digest.hexdigest()
 
 
-def _manifest_files_valid(directory: Path, manifest: Mapping[str, Any]) -> bool:
+def _manifest_files_valid(directory: Path, manifest: Mapping[str, Any], *, verify_contact_hashes: bool = False) -> bool:
     entries = _value(manifest, "output_files")
     extension_version = _integer(_value(manifest, "scientific_extensions_version"))
+    contact_version = _integer(_value(manifest, "scientific_export_schema_version"))
+    if contact_version not in (0, 1, 2):
+        return False
     if extension_version not in (0, 1):
         return False
     if entries is None:
@@ -118,11 +121,53 @@ def _manifest_files_valid(directory: Path, manifest: Mapping[str, Any]) -> bool:
             length = _value(entry, "length_bytes")
             if length is None or stat.st_size != int(length):
                 return False
-            if _file_digest(str(file), stat.st_size, stat.st_mtime_ns).casefold() != str(_value(entry, "sha256") or "").casefold():
+            is_contact = relative in {"physical_contacts.csv", "traceable_contacts.csv", "contact_episodes.csv.gz"} or relative.startswith("physical_contacts/")
+            # Comparisons use aggregate files. Reading every raw byte just to discover a run
+            # would scan hundreds of GB; full contact verification is an explicit analysis action.
+            if (verify_contact_hashes or not is_contact) and _file_digest(str(file), stat.st_size, stat.st_mtime_ns).casefold() != str(_value(entry, "sha256") or "").casefold():
                 return False
         required = {"run_summary.csv", "state_timeseries.csv", "transmission_events.csv", "physical_contacts.csv", "traceable_contacts.csv", "test_events.csv", "intervention_events.csv", "healthcare_timeseries.csv", "population_events.csv", "errors.json"}
         if extension_version == 1:
             required |= {"contact_network_summary.csv", "age_mixing_matrix.csv", "contact_degree_distribution.csv", "contact_duration_distribution.csv", "contacts_by_time_of_day.csv", "calibration_results.csv"}
+        if contact_version == 2:
+            required -= {"physical_contacts.csv", "traceable_contacts.csv"}
+            required |= {"contact_step_summary.csv", "contact_episode_summary.csv", "contact_episode_duration_distribution.csv"}
+            mode = _value(manifest, "contact_export_mode")
+            contacts = _value(manifest, "contact_files")
+            if not isinstance(contacts, list) or mode not in {"Standard", "FullRaw", "SummaryOnly"}:
+                return False
+            contact_names = [str(_value(entry, "relative_path") or "") for entry in contacts if isinstance(entry, dict)]
+            if len(contact_names) != len(contacts) or len(set(contact_names)) != len(contacts):
+                return False
+            if mode == "Standard" and contact_names != ["contact_episodes.csv.gz"]:
+                return False
+            if mode == "SummaryOnly" and contact_names:
+                return False
+            if mode == "FullRaw":
+                import re
+                if not contact_names or any(not re.fullmatch(r"physical_contacts/day_[0-9]{3,}\.csv\.gz", name) for name in contact_names):
+                    return False
+            expected_representation = {"Standard": "episodes", "FullRaw": "epidemiological_steps", "SummaryOnly": "summaries"}[mode]
+            if (_value(manifest, "contact_representation") != expected_representation
+                    or _value(manifest, "compression") != "gzip"
+                    or _value(manifest, "partitioning") != ("simulation_day" if mode == "FullRaw" else "none")):
+                return False
+            actual_contacts = set()
+            if (root / "contact_episodes.csv.gz").exists():
+                actual_contacts.add("contact_episodes.csv.gz")
+            if (root / "physical_contacts").exists():
+                actual_contacts.update(p.relative_to(root).as_posix() for p in (root / "physical_contacts").rglob("*") if p.is_file())
+            if actual_contacts != set(contact_names) or any((root / name).exists() for name in ("physical_contacts.csv", "traceable_contacts.csv")):
+                return False
+            indexed = {str(_value(entry, "relative_path")): entry for entry in entries}
+            for contact in contacts:
+                name = str(_value(contact, "relative_path"))
+                if name not in indexed or _value(contact, "row_count") is None or int(_value(contact, "row_count")) < 0:
+                    return False
+                for field in ("length_bytes", "sha256", "row_count", "simulation_start_time", "simulation_end_time"):
+                    if _value(contact, field) != _value(indexed[name], field):
+                        return False
+            required.update(contact_names)
         return (extension_version == 0 and _integer(_value(manifest, "schema_version")) < 4) or required <= names
     except (OSError, ValueError, TypeError):
         return False

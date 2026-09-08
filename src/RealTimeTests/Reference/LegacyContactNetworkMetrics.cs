@@ -1,16 +1,17 @@
-namespace RealTime.Pandemic
+namespace RealTimeTests.Reference
 {
+    using RealTime.Pandemic;
     using System;
     using System.Collections.Generic;
     using System.Globalization;
     using System.Text;
 
     /// <summary>Streaming daily network statistics. Only the current day's unique pairs are retained.</summary>
-    internal sealed class ContactNetworkMetrics
+    internal sealed class LegacyContactNetworkMetrics
     {
         private readonly Dictionary<uint, long> contactCounts = new Dictionary<uint, long>();
         private readonly Dictionary<uint, int> degrees = new Dictionary<uint, int>();
-        private readonly HashSet<ulong> pairs = new HashSet<ulong>(ContactPairComparer.Instance);
+        private readonly HashSet<ulong> pairs = new HashSet<ulong>();
         private readonly long[] contextCounts = new long[10];
         private readonly double[] contextMinutes = new double[10];
         private readonly long[,] ageMixing = new long[6, 6];

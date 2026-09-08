@@ -20,7 +20,7 @@ namespace RealTime.Config
         /// <summary>Illustrative hourly probability divisor per effective mask component; not a clinically calibrated efficacy.</summary>
         public const int DefaultMaskReductionFactor = 2;
 
-        private const int LatestVersion = 13;
+        private const int LatestVersion = 14;
 
         /// <summary>Initializes a new instance of the <see cref="RealTimeConfig"/> class.</summary>
         public RealTimeConfig()
@@ -329,6 +329,41 @@ namespace RealTime.Config
         [ConfigItem("Pandemic", "ContactModel", 0)]
         [ConfigItemSlider(1, 100, 1, ValueType = SliderValueType.Default)]
         public uint MaxContactsPerPersonPerStepSchool { get; set; }
+
+        [ConfigItem("Pandemic", "ContactModel", 7)]
+        [ConfigItemComboBox]
+        public ContactPersistenceModel ContactPersistenceModel { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 16)]
+        [ConfigItemComboBox]
+        public ScientificContactExportMode ScientificContactExportMode { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 17)]
+        [ConfigItemSlider(0, 1000, 1, ValueType = SliderValueType.Default)]
+        public float MaximumRawContactExportGB { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 8)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesSchool { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 9)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesUniversity { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 10)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesWorkplace { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 11)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesHealthcare { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 12)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesCommercial { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 13)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesLeisure { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 14)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesTransit { get; set; }
+        [ConfigItem("Pandemic", "ContactModel", 15)]
+        [ConfigItemSlider(0, 1440, 5, ValueType = SliderValueType.Default)]
+        public uint ContactPersistenceMinutesResidentialSharedArea { get; set; }
+
 
         /// <summary>Gets or sets the per-step workplace contact cap used for deterministic sampling.</summary>
         [ConfigItem("Pandemic", "ContactModel", 1)]
@@ -1210,6 +1245,7 @@ namespace RealTime.Config
                 StrictPopulationIntegrity = false;
             }
 
+            if (Version < 14) ContactPersistenceModel = ContactPersistenceModel.LegacyPerStep;
             Version = LatestVersion;
         }
 
@@ -1469,6 +1505,18 @@ namespace RealTime.Config
             RetestIntervalDays = 7;
             EpidemicStepMinutes = 5;
             StrictPopulationIntegrity = false;
+            // Experimental turnover assumptions; older saved configurations explicitly migrate to LegacyPerStep.
+            ContactPersistenceModel = ContactPersistenceModel.ContextWindows;
+            ScientificContactExportMode = ScientificContactExportMode.Standard;
+            MaximumRawContactExportGB = 0;
+            ContactPersistenceMinutesSchool = 60;
+            ContactPersistenceMinutesUniversity = 60;
+            ContactPersistenceMinutesWorkplace = 60;
+            ContactPersistenceMinutesHealthcare = 30;
+            ContactPersistenceMinutesCommercial = 15;
+            ContactPersistenceMinutesLeisure = 15;
+            ContactPersistenceMinutesTransit = 15;
+            ContactPersistenceMinutesResidentialSharedArea = 15;
             MaxContactsPerPersonPerStepSchool = 10;
             MaxContactsPerPersonPerStepWorkplace = 10;
             MaxContactsPerPersonPerStepCommercial = 10;

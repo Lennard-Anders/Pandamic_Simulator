@@ -200,6 +200,16 @@ namespace RealTime.Experiments
                 throw new InvalidOperationException("A JSON object was expected for " + targetType.FullName + ".");
             }
 
+            if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(Dictionary<,>)
+                && targetType.GetGenericArguments()[0] == typeof(string))
+            {
+                var destination = (IDictionary)Activator.CreateInstance(targetType);
+                Type valueType = targetType.GetGenericArguments()[1];
+                foreach (var item in sourceObject)
+                    destination.Add(item.Key, ConvertValue(item.Value, valueType, depth + 1));
+                return destination;
+            }
+
             object destinationObject = Activator.CreateInstance(targetType);
             foreach (PropertyInfo property in GetSerializableProperties(targetType, true))
             {

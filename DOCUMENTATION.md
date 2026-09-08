@@ -941,8 +941,11 @@ Pandemic Data/
         │   │   ├── run_summary.csv
         │   │   ├── state_timeseries.csv
         │   │   ├── transmission_events.csv
-        │   │   ├── physical_contacts.csv
-        │   │   ├── traceable_contacts.csv
+        │   │   ├── contact_episodes.csv.gz          (Standard)
+        │   │   ├── physical_contacts/day_NNN.csv.gz (FullRaw only)
+        │   │   ├── contact_step_summary.csv
+        │   │   ├── contact_episode_summary.csv
+        │   │   ├── contact_episode_duration_distribution.csv
         │   │   ├── test_events.csv
         │   │   ├── intervention_events.csv
         │   │   ├── healthcare_timeseries.csv
@@ -1146,12 +1149,15 @@ state_timeseries.csv
 simulation_time,pandemic_day,susceptible,exposed,infectious,post_infectious_ill,symptomatic,recovered,dead,removed,tracked_population,initial_seed_count,secondary_transmissions_total,new_exposures_per_interval,hospitalizations_total,isolated_citizens,quarantined_citizens,incidence_per_100000_per_interval,prevalence_pct,attack_rate_pct,true_new_infections,true_prevalence,true_active_infectious,detected_new_cases,detected_active_cases,observed_incidence,undetected_active_infections,case_detection_ratio,isolation_following_citizens,quarantine_following_citizens
 
 transmission_events.csv
-event_id,simulation_time,pandemic_day,citizen_id,action,population_category,count,reason
+event_id,simulation_time,pandemic_day,source_citizen_id,target_citizen_id,source_infection_age_days,target_previous_state,target_new_state,context,origin_category,building_id,vehicle_id,district_id,source_mask_type,target_mask_type,transmission_probability,source_probability,infectiousness_multiplier,is_initial_seed,position_x,position_y,position_z,has_position
 
-physical_contacts.csv
+contact_episodes.csv.gz (Standard, decompressed schema)
+episode_id,citizen_a,citizen_b,start_time,end_time,duration_minutes,context,building_id,vehicle_id,district_id,traceable_by_app,traceable_by_manual,number_of_epidemiological_steps
+
+physical_contacts/day_NNN.csv.gz (FullRaw; legacy name: physical_contacts.csv)
 contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,position_x,position_y,position_z,distance,traceable_by_app,traceable_by_manual
 
-traceable_contacts.csv
+traceable_contacts.csv (legacy only; schema 2 derives traceability from authoritative flags)
 contact_id,start_time,end_time,duration_minutes,citizen_a,citizen_b,context,building_id,vehicle_id,district_id,traceable_by_app,traceable_by_manual
 
 test_events.csv
@@ -1286,3 +1292,158 @@ The simulation uses completed native tick time for epidemiological steps and hol
 Latest automated verification: **223 C# tests and 15 dashboard tests passed**, plus four Steam-path checks and three dashboard HTTP smoke checks after installing dependencies in a fresh virtual environment. Coverage includes preset policies, concurrent quarantine access, exact-step pacing, batch sequencing, export integrity, pairing exclusions, statistics, schedules and replay. A new in-game acceptance run for the latest fixes remains pending. Frame-time spikes and separate game compatibility messages remain; neither a guaranteed FPS improvement nor clinical validation is claimed.
 
 Experiment output files, local audit datasets and session-specific reports are excluded from Git. Keep these locally; this documentation describes the software without publishing individual experiment results.
+# Temporal contact model and scientific export schema 2
+
+`ContactPersistenceModel` now separates partner turnover from the epidemiological
+timestep. `LegacyPerStep` retains the original deterministic per-step sampler key.
+`ContextWindows` uses fixed windows of simulated clock time. With unchanged
+occupancy, seed, context, location and cap, partners stay identical within a window.
+The interval ending exactly on a window boundary belongs to the preceding window.
+This is a deterministic clock-window model, not a calibrated social-cohort model:
+an arrival or departure can change other participants' partners because the sampler
+reconstructs the round-robin graph from the current occupants. Occupancy changes
+never preserve contacts to absent citizens.
+
+New configuration defaults use experimental windows: school, university and
+workplace 60 minutes; healthcare 30; commercial, leisure, transit and residential
+shared areas 15. Every window is independently configurable from 0 to 1440 minutes;
+0 retains per-step sampling in that context. Configuration versions before 14
+explicitly migrate to `LegacyPerStep`, preserving previous behavior. Older scenario
+snapshots without these fields also select legacy behavior. The persistence model
+and all eight windows are included in scenario snapshots and their configuration
+hashes. No old per-step cap is reinterpreted or lowered.
+
+Household contacts still use actual co-located household membership and all-pairs
+enumeration. Outdoor contacts still use observed spatial proximity. Public transport
+sampling uses the currently observed vehicle occupants at each step. Clock windows
+can shorten an episode when they expire, even when occupants remain together.
+The existing `MaxContactsPerPersonPerStep*` values are legacy operational sampling
+caps, not target daily unique-contact rates. A future calibrated rate model must
+introduce explicit simultaneous-contact/turnover/daily-target semantics rather than
+reinterpret those caps.
+
+A physical contact step represents one pair/context observation during one
+epidemiological interval. A contact episode measures consecutive observations with
+the same canonical pair, context, building, vehicle and district. A missing step or
+a traceability change ends the episode. Episode aggregation is a measurement layer;
+transmission must still be evaluated at every original epidemiological step.
+
+Contact persistence and contact-rate parameters are model assumptions until calibrated or validated against external empirical contact data.
+
+Calibration remains necessary for context-specific caps and turnover, occupancy
+churn effects, household encounter assumptions, residential shared-area exposure
+windows and multiplier, transit mixing, outdoor proximity range/duration, and
+traceability adoption. Synthetic constant-occupancy measurements are engineering
+checks, not evidence that these defaults reproduce empirical contacts.
+
+The recorder now defaults to `ScientificContactExportMode.Standard`: completed
+episodes stream to `contact_episodes.csv.gz`. `FullRaw` writes every physical step
+to `physical_contacts/day_NNN.csv.gz`; day numbers are relative to run start and
+assigned from contact start time. `SummaryOnly` writes no individual contact files.
+Every mode retains transmission events, per-step network metrics, age mixing,
+epidemic/testing/intervention outputs and the new episode summary/duration files.
+Changing export mode never selects a different simulation or random stream.
+
+`traceable_contacts.csv` is no longer written. Filter the authoritative episode or
+raw-step file by `traceable_by_app == 1 OR traceable_by_manual == 1`. Episodes split
+when either flag changes, preserving which portions of time were traceable.
+The legacy adjacency `contacts.csv` remains a separate last-seen tracing summary.
+
+Scientific contact export schema 2 adds manifest fields `ScientificExportSchemaVersion`,
+`ContactExportMode`, `ContactRepresentation`, `Compression`, `Partitioning`,
+`EpidemicStepMinutes`, `ContactPersistenceModel`, and `ContactPersistenceMinutes`.
+These use the existing PascalCase JSON serialization convention. Overall experiment
+schema remains 4, with independent contact-schema versioning. `ContactFiles` and
+`OutputFiles` identify the same stored contact files, including compressed byte
+length, SHA-256, row count, and earliest/latest contact interval endpoints. Empty
+files have zero rows and null time endpoints. Files close fully before hashing.
+The containing attempt directory is published only after manifest validation.
+
+Compression uses the platform .NET 3.5-compatible `GZipStream` without external
+dependencies. Memory buffers are bounded. Interrupted files stay `.tmp` and cannot
+be committed as a successful run. `MaximumRawContactExportGB` is a compressed-contact
+byte limit in decimal GB, applies to both individual-contact modes, and defaults
+to 0 (unlimited). A limit or write error fails the export; it does not silently
+stop recording or switch modes. Completed scientific runs must never be truncated.
+
+Existing `contact_events` metrics continue to mean epidemiological contact steps.
+The new `contact_episode_summary.csv` counts completed episodes by context and sums
+pair-minutes; its person-day rates count both participants. Simultaneous encounters
+can therefore exceed 1,440 episode participation minutes/person/day. The separate
+`contact_episode_duration_distribution.csv` describes full episodes. Legacy duration
+and time-of-day files continue to describe steps; no existing definition was changed.
+
+The dashboard comparison reader uses aggregate files and accepts all three modes
+and legacy manifests. To avoid scanning huge contact datasets during discovery,
+it checks contact file presence/size and leaves full raw hashes to explicit
+`_manifest_files_valid(..., verify_contact_hashes=True)` validation. Other summary
+files are still hashed. `dashboard/contact_reader.py` provides lazy gzip/partition
+iteration and bounded chunks for explicitly requested detailed contact analysis.
+This distinction is important: routine dashboard discovery is not a complete raw
+file integrity audit.
+
+New run configuration identities use `TENUS-CONFIG-v2/SHA-256`, including contact
+persistence, export mode and the output limit. Legacy contact-schema manifests
+using `TENUS-CONFIG-v1/SHA-256` are verified with the original property set (including
+scheduled phases); the new contact fields are excluded only for that legacy hash
+algorithm. New schema-2 packages cannot use the legacy hash algorithm.
+
+Failed compression finalization explicitly closes the underlying file handle.
+Known failed streams are abandoned as temporary data rather than retried during
+recorder reset. Invalid-run archives include nested compressed partitions and
+their hashes. Unpublished temporary files at any depth prevent both successful
+commit and normal invalid-archive publication; they remain in the failed attempt
+for debugging. Schema-2 validation also requires the actual contact files to match
+the declared mode inventory exactly, rejecting unlisted partitions and legacy
+duplicate files. Injected underlying write/flush errors and reset-after-limit tests
+exercise these paths. Byte-identical repeated gzip output is verified on the test
+runtime; gzip implementation differences across runtimes remain a deployment check.
+
+Batch preflight shows an estimated output category and a broad compressed-size
+range for each scenario including its repetitions, plus available disk space and
+the explicit FullRaw warning. The current city's observed citizen count is only a
+proxy for the selected baseline. The estimate uses the largest configured contact
+cap, timestep, duration, 150 uncompressed bytes per row, and a broad engineering
+compression/occupancy factor of 0.03–1.0. Standard's low estimate additionally assumes
+the longer school/workplace window; the high estimate assumes rapid turnover.
+This is not a statistical confidence interval or a bound. Household/outdoor density,
+multiple contexts and roster churn can exceed it. SummaryOnly reports zero individual
+contact bytes, not zero total experiment storage. No simulation parameter is changed
+by estimation, and a heuristic alone does not block a batch.
+
+The contact writer checks measured free space before opening output and at least
+once per MiB written, with earlier checks near a 100 MB reserve. Insufficient
+measured space fails recording and preserves temporary data. Unsupported free-space
+queries return unknown; normal I/O errors still fail the run. Other processes can
+consume disk space concurrently, so the reserve cannot guarantee isolation from
+unrelated writers. It is a safety margin, not a silent truncation policy.
+
+`contact_step_summary.csv` now provides explicitly named aliases for the legacy
+daily metrics (including `raw_contact_steps` and
+`mean_contact_step_participations_per_person_day`). Its data rows are identical to
+`contact_network_summary.csv`; the original file retains its existing column names.
+
+For measured storage/CPU results, test commands, completion evidence and deployment
+limitations, see `TENUS_CONTACT_EXPORT_REPORT.md` and
+`benchmarks/CONTACT_EXPORT_20260908.md`. The earlier implementation journal retains
+historical progress notes; they are not the current feature status.
+
+At five-minute resolution there are 288 epidemiological steps/day. A continuously
+occupied group of 1,000 citizens at operational cap 10 produced 1,440,000 pair rows
+and 253,480,018 bytes/day in the legacy physical-plus-traceable exports. Scaling that
+specific workload to 30,000 citizens for 30 days gives 228.13 GB before other outputs
+(extrapolation, not a measured city run). Serialization alone cannot remove repeated
+observations or rapid partner turnover. Standard retains their temporal episodes
+while transmission continues to consume every step. Use Standard for ordinary
+experiments; select FullRaw explicitly for step-level validation and SummaryOnly
+when individual encounter reconstruction is unnecessary.
+# Detailed contact preview
+
+The external dashboard's **Preview contacts** button explicitly opens the selected
+local run's authoritative contact dataset and displays at most 100 rows. It supports
+gzip episodes, daily raw partitions and legacy CSV, closes the stream after the
+prefix, and shows no individual rows for SummaryOnly. Changing the selected run
+clears stale preview content without opening contact data. Uploaded time-series CSVs
+alone do not provide their companion contact files. The prefix is not a random or
+representative sample; use network aggregates for whole-run comparisons. The Python
+`iter_contact_chunks` API remains available for explicitly requested streaming analysis.

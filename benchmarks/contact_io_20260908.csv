@@ -1,0 +1,4 @@
+variant,rows,bytes,total_ms,filesystem_write_ms,filesystem_flush_close_ms
+null_sink,100000,,62.169,,
+plain_flush256,100000,9588895,57.986,0.079,3.390
+gzip_flush8192,100000,282733,103.678,0.250,0.132

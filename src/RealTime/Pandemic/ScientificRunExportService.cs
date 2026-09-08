@@ -152,8 +152,10 @@ namespace RealTime.Pandemic
 
             directory = Path.GetFullPath(directory);
             RequireStreamedFile(directory, ExperimentRecorder.TransmissionEventsFileName);
-            RequireStreamedFile(directory, ExperimentRecorder.PhysicalContactsFileName);
-            RequireStreamedFile(directory, ExperimentRecorder.TraceableContactsFileName);
+            if (request.ScientificSnapshot.ContactFiles == null)
+                throw new InvalidOperationException("The frozen contact storage inventory is missing.");
+            foreach (var file in request.ScientificSnapshot.ContactFiles)
+                RequireStreamedFile(directory, file.RelativePath);
 
             IList<PandemicTestRecord> tests = request.Manager.GetTestRecords();
             IList<PandemicHealthcareTimePoint> healthcare = request.Manager.GetHealthcareTimeSeries();
@@ -169,6 +171,9 @@ namespace RealTime.Pandemic
             WriteAtomic(Path.Combine(directory, HealthcareTimeSeriesFileName), BuildHealthcareTimeSeriesCsv(healthcare, request.ScientificSnapshot.RunStartTime));
             WriteAtomic(Path.Combine(directory, PopulationEventsFileName), BuildPopulationEventsCsv(request.ScientificSnapshot));
             WriteAtomic(Path.Combine(directory, "contact_network_summary.csv"), request.ScientificSnapshot.ContactNetworkSummaryCsv);
+            WriteAtomic(Path.Combine(directory, "contact_step_summary.csv"), BuildContactStepSummary(request.ScientificSnapshot.ContactNetworkSummaryCsv));
+            WriteAtomic(Path.Combine(directory, "contact_episode_summary.csv"), request.ScientificSnapshot.ContactEpisodeSummaryCsv);
+            WriteAtomic(Path.Combine(directory, "contact_episode_duration_distribution.csv"), request.ScientificSnapshot.ContactEpisodeDurationCsv);
             WriteAtomic(Path.Combine(directory, "age_mixing_matrix.csv"), request.ScientificSnapshot.AgeMixingCsv);
             WriteAtomic(Path.Combine(directory, "contact_degree_distribution.csv"), request.ScientificSnapshot.DegreeDistributionCsv);
             WriteAtomic(Path.Combine(directory, "contact_duration_distribution.csv"), request.ScientificSnapshot.ContactDurationCsv);
@@ -185,6 +190,13 @@ namespace RealTime.Pandemic
 
             new AtomicJsonFileStore().Save(Path.Combine(directory, ErrorsFileName), errors);
         }
+
+        internal static string BuildContactStepSummary(string legacyCsv) => legacyCsv
+            .Replace("contact_events", "raw_contact_steps")
+            .Replace("mean_contacts_per_person_day", "mean_contact_step_participations_per_person_day")
+            .Replace("unique_contacts_per_person_day", "mean_unique_contacts_per_person_day")
+            .Replace("repeated_contacts_per_person_day", "repeated_contact_step_participations_per_person_day")
+            .Replace("context_contacts", "context_contact_steps");
 
         internal static ScientificRunSummary CalculateSummary(
             ExperimentRecorderSnapshot snapshot,

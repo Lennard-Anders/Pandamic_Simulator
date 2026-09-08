@@ -8,6 +8,32 @@ namespace RealTimeTests.Experiments
     public sealed class ExperimentInvalidRunServiceTests
     {
         [Test]
+        public void NestedCompressedPartitionsAreFingerprintedAndNestedTemporaryFilesRejected()
+        {
+            string root = CreateTemporaryDirectory();
+            try
+            {
+                string attempt = Path.Combine(root, "attempt");
+                string partitions = Path.Combine(attempt, "physical_contacts");
+                Directory.CreateDirectory(partitions);
+                string temporary = Path.Combine(partitions, "day_000.csv.gz.tmp");
+                File.WriteAllText(temporary, "incomplete test payload");
+                var request = new ExperimentInvalidRunArchiveRequest { AttemptDirectory = attempt,
+                    InvalidDirectory = Path.Combine(root, "invalid"), Manifest = Manifest() };
+                var service = new ExperimentInvalidRunService(new AtomicJsonFileStore());
+                Assert.That(service.Archive(request).Success, Is.False);
+                Assert.That(File.Exists(temporary), Is.True);
+                File.Move(temporary, Path.Combine(partitions, "day_000.csv.gz"));
+                var result = service.Archive(request);
+                Assert.That(result.Success, Is.True, result.Error);
+                Assert.That(request.Manifest.OutputFiles.Count, Is.EqualTo(1));
+                Assert.That(request.Manifest.OutputFiles[0].RelativePath, Is.EqualTo("physical_contacts/day_000.csv.gz"));
+                Assert.That(request.Manifest.OutputFiles[0].Sha256, Has.Length.EqualTo(64));
+            }
+            finally { DeleteTemporaryDirectory(root); }
+        }
+
+        [Test]
         public void ArchivePublishesDiagnosticsWithoutSuccessfulBatchSummary()
         {
             string root = CreateTemporaryDirectory();

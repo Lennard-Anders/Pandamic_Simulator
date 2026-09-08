@@ -30,7 +30,7 @@ namespace RealTime.Pandemic
             row.Append(',');
             Flags(contact);
             Emit(physical);
-            if (contact.TraceableByApp || contact.TraceableByManual)
+            if (traceable != null && (contact.TraceableByApp || contact.TraceableByManual))
             {
                 row.Length = commonLength;
                 Flags(contact);

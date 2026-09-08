@@ -1,0 +1,4 @@
+mode,days,population,occupied_hours_day,raw_steps,episodes,stored_rows,compressed_bytes,write_finalize_ms
+Standard,30,100,8,1440000,105710,105710,654825,521.753
+FullRaw,30,100,8,1440000,105710,1440000,9639590,2181.817
+SummaryOnly,30,100,8,1440000,105710,0,0,327.313
