@@ -793,6 +793,10 @@ namespace RealTime.Experiments
                 if (estimatedHighGB > availableBytes.Value / 1e9)
                     storageWarnings.AppendLine("Projected contact output may exceed available space. Choose a smaller export mode, more storage, or an explicit export limit.");
             }
+            else
+            {
+                storageWarnings.AppendLine("Available disk space: unknown (the runtime or filesystem does not support this query). Check free space before starting; export limits and write-error checks remain active.");
+            }
             result.Warning += storageWarnings.ToString();
             return result;
         }

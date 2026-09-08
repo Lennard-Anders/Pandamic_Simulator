@@ -1344,6 +1344,13 @@ Every mode retains transmission events, per-step network metrics, age mixing,
 epidemic/testing/intervention outputs and the new episode summary/duration files.
 Changing export mode never selects a different simulation or random stream.
 
+In **Experiments**, select a scenario and use the **Contact export** dropdown
+directly below **First seed**. It offers Standard, FullRaw and SummaryOnly and saves
+the selection immediately for that scenario; **Save scenario fields** is not needed
+for this dropdown. FullRaw displays its storage warning below the selector. The
+control is disabled while a batch's plan is read-only. The generic parameter editor
+remains available, and changes made there are reflected in the direct selector.
+
 `traceable_contacts.csv` is no longer written. Filter the authoritative episode or
 raw-step file by `traceable_by_app == 1 OR traceable_by_manual == 1`. Episodes split
 when either flag changes, preserving which portions of time were traceable.

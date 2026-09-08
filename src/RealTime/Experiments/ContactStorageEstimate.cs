@@ -36,13 +36,15 @@ namespace RealTime.Experiments
         internal string Describe() => string.Format(CultureInfo.InvariantCulture,
             "Estimated contact output: {0} (approximately {1:0.###}–{2:0.###} GB compressed; heuristic, not a bound).", Category, LowGB, HighGB);
 
-        internal static long? AvailableBytes(string directory)
+        internal static long? AvailableBytes(string directory, Func<string, long> query = null)
         {
-            try { return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(directory))).AvailableFreeSpace; }
+            try { return query == null ? new DriveInfo(Path.GetPathRoot(Path.GetFullPath(directory))).AvailableFreeSpace : query(directory); }
             catch (IOException) { return null; }
             catch (UnauthorizedAccessException) { return null; }
             catch (ArgumentException) { return null; }
             catch (NotSupportedException) { return null; }
+            // Older Unity/Mono implementations expose DriveInfo but do not implement this query.
+            catch (NotImplementedException) { return null; }
         }
     }
 }

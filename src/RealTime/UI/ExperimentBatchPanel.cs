@@ -9,6 +9,7 @@ namespace RealTime.UI
     using System.Globalization;
     using System.Text;
     using ColossalFramework.UI;
+    using RealTime.Config;
     using RealTime.Experiments;
     using UnityEngine;
 
@@ -236,6 +237,7 @@ namespace RealTime.UI
         private UITextField durationField;
         private UIDropDown endModeDropDown;
         private UIDropDown seedStrategyDropDown;
+        private UIDropDown contactExportModeDropDown;
         private UITextField firstSeedField;
         private UIButton addScenarioButton;
         private UIButton duplicateScenarioButton;
@@ -551,15 +553,26 @@ namespace RealTime.UI
             firstSeedField = CreateTextField(panel, fieldX, 398f, fieldWidth);
             firstSeedField.tooltip = "Non-negative master seed; sequential runs increment from this value.";
 
-            saveScenarioButton = CreateButton(panel, labelX, 444f, 252f, "Save scenario fields", SaveScenario);
-            updateSettingsButton = CreateButton(panel, 626f, 444f, 264f, "Replace with current settings", UpdateScenarioSettings);
+            CreateFieldLabel("Contact export", labelX, 436f, 135f);
+            contactExportModeDropDown = CreateDropDown(panel, fieldX, 432f, fieldWidth);
+            contactExportModeDropDown.items = new[]
+            {
+                "Standard - contact episodes (recommended)",
+                "FullRaw - every contact step",
+                "SummaryOnly - contact statistics",
+            };
+            contactExportModeDropDown.tooltip = "Applies immediately to the selected scenario. Transmission and tracing use the same simulation in every export mode.";
+            contactExportModeDropDown.eventSelectedIndexChanged += OnContactExportModeChanged;
+
+            saveScenarioButton = CreateButton(panel, labelX, 478f, 252f, "Save scenario fields", SaveScenario);
+            updateSettingsButton = CreateButton(panel, 626f, 478f, 264f, "Replace with current settings", UpdateScenarioSettings);
             updateSettingsButton.tooltip = "Replace only the selected scenario's captured mod settings.";
 
             editorHintLabel = panel.AddUIComponent<UILabel>();
             editorHintLabel.autoSize = false;
             editorHintLabel.width = 524f;
             editorHintLabel.height = 70f;
-            editorHintLabel.relativePosition = new Vector3(labelX, 482f);
+            editorHintLabel.relativePosition = new Vector3(labelX, 516f);
             editorHintLabel.textScale = 0.72f;
             editorHintLabel.textColor = new Color32(190, 205, 220, 255);
             editorHintLabel.wordWrap = true;
@@ -864,6 +877,16 @@ namespace RealTime.UI
             SetEditable(firstSeedField, canEdit);
             SetEnabled(saveScenarioButton, canEdit);
             SetEnabled(updateSettingsButton, canEdit);
+
+            ScientificContactExportMode exportMode = selected?.Settings?.ScientificContactExportMode ?? ScientificContactExportMode.Standard;
+            contactExportModeDropDown.selectedIndex = exportMode == ScientificContactExportMode.FullRaw ? 1
+                : exportMode == ScientificContactExportMode.SummaryOnly ? 2 : 0;
+            SetEnabled(contactExportModeDropDown, canEdit && selected.Settings != null);
+            editorHintLabel.text = exportMode == ScientificContactExportMode.FullRaw
+                ? ContactStorageEstimate.FullRawWarning
+                : "Contact export is saved immediately for the selected scenario. Standard stores episodes; SummaryOnly stores contact statistics. During an active batch the plan is read-only.";
+            editorHintLabel.textColor = exportMode == ScientificContactExportMode.FullRaw
+                ? new Color32(255, 195, 100, 255) : new Color32(190, 205, 220, 255);
 
             SetEnabled(addScenarioButton, !readOnly);
             SetEnabled(duplicateScenarioButton, hasSelection && !readOnly);
@@ -1357,6 +1380,19 @@ namespace RealTime.UI
                 endMode,
                 seedStrategy,
                 firstSeed));
+        }
+
+        private void OnContactExportModeChanged(UIComponent component, int index)
+        {
+            if (suppressEvents || viewState.IsPlanReadOnly || !HasSelectedScenario() || index < 0 || index > 2)
+            {
+                return;
+            }
+
+            ScientificContactExportMode mode = index == 1 ? ScientificContactExportMode.FullRaw
+                : index == 2 ? ScientificContactExportMode.SummaryOnly : ScientificContactExportMode.Standard;
+            int scenarioIndex = selectedScenarioIndex;
+            RunAction(() => controller.EditScenarioParameter(scenarioIndex, nameof(ScientificContactExportMode), mode.ToString()));
         }
 
         private void StartBatch()

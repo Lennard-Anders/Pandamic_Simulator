@@ -7,6 +7,18 @@ namespace RealTimeTests.Experiments
     public sealed class ContactStorageEstimateTests
     {
         [Test]
+        public void UnsupportedUnityDiskQueryIsUnknownInsteadOfFailingPreflightOrStorage()
+        {
+            Assert.That(ContactStorageEstimate.AvailableBytes("C:\\", path =>
+                throw new System.NotImplementedException("The requested feature is not implemented.")), Is.Null);
+            Assert.That(ContactStorageEstimate.AvailableBytes("C:\\", path =>
+                throw new System.NotSupportedException()), Is.Null);
+            Assert.That(ContactStorageEstimate.AvailableBytes("C:\\", path => 0), Is.EqualTo(0),
+                "Known disk exhaustion must not be treated as an unsupported query");
+            Assert.That(ContactStorageEstimate.AvailableBytes("C:\\", path => 123456789), Is.EqualTo(123456789));
+        }
+
+        [Test]
         public void EstimateScalesWithPopulationDurationRunsAndStepWithoutChangingSettings()
         {
             var config = new RealTimeConfig(true);
