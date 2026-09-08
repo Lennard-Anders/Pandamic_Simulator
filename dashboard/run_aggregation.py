@@ -1,7 +1,8 @@
 """Deterministic scientific aggregation for completed TENUS batch runs.
 
-Only sibling manifests with status ``Completed`` are accepted.  Invalid,
-failed, temporary, or malformed runs therefore cannot enter scenario statistics.
+Completed batch runs are accepted, and diagnostic ``run_summary.csv`` files from
+invalid batch runs are also accepted when their manifest hashes validate.
+Ordinary invalid, failed, temporary, or malformed runs remain excluded.
 The module uses only the standard library so it can be tested without Dash.
 """
 
@@ -129,17 +130,18 @@ def _manifest_files_valid(directory: Path, manifest: Mapping[str, Any]) -> bool:
 
 
 def load_completed_run(path: Path) -> Optional[RunMetricRecord]:
-    """Load one completed batch run addressed by its rich CSV or run directory."""
+    """Load one completed or validated diagnostic batch run."""
     candidate = Path(path)
     directory = candidate if candidate.is_dir() else candidate.parent
+    diagnostic = candidate.name == SUMMARY_FILE_NAME
     # An OS Temp ancestor is a legitimate analysis root; inspect run markers rather than
     # rejecting all files underneath the user's temporary directory.
     marked_parts = [part for part in directory.parts if part.casefold() not in {"temp", "tmp"}]
-    if is_transient_run_path(Path(*marked_parts)) or is_transient_run_path(Path(directory.name)) or any("__invalid" in part.casefold() for part in directory.parts):
+    if not diagnostic and (is_transient_run_path(Path(*marked_parts)) or is_transient_run_path(Path(directory.name)) or any("__invalid" in part.casefold() for part in directory.parts)):
         return None
     manifest = _read_json(directory / MANIFEST_FILE_NAME)
     status = str(_value(manifest, "status") or "").strip().casefold()
-    if status != "completed":
+    if status != "completed" and not (diagnostic and status == "invalid"):
         return None
     if not _manifest_files_valid(directory, manifest):
         return None

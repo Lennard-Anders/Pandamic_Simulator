@@ -180,9 +180,120 @@ def load_csv(path_or_text: str, is_text: bool = False) -> dict:
     if is_text:
         text = path_or_text
     else:
+        if Path(path_or_text).name == "run_summary.csv":
+            return _load_batch_run(Path(path_or_text).parent)
         with open(path_or_text, encoding="utf-8") as fh:
             text = fh.read()
     return _coerce(parse_pandemic_csv(text))
+
+
+def _read_batch_csv(directory: Path, name: str, nrows: int | None = None) -> pd.DataFrame:
+    path = directory / name
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path, nrows=nrows)
+    except (OSError, ValueError, pd.errors.ParserError):
+        return pd.DataFrame()
+
+
+def _load_batch_run(directory: Path) -> dict:
+    """Adapt scientific batch CSVs to the dashboard's sectioned run format."""
+    summary = _read_batch_csv(directory, "run_summary.csv")
+    state = _read_batch_csv(directory, "state_timeseries.csv")
+    healthcare = _read_batch_csv(directory, "healthcare_timeseries.csv")
+    interventions = _read_batch_csv(directory, "intervention_events.csv")
+    # Raw event/contact exports can be millions of rows. Keep the dashboard
+    # responsive while retaining a useful sample for event-oriented inspection.
+    transmissions = _read_batch_csv(directory, "transmission_events.csv", nrows=10000)
+    physical_contacts = _read_batch_csv(directory, "physical_contacts.csv", nrows=5000)
+    traceable_contacts = _read_batch_csv(directory, "traceable_contacts.csv", nrows=5000)
+    test_events = _read_batch_csv(directory, "test_events.csv", nrows=5000)
+    population_events = _read_batch_csv(directory, "population_events.csv", nrows=5000)
+    manifest = {}
+    manifest_path = directory / "run_manifest.json"
+    if manifest_path.exists():
+        try:
+            import json
+            with manifest_path.open(encoding="utf-8-sig") as stream:
+                manifest = json.load(stream)
+        except (OSError, UnicodeError, ValueError, TypeError):
+            manifest = {}
+
+    first_summary = summary.iloc[[0]] if not summary.empty else pd.DataFrame()
+    core_columns = [
+        "tracked_population", "active_exposed", "active_infectious", "recovered_total",
+        "deaths_total", "hospitalizations_total", "physical_contacts_total",
+        "traceable_contacts_total", "secondary_transmissions_total",
+    ]
+    core = first_summary[[column for column in core_columns if column in first_summary.columns]].copy()
+    if not core.empty:
+        core = core.rename(columns={"active_exposed": "exposed", "active_infectious": "sick", "recovered_total": "recovered", "deaths_total": "dead", "secondary_transmissions_total": "transmissions_total"})
+        core["healthy"] = core.get("tracked_population", 0) - core.get("exposed", 0) - core.get("sick", 0) - core.get("recovered", 0) - core.get("dead", 0)
+
+    peak_columns = [
+        "tracked_population", "attack_rate_pct", "resolved_case_fatality_ratio_pct",
+        "active_infectious", "recovered_total", "deaths_total", "active_exposed",
+    ]
+    peak = first_summary[[column for column in peak_columns if column in first_summary.columns]].copy()
+    peak = peak.rename(columns={"tracked_population": "total_tracked", "active_infectious": "peak_sick_count", "recovered_total": "final_recovered", "deaths_total": "final_dead", "active_exposed": "final_exposed"})
+    if not peak.empty:
+        peak["peak_sick_day"] = state["pandemic_day"].max() if "pandemic_day" in state else 0
+        peak["final_sick"] = peak.get("peak_sick_count", 0)
+
+    scenario = manifest.get("Scenario", {})
+    metadata = pd.DataFrame([{
+        "start_wall_time": manifest.get("RunSimulationStartedUtc", ""),
+        "end_wall_time": manifest.get("RunSimulationEndedUtc", ""),
+        "game_start_time": manifest.get("RunSimulationStartedUtc", ""),
+        "game_end_time": manifest.get("RunSimulationEndedUtc", ""),
+        "lifecycle_state": str(manifest.get("Status", "Unknown")),
+        "pandemic_day": state["pandemic_day"].max() if "pandemic_day" in state and not state.empty else 0,
+        "scenario_name": manifest.get("ScenarioName", scenario.get("Name", "Batch run")),
+    }])
+    policy = interventions.rename(columns={"intervention_type": "policy_type", "action": "enabled"})
+    if "enabled" in policy:
+        policy["enabled"] = policy["enabled"].astype(str).str.casefold().eq("enable").astype(int)
+
+    if not transmissions.empty:
+        transmission_origins = transmissions.copy()
+        origin_column = "origin_category" if "origin_category" in transmission_origins else "context"
+        transmission_origins["origin"] = transmission_origins[origin_column].fillna("other").astype(str).str.casefold()
+        origin_map = {
+            "residential": "home", "home": "home", "work": "work", "workplace": "work",
+            "school": "school", "healthcare": "healthcare", "commercial": "commercial",
+            "transit": "transit", "outdoor": "outdoor",
+        }
+        transmission_origins["origin"] = transmission_origins["origin"].map(origin_map).fillna("other")
+        origins = transmission_origins.groupby("origin", as_index=False).size().rename(columns={"size": "count"})
+        origins["percent"] = origins["count"] / origins["count"].sum() * 100
+        origin_timeseries = transmission_origins.groupby(["pandemic_day", "origin"], as_index=False).size()
+        origin_timeseries = origin_timeseries.pivot(index="pandemic_day", columns="origin", values="size").fillna(0).reset_index()
+    else:
+        origins = pd.DataFrame(columns=["origin", "count", "percent"])
+        origin_timeseries = pd.DataFrame()
+
+    data = {
+        "RUN METADATA": metadata,
+        "CORE METRICS": core,
+        "PEAK STATISTICS": peak,
+        "SEIRD TIME SERIES": state,
+        "HEALTHCARE TIME SERIES": healthcare,
+        "POLICY TIMELINE": policy,
+        "INFECTION ORIGINS": origins,
+        "INFECTION ORIGINS TIME SERIES": origin_timeseries,
+        "TRANSMISSION EVENTS": transmissions,
+        "PHYSICAL CONTACTS": physical_contacts,
+        "TRACEABLE CONTACTS": traceable_contacts,
+        "TEST EVENTS": test_events,
+        "POPULATION EVENTS": population_events,
+    }
+    settings = scenario.get("Settings", {}) if isinstance(scenario, dict) else {}
+    if isinstance(settings, dict) and settings:
+        data["PANDEMIC SETTINGS"] = pd.DataFrame([
+            {"parameter": key, "value": value} for key, value in settings.items()
+        ])
+    return _coerce(data)
 
 
 def _settings_dict(data: dict) -> dict:
@@ -1534,7 +1645,7 @@ def render_comparison(_, filepaths):
         ], className="g-3"),
         section_title("Scenario statistics across completed runs"),
         html.P(
-            "Standard deviation is the sample SD. Percentiles use linear interpolation. Invalid and failed runs are excluded by manifest status.",
+            "Standard deviation is the sample SD. Percentiles use linear interpolation. Validated diagnostic batch outputs are included; malformed outputs are excluded.",
             style={"color": C["muted"], "fontSize": "11px"},
         ),
         scenario_statistics_table(scenario_aggregate),
