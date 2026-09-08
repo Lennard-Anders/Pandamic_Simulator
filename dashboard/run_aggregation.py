@@ -1,7 +1,7 @@
 """Deterministic scientific aggregation for completed TENUS batch runs.
 
-Only sibling manifests with status ``Completed`` are accepted.  Invalid,
-failed, temporary, or malformed runs therefore cannot enter scenario statistics.
+Only completed batch runs enter scientific comparisons, whether addressed by a
+rich CSV or run_summary.csv. Diagnostic invalid runs remain excluded.
 The module uses only the standard library so it can be tested without Dash.
 """
 
@@ -174,7 +174,7 @@ def _manifest_files_valid(directory: Path, manifest: Mapping[str, Any], *, verif
 
 
 def load_completed_run(path: Path) -> Optional[RunMetricRecord]:
-    """Load one completed batch run addressed by its rich CSV or run directory."""
+    """Load one completed batch run, including standalone scientific packages."""
     candidate = Path(path)
     directory = candidate if candidate.is_dir() else candidate.parent
     # An OS Temp ancestor is a legitimate analysis root; inspect run markers rather than

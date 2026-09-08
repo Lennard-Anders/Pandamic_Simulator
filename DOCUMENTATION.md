@@ -1447,3 +1447,29 @@ clears stale preview content without opening contact data. Uploaded time-series 
 alone do not provide their companion contact files. The prefix is not a random or
 representative sample; use network aggregates for whole-run comparisons. The Python
 `iter_contact_chunks` API remains available for explicitly requested streaming analysis.
+
+## Scientific CSV import compatibility
+
+The dashboard accepts both sectioned `pandemic_run_*.csv` files and scientific
+`run_summary.csv` packages with their sibling time-series/event/manifest files.
+Discovery shows a run once, preferring its rich CSV when present. Invalid and
+in-progress packages do not enter published-run discovery or scenario comparisons.
+The scientific adapter uses exported compartment names, derives the infectious peak
+and its time from the complete state series, and excludes post-infectious illness
+from the susceptible count. Transmission origin charts aggregate all transmission
+rows in bounded chunks using the C# origin enum names; they are not based on the
+first 10,000 preview rows. Individual contacts remain opt-in in every export mode.
+
+The integration fixture uses the actual C# CSV builders and recorder, then imports
+the resulting Standard, FullRaw and SummaryOnly packages in Python and renders their
+dashboard charts. To repeat it from PowerShell at repository root:
+
+```powershell
+$env:TENUS_DASHBOARD_CONTRACT_ROOT = Join-Path ([IO.Path]::GetTempPath()) ('tenus-contract-' + [Guid]::NewGuid().ToString('N'))
+dotnet test src/RealTimeTests/RealTimeTests.csproj -c Release --no-restore --filter FullyQualifiedName~DashboardExportContractTests
+python dashboard/verify_export_contract.py $env:TENUS_DASHBOARD_CONTRACT_ROOT
+```
+
+Use a Python environment with `dashboard/requirements.txt` installed. These fixtures
+exercise the export/import schema and chart rendering; full package integrity is
+separately covered by the manifest commit and reader tests.

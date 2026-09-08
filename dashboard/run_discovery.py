@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping, Optional
 
 
 RUN_FILE_PATTERN = "pandemic_run_*.csv"
+DIAGNOSTIC_FILE_PATTERN = "run_summary.csv"
 RUN_MANIFEST_NAME = "run_manifest.json"
 
 
@@ -57,13 +58,15 @@ def discover_run_csvs(data_dir: Path) -> list[Path]:
     if not root.exists() or not root.is_dir():
         return []
 
-    files: Iterable[Path] = root.rglob(RUN_FILE_PATTERN)
+    files: Iterable[Path] = list(root.rglob(RUN_FILE_PATTERN)) + list(root.rglob(DIAGNOSTIC_FILE_PATTERN))
     published = [
         path
         for path in files
         if path.is_file()
         and not is_transient_run_path(path.relative_to(root))
         and _has_publishable_manifest_status(path)
+        and (path.name != DIAGNOSTIC_FILE_PATTERN
+             or not any(path.parent.glob(RUN_FILE_PATTERN)))
     ]
     return sorted(
         published,
@@ -161,7 +164,9 @@ def run_display_label(path: Path, data_dir: Path) -> str:
     path_batch, path_scenario, path_run = _batch_path_defaults(run_path, root)
 
     batch_name = _manifest_value(manifest, "batch_name", "batch") or path_batch
-    scenario_name = _manifest_value(manifest, "scenario_name", "scenario") or path_scenario
+    scenario_name = _manifest_value(manifest, "scenario_name") or path_scenario
+    if isinstance(scenario_name, Mapping):
+        scenario_name = _manifest_value(scenario_name, "name") or path_scenario
     run_number = _manifest_value(manifest, "run_number", "scenario_run_number", "run")
     if run_number in (None, ""):
         run_index = _manifest_value(manifest, "run_index", "scenario_run_index")

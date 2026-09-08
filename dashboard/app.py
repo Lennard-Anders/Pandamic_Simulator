@@ -182,9 +182,147 @@ def load_csv(path_or_text: str, is_text: bool = False) -> dict:
     if is_text:
         text = path_or_text
     else:
+        if Path(path_or_text).name == "run_summary.csv":
+            return _load_batch_run(Path(path_or_text).parent)
         with open(path_or_text, encoding="utf-8") as fh:
             text = fh.read()
     return _coerce(parse_pandemic_csv(text))
+
+
+def _read_batch_csv(directory: Path, name: str, nrows: int | None = None) -> pd.DataFrame:
+    path = directory / name
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path, nrows=nrows)
+    except (OSError, ValueError, pd.errors.ParserError):
+        return pd.DataFrame()
+
+
+def _load_batch_run(directory: Path) -> dict:
+    """Adapt scientific batch CSVs to the dashboard's sectioned run format."""
+    summary = _read_batch_csv(directory, "run_summary.csv")
+    state = _read_batch_csv(directory, "state_timeseries.csv")
+    healthcare = _read_batch_csv(directory, "healthcare_timeseries.csv")
+    interventions = _read_batch_csv(directory, "intervention_events.csv")
+    # Raw event/contact exports can be millions of rows. Keep the dashboard
+    # responsive while retaining a useful sample for event-oriented inspection.
+    transmissions = _read_batch_csv(directory, "transmission_events.csv", nrows=10000)
+    # Individual contacts are opened only by the explicit, schema-aware preview.
+    test_events = _read_batch_csv(directory, "test_events.csv", nrows=5000)
+    population_events = _read_batch_csv(directory, "population_events.csv", nrows=5000)
+    manifest = {}
+    manifest_path = directory / "run_manifest.json"
+    if manifest_path.exists():
+        try:
+            import json
+            with manifest_path.open(encoding="utf-8-sig") as stream:
+                manifest = json.load(stream)
+        except (OSError, UnicodeError, ValueError, TypeError):
+            manifest = {}
+
+    first_summary = summary.iloc[[0]] if not summary.empty else pd.DataFrame()
+    core_columns = [
+        "tracked_population", "active_exposed", "active_infectious", "recovered_total",
+        "deaths_total", "hospitalizations_total", "physical_contacts_total",
+        "traceable_contacts_total", "secondary_transmissions_total",
+    ]
+    core = first_summary[[column for column in core_columns if column in first_summary.columns]].copy()
+    if not core.empty:
+        core = core.rename(columns={"active_exposed": "exposed", "active_infectious": "sick", "recovered_total": "recovered", "deaths_total": "dead", "secondary_transmissions_total": "transmissions_total"})
+        core["healthy"] = core.get("tracked_population", 0) - core.get("exposed", 0) - core.get("sick", 0) - core.get("recovered", 0) - core.get("dead", 0) - first_summary.get("active_post_infectious_ill", 0)
+        if not state.empty and "susceptible" in state:
+            core["healthy"] = state["susceptible"].iloc[-1]
+
+    peak_columns = [
+        "tracked_population", "attack_rate_pct", "resolved_case_fatality_ratio_pct",
+        "active_infectious", "recovered_total", "deaths_total", "active_exposed",
+    ]
+    peak = first_summary[[column for column in peak_columns if column in first_summary.columns]].copy()
+    peak = peak.rename(columns={"tracked_population": "total_tracked", "active_infectious": "peak_sick_count", "recovered_total": "final_recovered", "deaths_total": "final_dead", "active_exposed": "final_exposed"})
+    if not peak.empty:
+        peak["final_sick"] = first_summary.get("active_infectious", 0)
+        if not state.empty and "infectious" in state:
+            peak_index = pd.to_numeric(state["infectious"], errors="coerce").idxmax()
+            peak["peak_sick_count"] = state.loc[peak_index, "infectious"]
+            peak["peak_sick_day"] = state.loc[peak_index, "pandemic_day"]
+        else:
+            peak["peak_sick_day"] = 0
+
+    scenario = manifest.get("Scenario", {})
+    metadata = pd.DataFrame([{
+        "start_wall_time": manifest.get("StartedUtc", ""),
+        "end_wall_time": manifest.get("CompletedUtc", ""),
+        "game_start_time": state["simulation_time"].iloc[0] if not state.empty and "simulation_time" in state else "",
+        "game_end_time": manifest.get("SimulationEndedUtc", ""),
+        "lifecycle_state": str(manifest.get("Status", "Unknown")),
+        "pandemic_day": state["pandemic_day"].max() if "pandemic_day" in state and not state.empty else 0,
+        "scenario_name": manifest.get("ScenarioName", scenario.get("Name", "Batch run")),
+    }])
+    policy = interventions.rename(columns={"intervention_type": "policy_type", "action": "enabled"})
+    if "enabled" in policy:
+        if "citizen_id" in policy:
+            policy = policy[policy["citizen_id"].isna() | policy["citizen_id"].eq(0)].copy()
+        actions = policy["enabled"].astype(str).str.casefold()
+        policy = policy[actions.isin(["enable", "disable", "close", "reopen", "start", "end"])].copy()
+        policy["enabled"] = policy["enabled"].astype(str).str.casefold().isin(["enable", "close", "start"]).astype(int)
+
+    origins, origin_timeseries = _batch_transmission_origins(directory)
+
+    data = {
+        "RUN METADATA": metadata,
+        "CORE METRICS": core,
+        "PEAK STATISTICS": peak,
+        "SEIRD TIME SERIES": state,
+        "HEALTHCARE TIME SERIES": healthcare,
+        "POLICY TIMELINE": policy,
+        "INFECTION ORIGINS": origins,
+        "INFECTION ORIGINS TIME SERIES": origin_timeseries,
+        "TRANSMISSION EVENTS": transmissions,
+        "CONTACT NETWORK SUMMARY": _read_batch_csv(directory, "contact_network_summary.csv"),
+        "CONTACT EPISODE SUMMARY": _read_batch_csv(directory, "contact_episode_summary.csv"),
+        "TEST EVENTS": test_events,
+        "POPULATION EVENTS": population_events,
+    }
+    settings = scenario.get("Settings", {}) if isinstance(scenario, dict) else {}
+    if isinstance(settings, dict) and settings:
+        data["PANDEMIC SETTINGS"] = pd.DataFrame([
+            {"parameter": key, "value": value} for key, value in settings.items()
+        ])
+    return _coerce(data)
+
+
+def _batch_transmission_origins(directory: Path):
+    """Aggregate every transmission in bounded chunks, never a truncated prefix."""
+    from collections import Counter
+    path = directory / "transmission_events.csv"
+    totals = Counter()
+    by_day = Counter()
+    mapping = {
+        "residentialhome": "home", "household": "home", "home": "home", "residential": "home",
+        "workplaceofficeindustry": "work", "workplace": "work", "work": "work",
+        "schooluniversity": "school", "school": "school", "university": "school",
+        "healthcare": "healthcare", "commercialleisuretourism": "commercial", "commercial": "commercial", "leisure": "commercial",
+        "outdoorstreet": "outdoor", "outdoor": "outdoor",
+        **dict.fromkeys(["bus", "tram", "metro", "train", "shipferry", "plane", "taxi", "carothervehicle", "stopplatform", "publictransport", "transit"], "transit"),
+    }
+    if path.exists():
+        with pd.read_csv(path, chunksize=100000) as chunks:
+            for chunk in chunks:
+                if "is_initial_seed" in chunk:
+                    chunk = chunk[~chunk["is_initial_seed"].astype(str).str.casefold().isin(["1", "true"])]
+                column = "origin_category" if "origin_category" in chunk else "context"
+                if column not in chunk or "pandemic_day" not in chunk:
+                    continue
+                chunk = chunk.assign(origin=chunk[column].astype(str).str.casefold().map(mapping).fillna("other"))
+                totals.update(chunk.groupby("origin").size().to_dict())
+                by_day.update(chunk.groupby(["pandemic_day", "origin"]).size().to_dict())
+    origins = pd.DataFrame([{"origin": key, "count": count, "percent": count / sum(totals.values()) * 100}
+                            for key, count in sorted(totals.items())], columns=["origin", "count", "percent"])
+    timeline = pd.DataFrame([{"pandemic_day": day, "origin": origin, "count": count} for (day, origin), count in sorted(by_day.items())])
+    if not timeline.empty:
+        timeline = timeline.pivot(index="pandemic_day", columns="origin", values="count").fillna(0).reset_index()
+    return origins, timeline
 
 
 def _settings_dict(data: dict) -> dict:
@@ -1571,7 +1709,7 @@ def render_comparison(_, filepaths):
         ], className="g-3"),
         section_title("Scenario statistics across completed runs"),
         html.P(
-            "Standard deviation is the sample SD. Percentiles use linear interpolation. Invalid and failed runs are excluded by manifest status.",
+            "Standard deviation is the sample SD. Percentiles use linear interpolation. Only completed runs enter scientific comparisons; invalid and incomplete diagnostics are excluded.",
             style={"color": C["muted"], "fontSize": "11px"},
         ),
         scenario_statistics_table(scenario_aggregate),
